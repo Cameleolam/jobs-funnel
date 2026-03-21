@@ -29,8 +29,11 @@ If a field is not found, set it to null. Return ONLY JSON, no explanation."""
 
 
 def main():
-    # Read from file argument or stdin
-    if len(sys.argv) > 1:
+    # Read from --base64 argument, file argument, or stdin
+    if len(sys.argv) > 2 and sys.argv[1] == "--base64":
+        import base64
+        html = base64.b64decode(sys.argv[2]).decode("utf-8").strip()
+    elif len(sys.argv) > 1:
         input_path = Path(sys.argv[1])
         if not input_path.exists():
             print(json.dumps({"error": f"Input file not found: {input_path}"}))

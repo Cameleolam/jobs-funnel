@@ -25,8 +25,17 @@ def main():
 
     system_prompt = PROMPT_FILE.read_text(encoding="utf-8")
 
-    # Read from file argument or stdin
-    if len(sys.argv) > 1:
+    # Read from --base64-file (writes temp file from b64 chunks), --base64, file, or stdin
+    if len(sys.argv) > 2 and sys.argv[1] == "--base64-file":
+        import base64
+        import tempfile
+        # Reassemble base64 from remaining args (may be split by shell)
+        b64_str = "".join(sys.argv[2:])
+        job_data = base64.b64decode(b64_str).decode("utf-8").strip()
+    elif len(sys.argv) > 2 and sys.argv[1] == "--base64":
+        import base64
+        job_data = base64.b64decode(sys.argv[2]).decode("utf-8").strip()
+    elif len(sys.argv) > 1:
         input_path = Path(sys.argv[1])
         if not input_path.exists():
             print(json.dumps({"error": f"Input file not found: {input_path}"}))
@@ -53,6 +62,8 @@ def main():
             capture_output=True,
             text=True,
             timeout=120,
+            encoding="utf-8",
+            errors="replace",
         )
     except FileNotFoundError:
         print(json.dumps({"error": "claude command not found. Is Claude Code installed?"}))
