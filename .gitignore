@@ -1,0 +1,26 @@
+# Secrets
+.env
+
+# Personal data (CVs + prompts contain candidate info)
+cvs/
+!cvs/README.md
+prompts/
+!prompts/README.md
+/docs
+
+# Generated output
+output/
+
+# n8n local data (if running from this dir)
+.n8n/
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+
+# Temp files
+*.tmp
