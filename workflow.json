@@ -136,14 +136,12 @@
 
     {
       "parameters": {
-        "method": "GET",
-        "url": "https://www.arbeitnow.com/api/job-board-api",
-        "options": { "timeout": 15000 }
+        "jsCode": "// Fetch up to 3 pages from Arbeitnow API (with 5s delay between pages)\nconst allData = [];\nconst maxPages = 3;\nfor (let page = 1; page <= maxPages; page++) {\n  const resp = await this.helpers.httpRequest({\n    method: 'GET',\n    url: `https://www.arbeitnow.com/api/job-board-api?page=${page}`,\n    timeout: 15000\n  });\n  const data = resp.data || [];\n  allData.push(...data);\n  const lastPage = resp.meta?.last_page || 1;\n  if (page >= lastPage) break;\n  if (page < maxPages) await new Promise(r => setTimeout(r, 5000));\n}\nreturn [{ json: { data: allData } }];"
       },
       "id": "an-fetch",
       "name": "AN: Fetch Jobs",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [250, 550]
     },
     {
@@ -206,7 +204,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Write HTML to temp file for parse script\nconst fs = require('fs');\nconst html = $input.first().json.data || $input.first().json.body || '';\nconst tmpFile = `/tmp/job_parse_${Date.now()}.html`;\nfs.writeFileSync(tmpFile, typeof html === 'string' ? html : JSON.stringify(html));\nreturn [{ json: { ...$('BM: Validate Input').first().json, tmpFile } }];"
+        "jsCode": "// Write HTML to temp file for parse script\nconst fs = require('fs');\nconst os = require('os');\nconst html = $input.first().json.data || $input.first().json.body || '';\nconst tmpFile = `${os.tmpdir()}/job_parse_${Date.now()}.html`;\nfs.writeFileSync(tmpFile, typeof html === 'string' ? html : JSON.stringify(html));\nreturn [{ json: { ...$('BM: Validate Input').first().json, tmpFile } }];"
       },
       "id": "bm-prep-parse",
       "name": "BM: Prep Parse",
@@ -237,7 +235,7 @@
 
     {
       "parameters": {
-        "jsCode": "// All paths converge here\nreturn $input.all();"
+        "jsCode": "// All paths converge here — deduplicate by URL across sources\nconst seen = new Set();\nconst items = $input.all().filter(item => {\n  const url = item.json?.url;\n  if (!url || seen.has(url)) return false;\n  seen.add(url);\n  return true;\n});\nreturn items.length > 0 ? items : [{ json: { _empty: true } }];"
       },
       "id": "merge",
       "name": "Merge All Sources",
@@ -295,7 +293,7 @@
 
     {
       "parameters": {
-        "jsCode": "// Prepare job data as JSON string and write to temp file\nconst fs = require('fs');\nconst job = $input.first().json;\nconst jobStr = JSON.stringify({\n  title: job.title || '',\n  company: job.company || '',\n  location: job.location || '',\n  description: job.description || '',\n  tech_stack: job.tech_stack || [],\n  language_requirements: job.language_requirements || null,\n  tags: job.tags || [],\n  url: job.url || ''\n}, null, 2);\n\nconst tmpFile = `/tmp/job_filter_${Date.now()}.json`;\nfs.writeFileSync(tmpFile, jobStr);\n\nreturn [{ json: { ...job, _filterInput: tmpFile } }];"
+        "jsCode": "// Prepare job data as JSON string and write to temp file\nconst fs = require('fs');\nconst os = require('os');\nconst job = $input.first().json;\nconst jobStr = JSON.stringify({\n  title: job.title || '',\n  company: job.company || '',\n  location: job.location || '',\n  description: job.description || '',\n  tech_stack: job.tech_stack || [],\n  language_requirements: job.language_requirements || null,\n  tags: job.tags || [],\n  url: job.url || ''\n}, null, 2);\n\nconst tmpFile = `${os.tmpdir()}/job_filter_${Date.now()}.json`;\nfs.writeFileSync(tmpFile, jobStr);\n\nreturn [{ json: { ...job, _filterInput: tmpFile } }];"
       },
       "id": "filter-prep",
       "name": "Filter: Prep Input",
@@ -315,7 +313,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Parse filter result from Claude\nconst stdout = $input.first().json.stdout || '{}';\nlet assessment;\ntry {\n  assessment = JSON.parse(stdout);\n} catch(e) {\n  assessment = { fit_score: 0, decision: 'SKIP', cv_variant: 'backend', hard_blockers: ['Parse error'], reasoning: stdout.substring(0,200) };\n}\n\nconst jobData = $('Filter: Prep Input').first().json;\ndelete jobData._filterInput;\n\nreturn [{\n  json: {\n    ...jobData,\n    assessment,\n    fit_score: assessment.fit_score || 0,\n    decision: assessment.decision || 'SKIP',\n    cv_variant: assessment.cv_variant || 'backend',\n    hard_blockers: (assessment.hard_blockers || []).join('; '),\n    strong_matches: (assessment.strong_matches || []).join('; '),\n    reasoning: assessment.reasoning || ''\n  }\n}];"
+        "jsCode": "// Parse filter result from Claude\nconst stdout = $input.first().json.stdout || '{}';\nconst stderr = $input.first().json.stderr || '';\nlet assessment;\nlet parseError = false;\ntry {\n  assessment = JSON.parse(stdout);\n  if (assessment.error) parseError = true;\n} catch(e) {\n  parseError = true;\n  assessment = { fit_score: 0, decision: 'SKIP', cv_variant: 'software', hard_blockers: ['Claude parse error'], reasoning: stdout.substring(0,200) };\n}\n\nconst jobData = $('Filter: Prep Input').first().json;\ndelete jobData._filterInput;\n\nreturn [{\n  json: {\n    ...jobData,\n    assessment,\n    _filterError: parseError,\n    _filterStderr: stderr.substring(0, 500),\n    fit_score: assessment.fit_score || 0,\n    decision: assessment.decision || 'SKIP',\n    cv_variant: assessment.cv_variant || 'software',\n    hard_blockers: (assessment.hard_blockers || []).join('; '),\n    strong_matches: (assessment.strong_matches || []).join('; '),\n    reasoning: assessment.reasoning || ''\n  }\n}];"
       },
       "id": "filter-parse",
       "name": "Filter: Parse Result",
@@ -378,7 +376,7 @@
 
     {
       "parameters": {
-        "jsCode": "// Prepare generate input: job + assessment + cv_variant\nconst fs = require('fs');\nconst job = $input.first().json;\n\nconst input = JSON.stringify({\n  cv_variant: job.cv_variant || 'backend',\n  job: `Title: ${job.title}\\nCompany: ${job.company}\\nLocation: ${job.location}\\n\\nDescription:\\n${(job.description || '').substring(0, 8000)}`,\n  assessment: JSON.stringify(job.assessment || {})\n}, null, 2);\n\nconst tmpFile = `/tmp/job_generate_${Date.now()}.json`;\nfs.writeFileSync(tmpFile, input);\n\nreturn [{ json: { ...job, _generateInput: tmpFile } }];"
+        "jsCode": "// Prepare generate input: job + assessment + cv_variant\nconst fs = require('fs');\nconst os = require('os');\nconst job = $input.first().json;\n\nconst input = JSON.stringify({\n  cv_variant: job.cv_variant || 'software',\n  job: `Title: ${job.title}\\nCompany: ${job.company}\\nLocation: ${job.location}\\n\\nDescription:\\n${(job.description || '').substring(0, 8000)}`,\n  assessment: JSON.stringify(job.assessment || {})\n}, null, 2);\n\nconst tmpFile = `${os.tmpdir()}/job_generate_${Date.now()}.json`;\nfs.writeFileSync(tmpFile, input);\n\nreturn [{ json: { ...job, _generateInput: tmpFile } }];"
       },
       "id": "gen-prep",
       "name": "Generate: Prep Input",
@@ -435,7 +433,7 @@
 
     {
       "parameters": {
-        "jsCode": "// Prepare file upload list\nconst dir = $('Write Local Files').first().json.outputDir;\nconst folderId = $input.first().json.id;\n\nconst files = [\n  { path: `${dir}/cv.html`, name: 'CV.html', mime: 'text/html' },\n  { path: `${dir}/cover_letter.txt`, name: 'Cover_Letter.txt', mime: 'text/plain' },\n  { path: `${dir}/cover_letter.html`, name: 'Cover_Letter.html', mime: 'text/html' },\n  { path: `${dir}/job.json`, name: 'Job_Posting.json', mime: 'application/json' },\n  { path: `${dir}/assessment.json`, name: 'Assessment.json', mime: 'application/json' }\n];\n\nreturn files.map(f => ({ json: { ...f, folderId } }));"
+        "jsCode": "// Prepare file upload list and read files into binary\nconst fs = require('fs');\nconst dir = $('Write Local Files').first().json.outputDir;\nconst folderId = $input.first().json.id;\n\nconst files = [\n  { path: `${dir}/cv.html`, name: 'CV.html', mime: 'text/html' },\n  { path: `${dir}/cover_letter.txt`, name: 'Cover_Letter.txt', mime: 'text/plain' },\n  { path: `${dir}/cover_letter.html`, name: 'Cover_Letter.html', mime: 'text/html' },\n  { path: `${dir}/job.json`, name: 'Job_Posting.json', mime: 'application/json' },\n  { path: `${dir}/assessment.json`, name: 'Assessment.json', mime: 'application/json' }\n];\n\nreturn files.map(f => {\n  const fileBuffer = fs.readFileSync(f.path);\n  return {\n    json: { name: f.name, folderId },\n    binary: {\n      data: {\n        data: fileBuffer.toString('base64'),\n        mimeType: f.mime,\n        fileName: f.name\n      }\n    }\n  };\n});"
       },
       "id": "drive-prep",
       "name": "Drive: Prep Uploads",
@@ -450,7 +448,7 @@
         "name": "={{ $json.name }}",
         "driveId": { "__rl": true, "mode": "id", "value": "MY_DRIVE" },
         "folderId": { "__rl": true, "mode": "id", "value": "={{ $json.folderId }}" },
-        "inputDataFieldName": "={{ $json.path }}",
+        "inputDataFieldName": "data",
         "options": {}
       },
       "id": "drive-upload",
@@ -529,9 +527,12 @@
     },
     "AA: Has Results?": {
       "main": [
-        [ { "node": "AA: Fetch Details", "type": "main", "index": 0 } ],
+        [ { "node": "AA: Wait 3s", "type": "main", "index": 0 } ],
         []
       ]
+    },
+    "AA: Wait 3s": {
+      "main": [[ { "node": "AA: Fetch Details", "type": "main", "index": 0 } ]]
     },
     "AA: Fetch Details": {
       "main": [[ { "node": "AA: Merge Details", "type": "main", "index": 0 } ]]

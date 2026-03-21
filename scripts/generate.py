@@ -18,7 +18,7 @@ PROMPT_FILE = PIPELINE_DIR / "prompts" / "generate_prompt.md"
 CVS_DIR = PIPELINE_DIR / "cvs"
 
 VARIANT_MAP = {
-    "backend": "backend.html",
+    "software": "software.html",
     "data": "data.html",
     "fullstack": "fullstack.html",
     "systems": "systems.html",
@@ -49,8 +49,8 @@ def main():
         print(json.dumps({"error": f"Invalid JSON input: {e}"}))
         sys.exit(1)
 
-    cv_variant = input_data.get("cv_variant", "backend")
-    cv_filename = VARIANT_MAP.get(cv_variant, "backend.html")
+    cv_variant = input_data.get("cv_variant", "software")
+    cv_filename = VARIANT_MAP.get(cv_variant, "software.html")
     cv_file = CVS_DIR / cv_filename
 
     if not cv_file.exists():

@@ -4,7 +4,7 @@ REM Run from the jobs_funnel directory
 
 REM Load .env file if it exists
 if exist .env (
-    for /f "usebackaliases delims=" %%i in (.env) do (
+    for /f "usebackq delims=" %%i in (.env) do (
         REM Skip comments and empty lines
         echo %%i | findstr /r "^#" >nul || (
             echo %%i | findstr /r "^$" >nul || set "%%i"
