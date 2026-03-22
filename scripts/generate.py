@@ -10,6 +10,7 @@ Output: JSON with tailored_cv_html, cover_letter_text, cover_letter_html, tailor
 import json
 import subprocess
 import sys
+import urllib.request
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -63,7 +64,21 @@ def main():
     base_cv = cv_file.read_text(encoding="utf-8")
     system_prompt = PROMPT_FILE.read_text(encoding="utf-8")
 
-    job_data = input_data.get("job", "")
+    job_data = input_data.get("job", {})
+    if isinstance(job_data, dict) and not job_data.get("description") and job_data.get("url"):
+        # Fetch the job posting page to get the full description
+        try:
+            req = urllib.request.Request(
+                job_data["url"],
+                headers={"User-Agent": "Mozilla/5.0 (compatible; JobBot/1.0)"},
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                page_html = resp.read().decode("utf-8", errors="replace")
+            # Truncate to avoid context explosion
+            job_data["description"] = page_html[:8000]
+        except Exception as e:
+            job_data["description"] = f"(Could not fetch posting: {e})"
+
     assessment = input_data.get("assessment", "")
 
     user_prompt = (
@@ -77,6 +92,7 @@ def main():
         result = subprocess.run(
             [
                 "claude", "-p",
+                "--model", "claude-sonnet-4-6",
                 "--output-format", "json",
                 "--append-system-prompt", system_prompt,
                 "--max-turns", "1",

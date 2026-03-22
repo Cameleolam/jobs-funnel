@@ -54,6 +54,7 @@ def main():
         result = subprocess.run(
             [
                 "claude", "-p",
+                "--model", "claude-sonnet-4-6",
                 "--output-format", "json",
                 "--append-system-prompt", system_prompt,
                 "--max-turns", "1",

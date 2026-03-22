@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Wrapper: decode base64 job data, write temp file, run filter.py.
+"""Wrapper: decode base64 generate input, write temp file, run generate.py.
 
 Usage:
-    python run_filter.py <project_dir> <base64_data>
+    python run_generate.py <project_dir> <base64_data>
 
 Handles Windows command-line length limits by writing data to a temp file.
 """
@@ -18,18 +18,18 @@ import time
 
 def main():
     if len(sys.argv) < 3:
-        print(json.dumps({"error": "Usage: run_filter.py <project_dir> <base64_data>"}))
+        print(json.dumps({"error": "Usage: run_generate.py <project_dir> <base64_data>"}))
         sys.exit(1)
 
     project_dir = sys.argv[1]
     b64_data = sys.argv[2]
 
     # Delay between sequential calls to avoid rate limits
-    time.sleep(1)
+    time.sleep(3)
 
     # Decode base64 to JSON
     try:
-        job_json = base64.b64decode(b64_data).decode("utf-8")
+        input_json = base64.b64decode(b64_data).decode("utf-8")
     except Exception as e:
         print(json.dumps({"error": f"Base64 decode failed: {e}"}))
         sys.exit(1)
@@ -38,18 +38,18 @@ def main():
     tmp = tempfile.NamedTemporaryFile(
         mode="w", suffix=".json", delete=False, encoding="utf-8"
     )
-    tmp.write(job_json)
+    tmp.write(input_json)
     tmp.close()
 
     try:
-        # Run filter.py with the temp file
-        filter_script = os.path.join(project_dir, "scripts", "filter.py")
+        # Run generate.py with the temp file
+        generate_script = os.path.join(project_dir, "scripts", "generate.py")
         env = {**os.environ, "PYTHONUTF8": "1"}
         result = subprocess.run(
-            [sys.executable, filter_script, tmp.name],
+            [sys.executable, generate_script, tmp.name],
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=200,
             encoding="utf-8",
             errors="replace",
             env=env,
