@@ -2,7 +2,7 @@
 """Write generated CV/cover letter files to local output directory.
 
 Usage:
-    python write_output.py '<json string>'
+    python write_output.py <json_file_path>
 
 Output: JSON with outputDir and folderName on stdout
 """
@@ -23,11 +23,20 @@ def main():
         print(json.dumps({"error": "No input provided"}))
         sys.exit(1)
 
-    try:
-        job = json.loads(sys.argv[1])
-    except json.JSONDecodeError as e:
-        print(json.dumps({"error": f"Invalid JSON: {e}"}))
-        sys.exit(1)
+    input_path = Path(sys.argv[1])
+    if not input_path.exists():
+        # Try parsing as inline JSON (backwards compat)
+        try:
+            job = json.loads(sys.argv[1])
+        except json.JSONDecodeError as e:
+            print(json.dumps({"error": f"File not found and invalid JSON: {e}"}))
+            sys.exit(1)
+    else:
+        try:
+            job = json.loads(input_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as e:
+            print(json.dumps({"error": f"Invalid JSON in file: {e}"}))
+            sys.exit(1)
 
     company = re.sub(r'[^a-zA-Z0-9]', '_', job.get("company", "unknown"))[:30]
     from datetime import date

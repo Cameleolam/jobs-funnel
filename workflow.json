@@ -179,7 +179,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Parse filter results and carry forward job data for Generate step\nconst results = [];\nfor (const item of $input.all()) {\n  const stdout = item.json.stdout || '{}';\n  let assessment;\n  try {\n    assessment = JSON.parse(stdout);\n  } catch(e) {\n    assessment = { fit_score: 0, decision: 'SKIP', cv_variant: 'software', hard_blockers: ['Claude parse error'], reasoning: stdout.substring(0,200) };\n  }\n\n  // Get job data from the matching item in Dedup: Filter by index\n  const allDedup = $('Dedup: Filter').all();\n  const idx = results.length;\n  const jobData = (allDedup[idx] || item).json;\n\n  // Normalize decision: only PASS, MAYBE, or SKIP\n  const rawDecision = String(assessment.decision || 'SKIP').trim().toUpperCase();\n  const decision = ['PASS','MAYBE','SKIP'].includes(rawDecision) ? rawDecision : 'SKIP';\n  const score = Number(assessment.fit_score) || 0;\n\n  results.push({\n    json: {\n      'Date': new Date().toISOString().slice(0,10),\n      'Source': jobData.source || 'arbeitnow',\n      'Company': assessment.company || jobData.company || '',\n      'Role': assessment.role || jobData.title || '',\n      'Location': assessment.location || jobData.location || '',\n      'Score': score,\n      'Decision': decision,\n      'CV Variant': assessment.cv_variant || 'software',\n      'Blockers': (assessment.hard_blockers || []).join('; '),\n      'Strong Matches': (assessment.strong_matches || []).join('; '),\n      'Reasoning': assessment.reasoning || '',\n      'Status': decision === 'SKIP' ? 'skipped' : 'review',\n      'Drive Link': '',\n      'Job URL': jobData.url || '',\n      'Notes': '',\n      _assessment: assessment,\n      _url: jobData.url || '',\n      _description: jobData.description || ''\n    }\n  });\n}\nreturn results;"
+        "jsCode": "// Parse filter results and carry forward job data for Generate step\nconst results = [];\nfor (const item of $input.all()) {\n  const stdout = item.json.stdout || '{}';\n  let assessment;\n  try {\n    assessment = JSON.parse(stdout);\n  } catch(e) {\n    assessment = { fit_score: 0, decision: 'SKIP', cv_variant: 'software', hard_blockers: ['Claude parse error'], reasoning: stdout.substring(0,200) };\n  }\n\n  // Get job data from the matching item in Dedup: Filter by index\n  const allDedup = $('Dedup: Filter').all();\n  const idx = results.length;\n  const jobData = (allDedup[idx] || item).json;\n\n  // Normalize decision: only PASS, MAYBE, or SKIP\n  const rawDecision = String(assessment.decision || 'SKIP').trim().toUpperCase();\n  const decision = ['PASS','MAYBE','SKIP'].includes(rawDecision) ? rawDecision : 'SKIP';\n  const score = Number(assessment.fit_score) || 0;\n\n  results.push({\n    json: {\n      'Date': new Date().toISOString().slice(0,10),\n      'Fetched At': new Date().toISOString().replace('T',' ').slice(0,19) + ' UTC',\n      'Source': jobData.source || 'arbeitnow',\n      'Company': assessment.company || jobData.company || '',\n      'Role': assessment.role || jobData.title || '',\n      'Location': assessment.location || jobData.location || '',\n      'Score': score,\n      'Decision': decision,\n      'CV Variant': assessment.cv_variant || 'software',\n      'Blockers': (assessment.hard_blockers || []).join('; '),\n      'Strong Matches': (assessment.strong_matches || []).join('; '),\n      'Reasoning': assessment.reasoning || '',\n      'Status': decision === 'SKIP' ? 'skipped' : 'review',\n      'Drive Link': '',\n      'Job URL': jobData.url || '',\n      'Notes': '',\n      _assessment: assessment,\n      _url: jobData.url || '',\n      _description: jobData.description || ''\n    }\n  });\n}\nreturn results;"
       },
       "id": "filter-parse",
       "name": "Filter: Parse",
@@ -228,7 +228,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Strip internal fields before Sheet logging\nreturn $input.all().map(item => {\n  const d = item.json;\n  return { json: {\n    'Date': d['Date'] || '',\n    'Source': d['Source'] || '',\n    'Company': d['Company'] || '',\n    'Role': d['Role'] || '',\n    'Location': d['Location'] || '',\n    'Score': d['Score'] || 0,\n    'Decision': d['Decision'] || 'SKIP',\n    'CV Variant': d['CV Variant'] || 'software',\n    'Blockers': d['Blockers'] || '',\n    'Strong Matches': d['Strong Matches'] || '',\n    'Reasoning': d['Reasoning'] || '',\n    'Status': d['Status'] || 'skipped',\n    'Drive Link': '',\n    'Job URL': d['Job URL'] || '',\n    'Notes': d['Notes'] || ''\n  }};\n});"
+        "jsCode": "// Strip internal fields before Sheet logging\nreturn $input.all().map(item => {\n  const d = item.json;\n  return { json: {\n    'Date': d['Date'] || '',\n    'Fetched At': d['Fetched At'] || '',\n    'Source': d['Source'] || '',\n    'Company': d['Company'] || '',\n    'Role': d['Role'] || '',\n    'Location': d['Location'] || '',\n    'Score': d['Score'] || 0,\n    'Decision': d['Decision'] || 'SKIP',\n    'CV Variant': d['CV Variant'] || 'software',\n    'Blockers': d['Blockers'] || '',\n    'Strong Matches': d['Strong Matches'] || '',\n    'Reasoning': d['Reasoning'] || '',\n    'Status': d['Status'] || 'skipped',\n    'Drive Link': '',\n    'Job URL': d['Job URL'] || '',\n    'Notes': d['Notes'] || ''\n  }};\n});"
       },
       "id": "clean-skip",
       "name": "Clean MAYBE/SKIP",
@@ -300,7 +300,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Parse generate output and merge with filter data for file writing\nconst results = [];\nconst passItems = $('Is PASS?').all();\n\nfor (let i = 0; i < $input.all().length; i++) {\n  const item = $input.all()[i];\n  const passItem = passItems[i] || {};\n  const stdout = item.json.stdout || '{}';\n  let generated;\n  try {\n    generated = JSON.parse(stdout);\n  } catch(e) {\n    generated = { error: 'Failed to parse generate output', raw: stdout.substring(0,200) };\n  }\n\n  const filterData = passItem.json || {};\n\n  // Build input for write_output.py\n  const writeInput = JSON.stringify({\n    company: filterData['Company'] || '',\n    title: filterData['Role'] || '',\n    location: filterData['Location'] || '',\n    url: filterData['Job URL'] || '',\n    description: filterData._description || '',\n    tailored_cv_html: generated.tailored_cv_html || '',\n    cover_letter_html: generated.cover_letter_html || '',\n    cover_letter_text: generated.cover_letter_text || '',\n    assessment: filterData._assessment || {},\n    tailoring_notes: generated.tailoring_notes || ''\n  });\n\n  results.push({\n    json: {\n      ...filterData,\n      _writeInput: writeInput,\n      _generated: generated,\n      _hasError: !!generated.error\n    }\n  });\n}\nreturn results;"
+        "jsCode": "// Parse generate output and merge with filter data for file writing\nconst results = [];\nconst passItems = $('Is PASS?').all();\n\nfor (let i = 0; i < $input.all().length; i++) {\n  const item = $input.all()[i];\n  const passItem = passItems[i] || {};\n  const stdout = item.json.stdout || '{}';\n  let generated;\n  try {\n    generated = JSON.parse(stdout);\n  } catch(e) {\n    generated = { error: 'Failed to parse generate output', raw: stdout.substring(0,200) };\n  }\n\n  const filterData = passItem.json || {};\n\n  // Build input for write_output.py\n  const writeObj = {\n    company: filterData['Company'] || '',\n    title: filterData['Role'] || '',\n    location: filterData['Location'] || '',\n    url: filterData['Job URL'] || '',\n    description: filterData._description || '',\n    tailored_cv_html: generated.tailored_cv_html || '',\n    cover_letter_html: generated.cover_letter_html || '',\n    cover_letter_text: generated.cover_letter_text || '',\n    assessment: filterData._assessment || {},\n    tailoring_notes: generated.tailoring_notes || ''\n  };\n  const writeB64 = Buffer.from(JSON.stringify(writeObj)).toString('base64');\n\n  results.push({\n    json: {\n      ...filterData,\n      _writeB64: writeB64,\n      _generated: generated,\n      _hasError: !!generated.error\n    }\n  });\n}\nreturn results;"
       },
       "id": "generate-parse",
       "name": "Generate: Parse",
@@ -313,7 +313,7 @@
     },
     {
       "parameters": {
-        "command": "=python \"{{ $env.JOBS_FUNNEL_PROJECT_DIR }}/scripts/write_output.py\" '{{ $json._writeInput }}'"
+        "command": "=python \"{{ $env.JOBS_FUNNEL_PROJECT_DIR }}/scripts/run_write_output.py\" \"{{ $env.JOBS_FUNNEL_PROJECT_DIR }}\" \"{{ $json._writeB64 }}\""
       },
       "id": "write-local",
       "name": "Write Local Files",
@@ -434,7 +434,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// After all files uploaded, emit one item per job for Sheet logging\nconst allUploaded = $input.all();\nif (allUploaded.length === 0) return [];\n\n// Group by folder \u00e2\u20ac\u201d all files share the same folderUrl\nconst first = allUploaded[0].json;\nreturn [{\n  json: {\n    'Date': first['Date'] || '',\n    'Source': first['Source'] || '',\n    'Company': first['Company'] || '',\n    'Role': first['Role'] || '',\n    'Location': first['Location'] || '',\n    'Score': first['Score'] || 0,\n    'Decision': 'PASS',\n    'CV Variant': first['CV Variant'] || 'software',\n    'Blockers': first['Blockers'] || '',\n    'Strong Matches': first['Strong Matches'] || '',\n    'Reasoning': first['Reasoning'] || '',\n    'Status': 'generated',\n    'Drive Link': first.folderUrl || '',\n    'Job URL': first['Job URL'] || '',\n    'Notes': first['Notes'] || ''\n  }\n}];"
+        "jsCode": "// After all files uploaded, emit one item per job for Sheet logging\nconst allUploaded = $input.all();\nif (allUploaded.length === 0) return [];\n\n// Group by folder \u00e2\u20ac\u201d all files share the same folderUrl\nconst first = allUploaded[0].json;\nreturn [{\n  json: {\n    'Date': first['Date'] || '',\n    'Fetched At': first['Fetched At'] || '',\n    'Source': first['Source'] || '',\n    'Company': first['Company'] || '',\n    'Role': first['Role'] || '',\n    'Location': first['Location'] || '',\n    'Score': first['Score'] || 0,\n    'Decision': 'PASS',\n    'CV Variant': first['CV Variant'] || 'software',\n    'Blockers': first['Blockers'] || '',\n    'Strong Matches': first['Strong Matches'] || '',\n    'Reasoning': first['Reasoning'] || '',\n    'Status': 'generated',\n    'Drive Link': first.folderUrl || '',\n    'Job URL': first['Job URL'] || '',\n    'Notes': first['Notes'] || ''\n  }\n}];"
       },
       "id": "post-upload",
       "name": "Post Upload",
@@ -462,7 +462,7 @@
           "mappingMode": "autoMapInputData",
           "value": {},
           "matchingColumns": [],
-          "ignoreFields": "_assessment,_url,_description,_hasError,_outputDir,_folderName,_generated,_writeInput"
+          "ignoreFields": "_assessment,_url,_description,_hasError,_outputDir,_folderName,_generated,_writeB64"
         }
       },
       "id": "sheet-log-pass",
@@ -476,7 +476,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Log PASS items that had errors (no Drive upload)\nconst items = $input.all();\nreturn items.map(item => {\n  const d = item.json;\n  return {\n    json: {\n      'Date': d['Date'] || '',\n      'Source': d['Source'] || '',\n      'Company': d['Company'] || '',\n      'Role': d['Role'] || '',\n      'Location': d['Location'] || '',\n      'Score': d['Score'] || 0,\n      'Decision': 'PASS',\n      'CV Variant': d['CV Variant'] || 'software',\n      'Blockers': d['Blockers'] || '',\n      'Strong Matches': d['Strong Matches'] || '',\n      'Reasoning': d['Reasoning'] || '',\n      'Status': 'review',\n      'Drive Link': '',\n      'Job URL': d['Job URL'] || '',\n      'Notes': d['Notes'] || 'Generate/upload failed'\n    }\n  };\n});"
+        "jsCode": "// Log PASS items that had errors (no Drive upload)\nconst items = $input.all();\nreturn items.map(item => {\n  const d = item.json;\n  return {\n    json: {\n      'Date': d['Date'] || '',\n      'Fetched At': d['Fetched At'] || '',\n      'Source': d['Source'] || '',\n      'Company': d['Company'] || '',\n      'Role': d['Role'] || '',\n      'Location': d['Location'] || '',\n      'Score': d['Score'] || 0,\n      'Decision': 'PASS',\n      'CV Variant': d['CV Variant'] || 'software',\n      'Blockers': d['Blockers'] || '',\n      'Strong Matches': d['Strong Matches'] || '',\n      'Reasoning': d['Reasoning'] || '',\n      'Status': 'review',\n      'Drive Link': '',\n      'Job URL': d['Job URL'] || '',\n      'Notes': d['Notes'] || 'Generate/upload failed'\n    }\n  };\n});"
       },
       "id": "error-pass-prep",
       "name": "Prep Error PASS",
@@ -504,7 +504,7 @@
           "mappingMode": "autoMapInputData",
           "value": {},
           "matchingColumns": [],
-          "ignoreFields": "_assessment,_url,_description,_hasError,_outputDir,_folderName,_generated,_writeInput"
+          "ignoreFields": "_assessment,_url,_description,_hasError,_outputDir,_folderName,_generated,_writeB64"
         }
       },
       "id": "sheet-log-error-pass",
