@@ -205,20 +205,11 @@
     },
     {
       "parameters": {
-        "conditions": {
-          "options": { "caseSensitive": true },
-          "conditions": [
-            {
-              "leftValue": "={{ $json.id }}",
-              "rightValue": "",
-              "operator": { "type": "string", "operation": "isNotEmpty" }
-            }
-          ]
-        }
+        "jsCode": "// Check if there are pending jobs — filter out empty rows from Postgres\nconst items = $input.all().filter(i => i.json.id != null);\nif (items.length === 0) return [];\nreturn items;"
       },
       "id": "has-pending",
       "name": "Has Pending?",
-      "type": "n8n-nodes-base.if",
+      "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [2850, 600]
     },
