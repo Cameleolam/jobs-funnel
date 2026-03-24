@@ -337,7 +337,10 @@
       "name": "Sheet: Append Rows",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
-      "position": [5550, 600]
+      "position": [5550, 600],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 10000
     },
     {
       "parameters": {
