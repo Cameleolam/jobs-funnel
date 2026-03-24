@@ -8,6 +8,7 @@ Output: JSON with tailored_cv_html, cover_letter_text, cover_letter_html, tailor
 """
 
 import json
+import re
 import subprocess
 import sys
 import urllib.request
@@ -95,7 +96,7 @@ def main():
                 "--model", "claude-sonnet-4-6",
                 "--output-format", "json",
                 "--append-system-prompt", system_prompt,
-                "--max-turns", "1",
+                "--max-turns", "3",
             ],
             input=user_prompt,
             capture_output=True,
@@ -121,18 +122,27 @@ def main():
 
     try:
         claude_json = json.loads(raw_output)
-        result_text = claude_json.get("result", raw_output)
+        # Unwrap array if present (claude -p returns a list)
+        if isinstance(claude_json, list) and len(claude_json) > 0:
+            claude_json = claude_json[0]
+        if isinstance(claude_json, dict):
+            result_text = claude_json.get("result", raw_output)
     except json.JSONDecodeError:
         pass
 
+    # Extract JSON object/array from result text, ignoring code fences and surrounding text
     clean = result_text.strip()
-    if clean.startswith("```json"):
-        clean = clean[7:]
-    if clean.startswith("```"):
-        clean = clean[3:]
-    if clean.endswith("```"):
-        clean = clean[:-3]
-    clean = clean.strip()
+    json_start = -1
+    for i, c in enumerate(clean):
+        if c in '[{':
+            json_start = i
+            break
+    if json_start >= 0:
+        bracket = ']' if clean[json_start] == '[' else '}'
+        for i in range(len(clean) - 1, json_start - 1, -1):
+            if clean[i] == bracket:
+                clean = clean[json_start:i + 1]
+                break
 
     try:
         generated = json.loads(clean)

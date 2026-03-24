@@ -7,4 +7,5 @@ echo.
 echo Press Ctrl+C to stop
 echo.
 
+set NODE_FUNCTION_ALLOW_BUILTIN=fs,path,os
 npx dotenv -e .env -- n8n start

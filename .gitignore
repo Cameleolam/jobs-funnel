@@ -11,6 +11,9 @@ prompts/
 # Generated output
 output/
 
+# Batch temp files
+temp/
+
 # n8n local data (if running from this dir)
 .n8n/
 

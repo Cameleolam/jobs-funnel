@@ -7,6 +7,7 @@ Usage:
 Output: JSON with outputDir and folderName on stdout
 """
 
+import base64
 import json
 import os
 import re
@@ -71,9 +72,17 @@ def main():
 
     folder_name = f"{today} {job.get('company', 'Unknown')} - {job.get('title', 'Role')}"
 
+    # Base64-encode each file for downstream binary conversion (n8n sandbox can't use fs)
+    files_b64 = {}
+    for fname in ["cv.html", "cover_letter.html", "cover_letter.txt", "assessment.json", "job.json"]:
+        fpath = dir_path / fname
+        if fpath.exists():
+            files_b64[fname] = base64.b64encode(fpath.read_bytes()).decode("ascii")
+
     print(json.dumps({
         "outputDir": str(dir_path).replace("\\", "/"),
         "folderName": folder_name,
+        "files": files_b64,
     }))
 
 
