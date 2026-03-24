@@ -1,0 +1,522 @@
+{
+  "name": "Job Crawl + Analyze v2",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger-full",
+      "name": "Run Full Pipeline",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "0 9 * * *" }]
+        }
+      },
+      "id": "trigger-cron",
+      "name": "Cron Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 500]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "analyze-only",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "trigger-analyze",
+      "name": "Run Analyze Only",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 900],
+      "webhookId": "analyze-only"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Arbeitnow: paginate up to 10 pages, relaxed client-side filters\nconst MAX_PAGES = 10;\nconst DELAY_MS = 5000;\nconst cutoff = Date.now() - 30*24*60*60*1000;\n\nconst titleKw = ['python','backend','back-end','back end','data engineer','data engineering','software engineer','software developer','platform engineer','api developer','developer python','entwickler','softwareentwickler','devops','site reliability','sre','etl','junior developer','junior engineer','flask','django','fastapi','developer','engineer','cloud','infrastructure','programmierer','informatiker','application engineer','system engineer','web developer','webentwickler','it engineer','automation','machine learning','ml engineer','data scientist','data analyst','full stack','fullstack'];\nconst tagKw = ['python','backend','data','engineering','devops','api','flask','django','fastapi','docker','aws','postgresql','kubernetes','linux','sql','java','node','typescript','go','rust','cloud','azure','gcp','terraform','ci/cd','microservices'];\nconst locKw = ['hamburg','berlin','germany','remote','deutschland','m\\u00fcnchen','munich','frankfurt','k\\u00f6ln','cologne','deutsch','d\\u00fcsseldorf','hannover','stuttgart','bremen','n\\u00fcrnberg','nuremberg','leipzig','dresden','essen','dortmund','bonn','karlsruhe','mannheim','freiburg','heidelberg','europe','eu','dach'];\nconst engWords = ['the','and','you','we','team','experience','requirements','about','our','will','work','join','role','position'];\n\nfunction isLikelyEnglish(desc) {\n  const sample = (desc||'').substring(0,500).toLowerCase();\n  const hits = engWords.filter(w => sample.includes(w)).length;\n  return hits >= 3;\n}\n\nconst allJobs = [];\nconst seen = new Set();\n\nfor (let page = 1; page <= MAX_PAGES; page++) {\n  if (page > 1) await new Promise(r => setTimeout(r, DELAY_MS));\n  let body;\n  try {\n    body = await this.helpers.httpRequest({ method: 'GET', url: `https://www.arbeitnow.com/api/job-board-api?page=${page}`, json: true });\n  } catch(e) { break; }\n  const data = body.data || [];\n  if (data.length === 0) break;\n\n  let allOld = true;\n  for (const job of data) {\n    const created = new Date(job.created_at*1000||job.created_at).getTime();\n    if (created > cutoff) allOld = false;\n\n    const t = (job.title||'').toLowerCase();\n    const l = (job.location||'').toLowerCase();\n    const tags = (job.tags||[]).map(t=>t.toLowerCase());\n    const titleMatch = titleKw.some(k=>t.includes(k));\n    const tagMatch = tagKw.some(k=>tags.includes(k));\n    const locMatch = locKw.some(k=>l.includes(k)) || job.remote;\n\n    const negKw = ['manager','consultant','designer','marketing','sales','recruiter','sap','abap','salesforce','product owner','scrum master','project manager','buchhalter','accounting','finance','legal','rechtsanwalt','jurist','pflege','nurse','arzt','physician','lehrer','teacher','werkstudent','intern','praktikant','trainee','senior director','vp ','vice president','head of','chief'];\n    const negMatch = negKw.some(k => t.includes(k));\n\n    if (!negMatch && (titleMatch || tagMatch || locMatch) && created > cutoff) {\n      const key = job.slug||job.url||job.title;\n      if (!seen.has(key)) {\n        seen.add(key);\n        allJobs.push(job);\n      }\n    }\n  }\n  if (allOld) break;\n  const lastPage = body.meta?.last_page || MAX_PAGES;\n  if (page >= lastPage) break;\n}\n\nif (allJobs.length === 0) return [{ json: { _empty: true } }];\n\nreturn allJobs.map(j => {\n  const desc = (j.description||'').substring(0,5000);\n  return { json: {\n    source: 'arbeitnow',\n    external_id: j.slug||'',\n    url: j.url||`https://www.arbeitnow.com/view/${j.slug}`,\n    title: j.title||'',\n    company: j.company_name||'',\n    location: j.location||'',\n    description: desc,\n    tags: j.tags||[],\n    remote: j.remote||false,\n    likely_english: isLikelyEnglish(desc)\n  }};\n});"
+      },
+      "id": "an-fetch",
+      "name": "AN: Fetch & Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [300, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Arbeitsagentur: run multiple server-side filtered searches\nconst BASE = 'https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobs';\nconst HEADERS = { 'X-API-Key': 'jobboerse-jobsuche', 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' };\n\nconst searches = [\n  'Python Developer', 'Backend Engineer', 'Data Engineer', 'Software Engineer',\n  'Python Entwickler', 'Software Entwickler', 'Backend Entwickler',\n  'ETL Developer', 'ETL Entwickler', 'Cloud Engineer'\n];\nconst commonParams = 'wo=Hamburg&umkreis=200&veroeffentlichtseit=30&pav=false&zeitarbeit=false&size=100';\n\nconst seenIds = new Set();\nconst jobs = [];\nconst errors = [];\nconst MAX_PAGES = 3;\n\nfor (let i = 0; i < searches.length; i++) {\n  for (let page = 1; page <= MAX_PAGES; page++) {\n    const url = `${BASE}?was=${encodeURIComponent(searches[i])}&${commonParams}&page=${page}`;\n    let body;\n    try {\n      const raw = await this.helpers.httpRequest({ method: 'GET', url, headers: HEADERS });\n      body = typeof raw === 'string' ? JSON.parse(raw) : raw;\n    } catch(e) { errors.push({search: searches[i], page, error: e.message || String(e)}); continue; }\n    const results = body.stellenangebote || [];\n    if (results.length === 0) break;\n    for (const s of results) {\n      const id = s.refnr || s.titel;\n      if (!seenIds.has(id)) { seenIds.add(id); jobs.push(s); }\n    }\n    const maxPage = body.maxErgebnisse ? Math.ceil(body.maxErgebnisse / 100) : 1;\n    if (page >= maxPage) break;\n  }\n}\n\nif (jobs.length === 0) return [{ json: { _empty: true, _errors: errors } }];\n\nreturn jobs.map(j => {\n  const company = typeof j.arbeitgeber === 'object' ? (j.arbeitgeber?.name || '') : (j.arbeitgeber || '');\n  const location = j.arbeitsort?.ort || '';\n  const region = j.arbeitsort?.region || '';\n  const extUrl = j.externeUrl || '';\n  const refUrl = j.refnr ? `https://www.arbeitsagentur.de/jobsuche/suche?id=${j.refnr}` : '';\n  const url = extUrl || refUrl;\n  const desc = `${j.titel || ''} bei ${company} in ${location}${region ? ' (' + region + ')' : ''}. Beruf: ${j.beruf || ''}. Eintrittsdatum: ${j.eintrittsdatum || 'k.A.'}`;\n  return { json: {\n    source: 'arbeitsagentur',\n    external_id: j.refnr || '',\n    url: url,\n    title: j.titel || '',\n    company: company,\n    location: location,\n    description: desc,\n    tags: [],\n    remote: false,\n    likely_english: false\n  }};\n});"
+      },
+      "id": "aa-fetch",
+      "name": "AA: Fetch Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [300, 500]
+    },
+    {
+      "parameters": {
+        "mode": "append",
+        "options": {}
+      },
+      "id": "merge-sources",
+      "name": "Merge Sources",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Deduplicate merged results by company+title\nconst all = $input.all().filter(i => !i.json._empty);\nconst seen = new Set();\nconst unique = [];\n\nfor (const item of all) {\n  const job = item.json;\n  const key = ((job.company||'') + '|' + (job.title||'')).toLowerCase().trim();\n  if (!seen.has(key)) {\n    seen.add(key);\n    unique.push(job);\n  }\n}\n\nif (unique.length === 0) return [{ json: { _empty: true } }];\nreturn unique.map(j => ({ json: j }));"
+      },
+      "id": "dedup-merge",
+      "name": "Dedup Merge",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "leftValue": "={{ $json._empty }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "notTrue" }
+            }
+          ]
+        }
+      },
+      "id": "has-results",
+      "name": "Has Results?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT url FROM jobs",
+        "options": {}
+      },
+      "id": "dedup-get-urls",
+      "name": "Dedup: Get Seen URLs",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, 300],
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_ME",
+          "name": "Postgres - Jobs Funnel"
+        }
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Filter out URLs already in Postgres, cap at 80\nlet seenRows;\ntry { seenRows = $('Dedup: Get Seen URLs').all(); } catch(e) { seenRows = []; }\nconst seenUrls = new Set(seenRows.map(r => r.json.url).filter(Boolean));\n\nconst jobs = $('Has Results?').all().filter(item => {\n  const url = item.json?.url;\n  return url && !seenUrls.has(url);\n});\n\nreturn jobs.length > 0 ? jobs.slice(0, 80) : [{ json: { _empty: true } }];"
+      },
+      "id": "dedup-filter",
+      "name": "Dedup: Filter New",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1550, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "leftValue": "={{ $json._empty }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "notTrue" }
+            }
+          ]
+        }
+      },
+      "id": "has-new",
+      "name": "Has New?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1800, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build INSERT query for each job\nfunction esc(s) { return String(s || '').replace(/'/g, \"''\"); }\n\nreturn $input.all().map(item => {\n  const j = item.json;\n  const query = `INSERT INTO jobs (url, title, company, location, description, source, external_id, tags, remote, likely_english) VALUES ('${esc(j.url)}', '${esc(j.title)}', '${esc(j.company)}', '${esc(j.location)}', '${esc((j.description || '').substring(0, 10000))}', '${esc(j.source)}', '${esc(j.external_id)}', '${esc(JSON.stringify(j.tags || []))}'::jsonb, ${j.remote || false}, ${j.likely_english || false}) ON CONFLICT (url) DO NOTHING`;\n  return { json: { ...j, _insertQuery: query } };\n});"
+      },
+      "id": "prep-insert",
+      "name": "Prep Insert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2050, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json._insertQuery }}",
+        "options": {}
+      },
+      "id": "db-insert",
+      "name": "DB: Insert Jobs",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2300, 300],
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_ME",
+          "name": "Postgres - Jobs Funnel"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Emit a single item to trigger the analyze phase (regardless of how many inserts ran)\nreturn [{ json: { _trigger: 'crawl_complete' } }];"
+      },
+      "id": "goto-analyze",
+      "name": "Start Analyze",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2550, 300],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM jobs WHERE status IN ('pending', 'error') ORDER BY crawled_at ASC LIMIT 80",
+        "options": {}
+      },
+      "id": "db-fetch-pending",
+      "name": "DB: Fetch Pending",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2600, 600],
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_ME",
+          "name": "Postgres - Jobs Funnel"
+        }
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "isNotEmpty" }
+            }
+          ]
+        }
+      },
+      "id": "has-pending",
+      "name": "Has Pending?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2850, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Batch all pending jobs into groups of 8, write each to a temp file\nconst fs = require('fs');\nconst BATCH_SIZE = 8;\nconst all = $input.all();\nconst tmpDir = ($env.JOBS_FUNNEL_PROJECT_DIR || '.').replace(/\\\\/g, '/') + '/temp';\n\n// Ensure temp dir exists and clean old batch files\ntry { fs.mkdirSync(tmpDir, { recursive: true }); } catch(e) {}\ntry {\n  const oldFiles = fs.readdirSync(tmpDir).filter(f => f.startsWith('n8n_batch_'));\n  for (const f of oldFiles) { try { fs.unlinkSync(tmpDir + '/' + f); } catch(e) {} }\n} catch(e) {}\n\nconst batches = [];\nfor (let i = 0; i < all.length; i += BATCH_SIZE) {\n  const chunk = all.slice(i, i + BATCH_SIZE);\n  const batchJobs = chunk.map(item => ({\n    title: item.json.title || '',\n    company: item.json.company || '',\n    location: item.json.location || '',\n    description: (item.json.description || '').substring(0, 3000),\n    tags: item.json.tags || [],\n    url: item.json.url || '',\n    _likely_english: item.json.likely_english || false\n  }));\n  const tmpPath = tmpDir + '/n8n_batch_' + Date.now() + '_' + i + '.json';\n  fs.writeFileSync(tmpPath, JSON.stringify(batchJobs), 'utf-8');\n  const originals = chunk.map(item => ({\n    id: item.json.id,\n    url: item.json.url,\n    title: item.json.title,\n    company: item.json.company,\n    location: item.json.location,\n    source: item.json.source\n  }));\n  batches.push({ json: { _tmpPath: tmpPath, _batchOriginals: originals, _batchSize: chunk.length } });\n}\nreturn batches;"
+      },
+      "id": "batch-items",
+      "name": "Batch Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3100, 600]
+    },
+    {
+      "parameters": {
+        "command": "=python \"{{ $env.JOBS_FUNNEL_PROJECT_DIR }}/scripts/run_filter.py\" \"{{ $env.JOBS_FUNNEL_PROJECT_DIR }}\" --file \"{{ $json._tmpPath }}\""
+      },
+      "id": "filter-claude",
+      "name": "Filter: Claude",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [3600, 600],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 30000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Unbatch: match each Claude response to its batch, then build UPDATE SQL\nconst batchItems = $('Batch Items').all();\nfunction esc(s) { return String(s || '').replace(/'/g, \"''\"); }\n\nconst results = [];\nfor (let b = 0; b < $input.all().length; b++) {\n  const item = $input.all()[b];\n  const stdout = item.json.stdout || '[]';\n  const originals = (batchItems[b] && batchItems[b].json._batchOriginals) || [];\n\n  let assessments;\n  try {\n    assessments = JSON.parse(stdout);\n    if (!Array.isArray(assessments)) assessments = [assessments];\n  } catch(e) {\n    for (const orig of originals) {\n      results.push({ json: {\n        _updateQuery: `UPDATE jobs SET status = 'error', error = '${esc('Failed to parse Claude response: ' + e.message)}' WHERE id = ${orig.id}`\n      }});\n    }\n    continue;\n  }\n\n  for (let i = 0; i < originals.length; i++) {\n    const orig = originals[i];\n    const assessment = assessments[i];\n\n    if (!assessment) {\n      results.push({ json: {\n        _updateQuery: `UPDATE jobs SET status = 'error', error = 'No result returned for this job in batch response' WHERE id = ${orig.id}`\n      }});\n      continue;\n    }\n\n    const rawDecision = String(assessment.decision || 'SKIP').trim().toUpperCase();\n    const decision = ['PASS','MAYBE','SKIP'].includes(rawDecision) ? rawDecision : 'SKIP';\n    const score = Number(assessment.fit_score) || 0;\n\n    // Detect fallback/error responses from filter.py\n    const errorKw = ['parse error', 'incomplete', 'timed out', 'filter error', 'claude response parse'];\n    const isErrorFallback = score === 0 && (assessment.hard_blockers || []).some(b => errorKw.some(kw => b.toLowerCase().includes(kw)));\n\n    if (isErrorFallback) {\n      results.push({ json: {\n        _updateQuery: `UPDATE jobs SET status = 'error', error = '${esc(assessment.reasoning || 'Fallback SKIP from failed Claude call')}' WHERE id = ${orig.id}`\n      }});\n      continue;\n    }\n\n    const cv = esc(assessment.cv_variant || 'software');\n    const blockers = esc(JSON.stringify(assessment.hard_blockers || []));\n    const gaps = esc(JSON.stringify(assessment.soft_gaps || []));\n    const matches = esc(JSON.stringify(assessment.strong_matches || []));\n    const reasoning = esc(assessment.reasoning || '');\n    const notes = assessment.priority_notes ? `'${esc(assessment.priority_notes)}'` : 'NULL';\n\n    results.push({ json: {\n      _updateQuery: `UPDATE jobs SET status = 'analyzed', analyzed_at = NOW(), error = NULL, fit_score = ${score}, decision = '${decision}', cv_variant = '${cv}', hard_blockers = '${blockers}'::jsonb, soft_gaps = '${gaps}'::jsonb, strong_matches = '${matches}'::jsonb, reasoning = '${reasoning}', priority_notes = ${notes} WHERE id = ${orig.id}`\n    }});\n  }\n}\nreturn results;"
+      },
+      "id": "parse-update",
+      "name": "Parse + Prep Update",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3850, 600]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json._updateQuery }}",
+        "options": {}
+      },
+      "id": "db-update",
+      "name": "DB: Update Jobs",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [4100, 600],
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_ME",
+          "name": "Postgres - Jobs Funnel"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM jobs WHERE status = 'analyzed' AND sheet_synced = FALSE ORDER BY crawled_at ASC",
+        "options": {}
+      },
+      "id": "db-fetch-unsynced",
+      "name": "DB: Fetch Unsynced",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [4800, 600],
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_ME",
+          "name": "Postgres - Jobs Funnel"
+        }
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format Postgres rows into Google Sheet columns, skip if no unsynced rows\nconst all = $input.all().filter(item => item.json.id != null);\nif (all.length === 0) return [{ json: { _empty: true } }];\n\nreturn all.map(item => {\n  const j = item.json;\n  const crawledAt = j.crawled_at ? new Date(j.crawled_at) : new Date();\n  const blockers = Array.isArray(j.hard_blockers) ? j.hard_blockers.join('; ') : (j.hard_blockers || '');\n  const matches = Array.isArray(j.strong_matches) ? j.strong_matches.join('; ') : (j.strong_matches || '');\n  const decision = j.decision || 'SKIP';\n\n  return { json: {\n    'Date': crawledAt.toISOString().slice(0,10),\n    'Fetched At': crawledAt.toISOString().replace('T',' ').slice(0,19) + ' UTC',\n    'Source': j.source || '',\n    'Company': j.company || '',\n    'Role': j.title || '',\n    'Location': j.location || '',\n    'Score': j.fit_score || 0,\n    'Decision': decision,\n    'CV Variant': j.cv_variant || 'software',\n    'Blockers': blockers,\n    'Strong Matches': matches,\n    'Reasoning': j.reasoning || '',\n    'Status': decision === 'SKIP' ? 'skipped' : 'review',\n    'Drive Link': '',\n    'Job URL': j.url || '',\n    'Notes': j.priority_notes || '',\n    _dbId: j.id\n  }};\n});"
+      },
+      "id": "format-sheet",
+      "name": "Format Sheet Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [5100, 600]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "leftValue": "={{ $json._empty }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "notTrue" }
+            }
+          ]
+        }
+      },
+      "id": "has-unsynced",
+      "name": "Has Unsynced?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [5300, 600]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.JOBS_FUNNEL_SHEET_ID }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Tracker"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "ignoreFields": "_dbId"
+        }
+      },
+      "id": "sheet-append",
+      "name": "Sheet: Append Rows",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [5550, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collect all DB IDs that were synced to Sheet and build UPDATE query\nlet formatItems;\ntry { formatItems = $('Format Sheet Rows').all(); } catch(e) { formatItems = []; }\nconst ids = formatItems.map(item => item.json._dbId).filter(Boolean);\n\nif (ids.length === 0) return [{ json: { _syncQuery: 'SELECT 1', _synced: 0 } }];\n\nreturn [{ json: {\n  _syncQuery: `UPDATE jobs SET sheet_synced = TRUE, sheet_synced_at = NOW() WHERE id IN (${ids.join(',')})`,\n  _synced: ids.length\n}}];"
+      },
+      "id": "prep-sync-ids",
+      "name": "Prep Sync IDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [5800, 600],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json._syncQuery }}",
+        "options": {}
+      },
+      "id": "db-mark-synced",
+      "name": "DB: Mark Synced",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [6050, 600],
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_ME",
+          "name": "Postgres - Jobs Funnel"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Run Full Pipeline": {
+      "main": [[
+        { "node": "AN: Fetch & Filter", "type": "main", "index": 0 },
+        { "node": "AA: Fetch Jobs", "type": "main", "index": 0 }
+      ]]
+    },
+    "Cron Schedule": {
+      "main": [[
+        { "node": "AN: Fetch & Filter", "type": "main", "index": 0 },
+        { "node": "AA: Fetch Jobs", "type": "main", "index": 0 }
+      ]]
+    },
+    "AN: Fetch & Filter": {
+      "main": [[
+        { "node": "Merge Sources", "type": "main", "index": 0 }
+      ]]
+    },
+    "AA: Fetch Jobs": {
+      "main": [[
+        { "node": "Merge Sources", "type": "main", "index": 1 }
+      ]]
+    },
+    "Merge Sources": {
+      "main": [[
+        { "node": "Dedup Merge", "type": "main", "index": 0 }
+      ]]
+    },
+    "Dedup Merge": {
+      "main": [[
+        { "node": "Has Results?", "type": "main", "index": 0 }
+      ]]
+    },
+    "Has Results?": {
+      "main": [
+        [{ "node": "Dedup: Get Seen URLs", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Dedup: Get Seen URLs": {
+      "main": [[
+        { "node": "Dedup: Filter New", "type": "main", "index": 0 }
+      ]]
+    },
+    "Dedup: Filter New": {
+      "main": [[
+        { "node": "Has New?", "type": "main", "index": 0 }
+      ]]
+    },
+    "Has New?": {
+      "main": [
+        [{ "node": "Prep Insert", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Prep Insert": {
+      "main": [[
+        { "node": "DB: Insert Jobs", "type": "main", "index": 0 }
+      ]]
+    },
+    "DB: Insert Jobs": {
+      "main": [[
+        { "node": "Start Analyze", "type": "main", "index": 0 }
+      ]]
+    },
+    "Start Analyze": {
+      "main": [[
+        { "node": "DB: Fetch Pending", "type": "main", "index": 0 }
+      ]]
+    },
+    "Run Analyze Only": {
+      "main": [[
+        { "node": "DB: Fetch Pending", "type": "main", "index": 0 }
+      ]]
+    },
+    "DB: Fetch Pending": {
+      "main": [[
+        { "node": "Has Pending?", "type": "main", "index": 0 }
+      ]]
+    },
+    "Has Pending?": {
+      "main": [
+        [{ "node": "Batch Items", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Batch Items": {
+      "main": [[
+        { "node": "Filter: Claude", "type": "main", "index": 0 }
+      ]]
+    },
+    "Filter: Claude": {
+      "main": [[
+        { "node": "Parse + Prep Update", "type": "main", "index": 0 }
+      ]]
+    },
+    "Parse + Prep Update": {
+      "main": [[
+        { "node": "DB: Update Jobs", "type": "main", "index": 0 }
+      ]]
+    },
+    "DB: Update Jobs": {
+      "main": [[
+        { "node": "DB: Fetch Unsynced", "type": "main", "index": 0 }
+      ]]
+    },
+    "DB: Fetch Unsynced": {
+      "main": [[
+        { "node": "Format Sheet Rows", "type": "main", "index": 0 }
+      ]]
+    },
+    "Format Sheet Rows": {
+      "main": [[
+        { "node": "Has Unsynced?", "type": "main", "index": 0 }
+      ]]
+    },
+    "Has Unsynced?": {
+      "main": [
+        [{ "node": "Sheet: Append Rows", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Sheet: Append Rows": {
+      "main": [[
+        { "node": "Prep Sync IDs", "type": "main", "index": 0 }
+      ]]
+    },
+    "Prep Sync IDs": {
+      "main": [[
+        { "node": "DB: Mark Synced", "type": "main", "index": 0 }
+      ]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "timezone": "Europe/Berlin"
+  },
+  "tags": [
+    { "name": "job-search-v2" }
+  ]
+}
