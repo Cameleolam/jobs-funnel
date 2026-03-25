@@ -1,0 +1,12 @@
+{
+  "aa_max_pages": 3,
+  "aa_max_fetches": 200,
+  "aa_fetch_delay_ms": 300,
+  "aa_fetch_timeout_ms": 5000,
+  "an_max_pages": 10,
+  "an_delay_ms": 5000,
+  "an_days_back": 30,
+  "batch_size": 8,
+  "dedup_cap": 80,
+  "description_max_chars": 5000
+}

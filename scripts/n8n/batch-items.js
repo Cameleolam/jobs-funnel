@@ -1,6 +1,9 @@
-// Batch all pending jobs into groups of 8, write each to a temp file
+// Batch all pending jobs into groups of N, write each to a temp file
 const fs = require('fs');
-const BATCH_SIZE = 8;
+const config = JSON.parse(fs.readFileSync(
+  ($env.JOBS_FUNNEL_PROJECT_DIR || '.').replace(/\\/g, '/') + '/config.json', 'utf-8'
+));
+const BATCH_SIZE = config.batch_size || 8;
 const all = $input.all();
 const tmpDir = ($env.JOBS_FUNNEL_PROJECT_DIR || '.').replace(/\\/g, '/') + '/temp';
 

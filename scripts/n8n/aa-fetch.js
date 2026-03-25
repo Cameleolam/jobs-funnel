@@ -1,4 +1,7 @@
 // Arbeitsagentur: run multiple server-side filtered searches + fetch full descriptions
+const config = JSON.parse(require('fs').readFileSync(
+  ($env.JOBS_FUNNEL_PROJECT_DIR || '.').replace(/\\/g, '/') + '/config.json', 'utf-8'
+));
 const BASE = 'https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobs';
 const HEADERS = { 'X-API-Key': 'jobboerse-jobsuche', 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' };
 
@@ -13,7 +16,7 @@ const commonParams = 'wo=Hamburg&umkreis=200&veroeffentlichtseit=30&pav=false&ze
 const seenIds = new Set();
 const jobs = [];
 const errors = [];
-const MAX_PAGES = 3;
+const MAX_PAGES = config.aa_max_pages || 3;
 
 for (let i = 0; i < searches.length; i++) {
   for (let page = 1; page <= MAX_PAGES; page++) {
@@ -45,8 +48,8 @@ function decodeEntities(text) {
     .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
 }
 
-const FETCH_DELAY = 300;
-const MAX_FETCHES = 200;
+const FETCH_DELAY = config.aa_fetch_delay_ms || 300;
+const MAX_FETCHES = config.aa_max_fetches || 200;
 let fetchCount = 0;
 let descFailCount = 0;
 for (let i = 0; i < jobs.length && fetchCount < MAX_FETCHES; i++) {
@@ -55,10 +58,10 @@ for (let i = 0; i < jobs.length && fetchCount < MAX_FETCHES; i++) {
   if (fetchCount > 0) await new Promise(r => setTimeout(r, FETCH_DELAY));
   fetchCount++;
   try {
-    const html = await this.helpers.httpRequest({ method: 'GET', url: extUrl, encoding: 'utf-8', timeout: 5000 });
+    const html = await this.helpers.httpRequest({ method: 'GET', url: extUrl, encoding: 'utf-8', timeout: config.aa_fetch_timeout_ms || 5000 });
     let text = String(html).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
     text = decodeEntities(text);
-    if (text.length > 100) jobs[i]._fullDesc = text.substring(0, 5000);
+    if (text.length > 100) jobs[i]._fullDesc = text.substring(0, config.description_max_chars || 5000);
   } catch (e) { descFailCount++; }
 }
 
@@ -80,7 +83,7 @@ const mapped = jobs.map(j => {
   const refUrl = j.refnr ? `https://www.arbeitsagentur.de/jobsuche/suche?id=${j.refnr}` : '';
   const url = extUrl || refUrl;
   const fallbackDesc = `${j.titel || ''} bei ${company} in ${location}${region ? ' (' + region + ')' : ''}. Beruf: ${j.beruf || ''}. Eintrittsdatum: ${j.eintrittsdatum || 'k.A.'}`;
-  const desc = (j._fullDesc || fallbackDesc).substring(0, 5000);
+  const desc = (j._fullDesc || fallbackDesc).substring(0, config.description_max_chars || 5000);
   return { json: {
     source: 'arbeitsagentur',
     external_id: j.refnr || '',

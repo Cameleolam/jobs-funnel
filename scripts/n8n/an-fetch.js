@@ -1,7 +1,10 @@
 // Arbeitnow: paginate up to 10 pages, relaxed client-side filters
-const MAX_PAGES = 10;
-const DELAY_MS = 5000;
-const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+const config = JSON.parse(require('fs').readFileSync(
+  ($env.JOBS_FUNNEL_PROJECT_DIR || '.').replace(/\\/g, '/') + '/config.json', 'utf-8'
+));
+const MAX_PAGES = config.an_max_pages || 10;
+const DELAY_MS = config.an_delay_ms || 5000;
+const cutoff = Date.now() - (config.an_days_back || 30) * 24 * 60 * 60 * 1000;
 
 const titleKw = ['python','backend','back-end','back end','data engineer','data engineering','software engineer','software developer','platform engineer','api developer','developer python','entwickler','softwareentwickler','devops','site reliability','sre','etl','junior developer','junior engineer','flask','django','fastapi','developer','engineer','cloud','infrastructure','programmierer','informatiker','application engineer','system engineer','web developer','webentwickler','it engineer','automation','machine learning','ml engineer','data scientist','data analyst','full stack','fullstack'];
 const tagKw = ['python','backend','data','engineering','devops','api','flask','django','fastapi','docker','aws','postgresql','kubernetes','linux','sql','java','node','typescript','go','rust','cloud','azure','gcp','terraform','ci/cd','microservices'];
@@ -18,7 +21,7 @@ function isLikelyEnglish(desc) {
 const allJobs = [];
 const seen = new Set();
 const errors = [];
-let lastPage = 0;
+var lastPage = 0;
 
 for (let page = 1; page <= MAX_PAGES; page++) {
   if (page > 1) await new Promise(r => setTimeout(r, DELAY_MS));
@@ -52,8 +55,8 @@ for (let page = 1; page <= MAX_PAGES; page++) {
     }
   }
   if (allOld) break;
-  const lastPage = body.meta?.last_page || MAX_PAGES;
-  if (page >= lastPage) break;
+  const maxPage = body.meta?.last_page || MAX_PAGES;
+  if (page >= maxPage) break;
 }
 
 if (allJobs.length === 0) return [];
@@ -83,7 +86,7 @@ const _crawlMeta = {
 };
 
 const mapped = allJobs.map(j => {
-  const desc = (j.description || '').substring(0, 5000);
+  const desc = (j.description || '').substring(0, config.description_max_chars || 5000);
   const sal = parseSalary(j);
   return { json: {
     source: 'arbeitnow',
