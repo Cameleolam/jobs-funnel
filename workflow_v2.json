@@ -2,24 +2,32 @@
   "name": "Job Crawl + Analyze v2",
   "nodes": [
     {
-      "parameters": {},
-      "id": "trigger-full",
-      "name": "Run Full Pipeline",
-      "type": "n8n-nodes-base.manualTrigger",
-      "typeVersion": 1,
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "*/10 * * * *" }]
+        }
+      },
+      "id": "trigger-crawl-cron",
+      "name": "Crawl: Cron",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
       "position": [0, 300]
     },
     {
-      "parameters": {
-        "rule": {
-          "interval": [{ "field": "cronExpression", "expression": "0 9 * * *" }]
-        }
-      },
-      "id": "trigger-cron",
-      "name": "Cron Schedule",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
+      "parameters": {},
+      "id": "trigger-crawl-manual",
+      "name": "Crawl: Manual",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
       "position": [0, 500]
+    },
+    {
+      "parameters": {},
+      "id": "trigger-analyze-manual",
+      "name": "Analyze: Manual",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 800]
     },
     {
       "parameters": {
@@ -28,12 +36,20 @@
         "responseMode": "lastNode",
         "options": {}
       },
-      "id": "trigger-analyze",
-      "name": "Run Analyze Only",
+      "id": "trigger-analyze-webhook",
+      "name": "Analyze: Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [0, 900],
+      "position": [0, 1000],
       "webhookId": "analyze-only"
+    },
+    {
+      "parameters": {},
+      "id": "trigger-sync-manual",
+      "name": "Sync: Manual",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 1300]
     },
     {
       "parameters": {
@@ -174,17 +190,6 @@
     },
     {
       "parameters": {
-        "jsCode": "// Emit a single item to trigger the analyze phase\nreturn [{ json: { _trigger: 'crawl_complete' } }];"
-      },
-      "id": "goto-analyze",
-      "name": "Start Analyze",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [2550, 300],
-      "executeOnce": true
-    },
-    {
-      "parameters": {
         "operation": "executeQuery",
         "query": "SELECT * FROM jobs WHERE status IN ('pending', 'error') AND retry_count < 3 ORDER BY crawled_at ASC LIMIT 80",
         "options": {}
@@ -193,7 +198,7 @@
       "name": "DB: Fetch Pending",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [2600, 600],
+      "position": [300, 900],
       "credentials": {
         "postgres": {
           "id": "CONFIGURE_ME",
@@ -211,7 +216,7 @@
       "name": "Has Pending?",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2850, 600]
+      "position": [550, 900]
     },
     {
       "parameters": {
@@ -221,7 +226,7 @@
       "name": "Batch Items",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3100, 600]
+      "position": [800, 900]
     },
     {
       "parameters": {
@@ -231,7 +236,7 @@
       "name": "Filter: Claude",
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
-      "position": [3600, 600],
+      "position": [1300, 900],
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 30000
@@ -244,7 +249,7 @@
       "name": "Parse + Prep Update",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3850, 600]
+      "position": [1550, 900]
     },
     {
       "parameters": {
@@ -256,7 +261,7 @@
       "name": "DB: Update Jobs",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [4100, 600],
+      "position": [1800, 900],
       "credentials": {
         "postgres": {
           "id": "CONFIGURE_ME",
@@ -274,7 +279,7 @@
       "name": "DB: Fetch Unsynced",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [4800, 600],
+      "position": [300, 1400],
       "credentials": {
         "postgres": {
           "id": "CONFIGURE_ME",
@@ -292,7 +297,7 @@
       "name": "Format Sheet Rows",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [5100, 600]
+      "position": [550, 1400]
     },
     {
       "parameters": {
@@ -311,7 +316,7 @@
       "name": "Has Unsynced?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [5300, 600]
+      "position": [800, 1400]
     },
     {
       "parameters": {
@@ -337,7 +342,7 @@
       "name": "Sheet: Append Rows",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
-      "position": [5550, 600],
+      "position": [1050, 1400],
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 10000
@@ -350,7 +355,7 @@
       "name": "Prep Sync IDs",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [5800, 600],
+      "position": [1300, 1400],
       "executeOnce": true
     },
     {
@@ -363,7 +368,7 @@
       "name": "DB: Mark Synced",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [6050, 600],
+      "position": [1550, 1400],
       "credentials": {
         "postgres": {
           "id": "CONFIGURE_ME",
@@ -379,7 +384,7 @@
       "name": "Pipeline Metrics",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [6300, 600],
+      "position": [1800, 1400],
       "executeOnce": true
     },
     {
@@ -405,20 +410,20 @@
       "name": "Sheet: Log Metrics",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
-      "position": [6550, 600],
+      "position": [2050, 1400],
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 5000
     }
   ],
   "connections": {
-    "Run Full Pipeline": {
+    "Crawl: Cron": {
       "main": [[
         { "node": "AN: Fetch & Filter", "type": "main", "index": 0 },
         { "node": "AA: Fetch Jobs", "type": "main", "index": 0 }
       ]]
     },
-    "Cron Schedule": {
+    "Crawl: Manual": {
       "main": [[
         { "node": "AN: Fetch & Filter", "type": "main", "index": 0 },
         { "node": "AA: Fetch Jobs", "type": "main", "index": 0 }
@@ -471,17 +476,12 @@
         { "node": "DB: Insert Jobs", "type": "main", "index": 0 }
       ]]
     },
-    "DB: Insert Jobs": {
-      "main": [[
-        { "node": "Start Analyze", "type": "main", "index": 0 }
-      ]]
-    },
-    "Start Analyze": {
+    "Analyze: Manual": {
       "main": [[
         { "node": "DB: Fetch Pending", "type": "main", "index": 0 }
       ]]
     },
-    "Run Analyze Only": {
+    "Analyze: Webhook": {
       "main": [[
         { "node": "DB: Fetch Pending", "type": "main", "index": 0 }
       ]]
@@ -512,7 +512,7 @@
         { "node": "DB: Update Jobs", "type": "main", "index": 0 }
       ]]
     },
-    "DB: Update Jobs": {
+    "Sync: Manual": {
       "main": [[
         { "node": "DB: Fetch Unsynced", "type": "main", "index": 0 }
       ]]
