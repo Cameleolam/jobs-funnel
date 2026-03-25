@@ -19,6 +19,9 @@ CREATE TABLE IF NOT EXISTS jobs (
     tags            JSONB DEFAULT '[]',
     remote          BOOLEAN DEFAULT FALSE,
     likely_english  BOOLEAN DEFAULT FALSE,
+    salary_min      INTEGER,
+    salary_max      INTEGER,
+    salary_currency TEXT DEFAULT 'EUR',
 
     crawled_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     analyzed_at     TIMESTAMPTZ,

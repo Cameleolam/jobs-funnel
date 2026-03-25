@@ -16,6 +16,9 @@ return all.map(item => {
     'Company': j.company || '',
     'Role': j.title || '',
     'Location': j.location || '',
+    'Salary': j.salary_min && j.salary_max
+      ? `${j.salary_min}-${j.salary_max} ${j.salary_currency || 'EUR'}`
+      : (j.salary_min ? `${j.salary_min}+ ${j.salary_currency || 'EUR'}` : ''),
     'Score': j.fit_score || 0,
     'Decision': decision,
     'CV Variant': j.cv_variant || 'software',

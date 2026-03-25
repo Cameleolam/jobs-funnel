@@ -43,10 +43,13 @@ for (let b = 0; b < $input.all().length; b++) {
     const decision = ['PASS', 'MAYBE', 'SKIP'].includes(rawDecision) ? rawDecision : 'SKIP';
     const score = Number(assessment.fit_score) || 0;
 
+    // Detect batch padding (job was never evaluated by Claude)
+    const isBatchPadding = (assessment.priority_notes || '').includes('BATCH_PADDING');
+
     // Detect fallback/error responses from filter.py
-    const isErrorFallback = score === 0 && (assessment.hard_blockers || []).some(b =>
+    const isErrorFallback = isBatchPadding || (score === 0 && (assessment.hard_blockers || []).some(b =>
       ERROR_KEYWORDS.some(kw => b.toLowerCase().includes(kw))
-    );
+    ));
 
     if (isErrorFallback) {
       results.push({ json: {

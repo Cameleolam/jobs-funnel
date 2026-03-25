@@ -370,6 +370,45 @@
           "name": "Postgres - Jobs Funnel"
         }
       }
+    },
+    {
+      "parameters": {
+        "jsCode": "{{file:scripts/n8n/pipeline-metrics.js}}"
+      },
+      "id": "pipeline-metrics",
+      "name": "Pipeline Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [6300, 600],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.JOBS_FUNNEL_SHEET_ID }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Metrics"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": []
+        }
+      },
+      "id": "sheet-metrics",
+      "name": "Sheet: Log Metrics",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [6550, 600],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
     }
   ],
   "connections": {
@@ -502,6 +541,16 @@
     "Prep Sync IDs": {
       "main": [[
         { "node": "DB: Mark Synced", "type": "main", "index": 0 }
+      ]]
+    },
+    "DB: Mark Synced": {
+      "main": [[
+        { "node": "Pipeline Metrics", "type": "main", "index": 0 }
+      ]]
+    },
+    "Pipeline Metrics": {
+      "main": [[
+        { "node": "Sheet: Log Metrics", "type": "main", "index": 0 }
       ]]
     }
   },

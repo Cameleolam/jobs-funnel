@@ -48,6 +48,7 @@ function decodeEntities(text) {
 const FETCH_DELAY = 300;
 const MAX_FETCHES = 200;
 let fetchCount = 0;
+let descFailCount = 0;
 for (let i = 0; i < jobs.length && fetchCount < MAX_FETCHES; i++) {
   const extUrl = jobs[i].externeUrl;
   if (!extUrl) continue;
@@ -58,10 +59,20 @@ for (let i = 0; i < jobs.length && fetchCount < MAX_FETCHES; i++) {
     let text = String(html).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
     text = decodeEntities(text);
     if (text.length > 100) jobs[i]._fullDesc = text.substring(0, 5000);
-  } catch (e) { /* fall back to one-liner */ }
+  } catch (e) { descFailCount++; }
 }
 
-return jobs.map(j => {
+const _crawlMeta = {
+  source: 'arbeitsagentur',
+  searches_run: searches.length,
+  total_results: jobs.length,
+  fetch_errors: errors.length,
+  errors: errors.slice(0, 10),
+  descriptions_attempted: fetchCount,
+  descriptions_failed: descFailCount,
+};
+
+const mapped = jobs.map(j => {
   const company = typeof j.arbeitgeber === 'object' ? (j.arbeitgeber?.name || '') : (j.arbeitgeber || '');
   const location = j.arbeitsort?.ort || '';
   const region = j.arbeitsort?.region || '';
@@ -83,3 +94,5 @@ return jobs.map(j => {
     likely_english: false
   }};
 });
+if (mapped.length > 0) mapped[0].json._crawlMeta = _crawlMeta;
+return mapped;

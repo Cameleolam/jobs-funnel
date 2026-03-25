@@ -161,8 +161,8 @@ def main():
                 "hard_blockers": ["Batch evaluation incomplete"],
                 "soft_gaps": [],
                 "strong_matches": [],
-                "reasoning": "Missing from batch response",
-                "priority_notes": None,
+                "reasoning": f"Missing from batch response (job {len(assessment)+1} of {len(parsed_input)})",
+                "priority_notes": "BATCH_PADDING",
             })
 
     print(json.dumps(assessment, indent=2))

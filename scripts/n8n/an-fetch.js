@@ -17,13 +17,16 @@ function isLikelyEnglish(desc) {
 
 const allJobs = [];
 const seen = new Set();
+const errors = [];
+let lastPage = 0;
 
 for (let page = 1; page <= MAX_PAGES; page++) {
   if (page > 1) await new Promise(r => setTimeout(r, DELAY_MS));
+  lastPage = page;
   let body;
   try {
     body = await this.helpers.httpRequest({ method: 'GET', url: `https://www.arbeitnow.com/api/job-board-api?page=${page}`, json: true });
-  } catch (e) { break; }
+  } catch (e) { errors.push({ page, error: e.message || String(e) }); break; }
   const data = body.data || [];
   if (data.length === 0) break;
 
@@ -55,8 +58,33 @@ for (let page = 1; page <= MAX_PAGES; page++) {
 
 if (allJobs.length === 0) return [];
 
-return allJobs.map(j => {
+function parseSalary(job) {
+  let min = job.salary_min || null;
+  let max = job.salary_max || null;
+  let currency = job.salary_currency || null;
+  if (!min && job.salary) {
+    const nums = String(job.salary).replace(/[.,]/g, '').match(/\d+/g);
+    if (nums && nums.length >= 2) { min = Number(nums[0]); max = Number(nums[1]); }
+    else if (nums && nums.length === 1) { min = Number(nums[0]); }
+    if (!currency && /eur|€/i.test(job.salary)) currency = 'EUR';
+    if (!currency && /usd|\$/i.test(job.salary)) currency = 'USD';
+    if (!currency && /chf/i.test(job.salary)) currency = 'CHF';
+    if (!currency && /gbp|£/i.test(job.salary)) currency = 'GBP';
+  }
+  return { salary_min: min, salary_max: max, salary_currency: currency || (min ? 'EUR' : null) };
+}
+
+const _crawlMeta = {
+  source: 'arbeitnow',
+  pages_fetched: lastPage,
+  total_results: allJobs.length,
+  fetch_errors: errors.length,
+  errors: errors.slice(0, 10),
+};
+
+const mapped = allJobs.map(j => {
   const desc = (j.description || '').substring(0, 5000);
+  const sal = parseSalary(j);
   return { json: {
     source: 'arbeitnow',
     external_id: j.slug || '',
@@ -67,6 +95,11 @@ return allJobs.map(j => {
     description: desc,
     tags: j.tags || [],
     remote: j.remote || false,
-    likely_english: isLikelyEnglish(desc)
+    likely_english: isLikelyEnglish(desc),
+    salary_min: sal.salary_min,
+    salary_max: sal.salary_max,
+    salary_currency: sal.salary_currency,
   }};
 });
+if (mapped.length > 0) mapped[0].json._crawlMeta = _crawlMeta;
+return mapped;
