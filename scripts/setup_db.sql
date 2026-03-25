@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     reasoning       TEXT,
     priority_notes  TEXT,
 
+    retry_count     INTEGER DEFAULT 0,
     sheet_synced    BOOLEAN DEFAULT FALSE,
     sheet_synced_at TIMESTAMPTZ
 );
