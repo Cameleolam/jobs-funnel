@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Build workflow_v2.json by inlining JS files into the template.
+"""Build workflow.json by inlining JS files into the template.
 
 Usage:
     python scripts/build_workflow.py
 
-Reads workflow_v2_template.json, replaces {{file:scripts/n8n/xxx.js}} placeholders
-with the file contents (escaped for JSON string), writes workflow_v2.json.
+Reads workflow_template.json, replaces {{file:scripts/n8n/xxx.js}} placeholders
+with the file contents (escaped for JSON string), writes workflow.json.
 """
 
 import json
@@ -13,8 +13,8 @@ import re
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
-TEMPLATE = PROJECT_DIR / "workflow_v2_template.json"
-OUTPUT = PROJECT_DIR / "workflow_v2.json"
+TEMPLATE = PROJECT_DIR / "workflow_template.json"
+OUTPUT = PROJECT_DIR / "workflow.json"
 
 
 def js_to_json_string(js_path: Path) -> str:

@@ -1,42 +1,73 @@
 {
-  "name": "Job Search Pipeline (Local)",
+  "name": "Job Crawl + Analyze v2",
   "nodes": [
     {
       "parameters": {},
-      "id": "trigger-manual",
-      "name": "Run Search",
+      "id": "trigger-full",
+      "name": "Run Full Pipeline",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
-      "position": [
-        0,
-        300
-      ]
+      "position": [0, 300]
     },
     {
       "parameters": {
-        "jsCode": "// Arbeitnow: paginate up to 10 pages, relaxed client-side filters\nconst MAX_PAGES = 10;\nconst DELAY_MS = 5000;\nconst cutoff = Date.now() - 30*24*60*60*1000;\n\nconst titleKw = ['python','backend','back-end','back end','data engineer','data engineering','software engineer','software developer','platform engineer','api developer','developer python','entwickler','softwareentwickler','devops','site reliability','sre','etl','junior developer','junior engineer','flask','django','fastapi','developer','engineer','cloud','infrastructure','programmierer','informatiker','application engineer','system engineer','web developer','webentwickler','it engineer','automation','machine learning','ml engineer','data scientist','data analyst','full stack','fullstack'];\nconst tagKw = ['python','backend','data','engineering','devops','api','flask','django','fastapi','docker','aws','postgresql','kubernetes','linux','sql','java','node','typescript','go','rust','cloud','azure','gcp','terraform','ci/cd','microservices'];\nconst locKw = ['hamburg','berlin','germany','remote','deutschland','m\\u00fcnchen','munich','frankfurt','k\\u00f6ln','cologne','deutsch','d\\u00fcsseldorf','hannover','stuttgart','bremen','n\\u00fcrnberg','nuremberg','leipzig','dresden','essen','dortmund','bonn','karlsruhe','mannheim','freiburg','heidelberg','europe','eu','dach'];\nconst engWords = ['the','and','you','we','team','experience','requirements','about','our','will','work','join','role','position'];\n\nfunction isLikelyEnglish(desc) {\n  const sample = (desc||'').substring(0,500).toLowerCase();\n  const hits = engWords.filter(w => sample.includes(w)).length;\n  return hits >= 3;\n}\n\nconst allJobs = [];\nconst seen = new Set();\n\nfor (let page = 1; page <= MAX_PAGES; page++) {\n  if (page > 1) await new Promise(r => setTimeout(r, DELAY_MS));\n  let body;\n  try {\n    body = await this.helpers.httpRequest({ method: 'GET', url: `https://www.arbeitnow.com/api/job-board-api?page=${page}`, json: true });\n  } catch(e) { break; }\n  const data = body.data || [];\n  if (data.length === 0) break;\n\n  let allOld = true;\n  for (const job of data) {\n    const created = new Date(job.created_at*1000||job.created_at).getTime();\n    if (created > cutoff) allOld = false;\n\n    const t = (job.title||'').toLowerCase();\n    const l = (job.location||'').toLowerCase();\n    const tags = (job.tags||[]).map(t=>t.toLowerCase());\n    const titleMatch = titleKw.some(k=>t.includes(k));\n    const tagMatch = tagKw.some(k=>tags.includes(k));\n    const locMatch = locKw.some(k=>l.includes(k)) || job.remote;\n\n    // Negative keywords \u00e2\u20ac\u201d auto-skip obviously irrelevant roles\n    const negKw = ['manager','consultant','designer','marketing','sales','recruiter','sap','abap','salesforce','product owner','scrum master','project manager','buchhalter','accounting','finance','legal','rechtsanwalt','jurist','pflege','nurse','arzt','physician','lehrer','teacher','werkstudent','intern','praktikant','trainee','senior director','vp ','vice president','head of','chief'];\n    const negMatch = negKw.some(k => t.includes(k));\n\n    if (!negMatch && (titleMatch || tagMatch || locMatch) && created > cutoff) {\n      const key = job.slug||job.url||job.title;\n      if (!seen.has(key)) {\n        seen.add(key);\n        allJobs.push(job);\n      }\n    }\n  }\n  if (allOld) break;\n  const lastPage = body.meta?.last_page || MAX_PAGES;\n  if (page >= lastPage) break;\n}\n\nif (allJobs.length === 0) return [{ json: { _empty: true } }];\n\nreturn allJobs.map((j, i) => {\n  const desc = (j.description||'').substring(0,5000);\n  const jobData = {\n    source: 'arbeitnow',\n    external_id: j.slug||'',\n    url: j.url||`https://www.arbeitnow.com/view/${j.slug}`,\n    title: j.title||'',\n    company: j.company_name||'',\n    location: j.location||'',\n    description: desc,\n    tags: j.tags||[],\n    remote: j.remote||false,\n    _likely_english: isLikelyEnglish(desc)\n  };\n  const filterData = JSON.stringify({\n    title: jobData.title,\n    company: jobData.company,\n    location: jobData.location,\n    description: desc.substring(0, 3000),\n    tags: jobData.tags,\n    url: jobData.url,\n    _likely_english: jobData._likely_english\n  });\n  const b64 = Buffer.from(filterData).toString('base64');\n  return { json: { ...jobData, _b64: b64, _idx: i } };\n});"
+        "rule": {
+          "interval": [{ "field": "cronExpression", "expression": "*/10 * * * *" }]
+        }
       },
-      "id": "an-fetch-filter",
+      "id": "trigger-cron",
+      "name": "Cron Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 500]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "analyze-only",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "trigger-analyze",
+      "name": "Run Analyze Only",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 800],
+      "webhookId": "analyze-only"
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "sync",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "trigger-sync",
+      "name": "Run Sync Only",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 1000],
+      "webhookId": "sync"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Arbeitnow: paginate up to 10 pages, relaxed client-side filters\nconst config = JSON.parse(require('fs').readFileSync(\n  ($env.JOBS_FUNNEL_PROJECT_DIR || '.').replace(/\\\\/g, '/') + '/config.json', 'utf-8'\n));\nconst MAX_PAGES = config.an_max_pages || 10;\nconst DELAY_MS = config.an_delay_ms || 5000;\nconst cutoff = Date.now() - (config.an_days_back || 30) * 24 * 60 * 60 * 1000;\n\nconst titleKw = ['python','backend','back-end','back end','data engineer','data engineering','software engineer','software developer','platform engineer','api developer','developer python','entwickler','softwareentwickler','devops','site reliability','sre','etl','junior developer','junior engineer','flask','django','fastapi','developer','engineer','cloud','infrastructure','programmierer','informatiker','application engineer','system engineer','web developer','webentwickler','it engineer','automation','machine learning','ml engineer','data scientist','data analyst','full stack','fullstack'];\nconst tagKw = ['python','backend','data','engineering','devops','api','flask','django','fastapi','docker','aws','postgresql','kubernetes','linux','sql','java','node','typescript','go','rust','cloud','azure','gcp','terraform','ci/cd','microservices'];\nconst locKw = ['hamburg','berlin','germany','remote','deutschland','münchen','munich','frankfurt','köln','cologne','deutsch','düsseldorf','hannover','stuttgart','bremen','nürnberg','nuremberg','leipzig','dresden','essen','dortmund','bonn','karlsruhe','mannheim','freiburg','heidelberg','europe','eu','dach'];\nconst negKw = ['manager','consultant','designer','marketing','sales','recruiter','sap','sap consultant','abap','salesforce','product owner','scrum master','project manager','buchhalter','accounting','finance','legal','rechtsanwalt','jurist','pflege','nurse','arzt','physician','lehrer','teacher','werkstudent','working student','dual student','intern','praktikant','trainee','senior director','vp ','vice president','head of','chief','principal','staff engineer','lead architect'];\nconst engWords = ['the','and','you','we','team','experience','requirements','about','our','will','work','join','role','position'];\n\nfunction isLikelyEnglish(desc) {\n  const sample = (desc || '').substring(0, 500).toLowerCase();\n  const hits = engWords.filter(w => sample.includes(w)).length;\n  return hits >= 3;\n}\n\nconst allJobs = [];\nconst seen = new Set();\nconst errors = [];\nvar lastPage = 0;\n\nfor (let page = 1; page <= MAX_PAGES; page++) {\n  if (page > 1) await new Promise(r => setTimeout(r, DELAY_MS));\n  lastPage = page;\n  let body;\n  try {\n    body = await this.helpers.httpRequest({ method: 'GET', url: `https://www.arbeitnow.com/api/job-board-api?page=${page}`, json: true });\n  } catch (e) { errors.push({ page, error: e.message || String(e) }); break; }\n  const data = body.data || [];\n  if (data.length === 0) break;\n\n  let allOld = true;\n  for (const job of data) {\n    const created = new Date(job.created_at * 1000 || job.created_at).getTime();\n    if (created > cutoff) allOld = false;\n\n    const t = (job.title || '').toLowerCase();\n    const l = (job.location || '').toLowerCase();\n    const tags = (job.tags || []).map(t => t.toLowerCase());\n    const titleMatch = titleKw.some(k => t.includes(k));\n    const tagMatch = tagKw.some(k => tags.includes(k));\n    const locMatch = locKw.some(k => l.includes(k)) || job.remote;\n    const negMatch = negKw.some(k => t.includes(k));\n\n    if (!negMatch && (titleMatch || tagMatch || locMatch) && created > cutoff) {\n      const key = job.slug || job.url || job.title;\n      if (!seen.has(key)) {\n        seen.add(key);\n        allJobs.push(job);\n      }\n    }\n  }\n  if (allOld) break;\n  const maxPage = body.meta?.last_page || MAX_PAGES;\n  if (page >= maxPage) break;\n}\n\nif (allJobs.length === 0) return [];\n\nfunction parseSalary(job) {\n  let min = job.salary_min || null;\n  let max = job.salary_max || null;\n  let currency = job.salary_currency || null;\n  if (!min && job.salary) {\n    const nums = String(job.salary).replace(/[.,]/g, '').match(/\\d+/g);\n    if (nums && nums.length >= 2) { min = Number(nums[0]); max = Number(nums[1]); }\n    else if (nums && nums.length === 1) { min = Number(nums[0]); }\n    if (!currency && /eur|€/i.test(job.salary)) currency = 'EUR';\n    if (!currency && /usd|\\$/i.test(job.salary)) currency = 'USD';\n    if (!currency && /chf/i.test(job.salary)) currency = 'CHF';\n    if (!currency && /gbp|£/i.test(job.salary)) currency = 'GBP';\n  }\n  return { salary_min: min, salary_max: max, salary_currency: currency || (min ? 'EUR' : null) };\n}\n\nconst _crawlMeta = {\n  source: 'arbeitnow',\n  pages_fetched: lastPage,\n  total_results: allJobs.length,\n  fetch_errors: errors.length,\n  errors: errors.slice(0, 10),\n};\n\nconst mapped = allJobs.map(j => {\n  const desc = (j.description || '').substring(0, config.description_max_chars || 5000);\n  const sal = parseSalary(j);\n  return { json: {\n    source: 'arbeitnow',\n    external_id: j.slug || '',\n    url: j.url || `https://www.arbeitnow.com/view/${j.slug}`,\n    title: j.title || '',\n    company: j.company_name || '',\n    location: j.location || '',\n    description: desc,\n    tags: j.tags || [],\n    remote: j.remote || false,\n    likely_english: isLikelyEnglish(desc),\n    salary_min: sal.salary_min,\n    salary_max: sal.salary_max,\n    salary_currency: sal.salary_currency,\n  }};\n});\nif (mapped.length > 0) mapped[0].json._crawlMeta = _crawlMeta;\nreturn mapped;"
+      },
+      "id": "an-fetch",
       "name": "AN: Fetch & Filter",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        300,
-        200
-      ]
+      "position": [300, 200]
     },
     {
       "parameters": {
-        "jsCode": "// Arbeitsagentur: run multiple server-side filtered searches (no detail fetch)\nconst BASE = 'https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobs';\nconst HEADERS = { 'X-API-Key': 'jobboerse-jobsuche', 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' };\n\nconst searches = [\n  'Python Developer',\n  'Backend Engineer',\n  'Data Engineer',\n  'Software Engineer',\n  'Python Entwickler',\n  'Software Entwickler',\n  'Backend Entwickler',\n  'ETL Developer',\n  'ETL Entwickler',\n  'Cloud Engineer'\n];\nconst commonParams = 'wo=Hamburg&umkreis=200&veroeffentlichtseit=30&pav=false&zeitarbeit=false&size=100';\n\nconst seenIds = new Set();\nconst jobs = [];\nconst errors = [];\n\nconst MAX_PAGES = 3;\nfor (let i = 0; i < searches.length; i++) {\n  for (let page = 1; page <= MAX_PAGES; page++) {\n    const url = `${BASE}?was=${encodeURIComponent(searches[i])}&${commonParams}&page=${page}`;\n    let body;\n    try {\n      const raw = await this.helpers.httpRequest({ method: 'GET', url, headers: HEADERS });\n      body = typeof raw === 'string' ? JSON.parse(raw) : raw;\n    } catch(e) { errors.push({search: searches[i], page, error: e.message || String(e)}); continue; }\n    const results = body.stellenangebote || [];\n    if (results.length === 0) break;\n    for (const s of results) {\n      const id = s.refnr || s.titel;\n      if (!seenIds.has(id)) {\n        seenIds.add(id);\n        jobs.push(s);\n      }\n    }\n    const maxPage = body.maxErgebnisse ? Math.ceil(body.maxErgebnisse / 100) : 1;\n    if (page >= maxPage) break;\n  }\n}\n\nif (jobs.length === 0) return [{ json: { _empty: true, _errors: errors, _errorCount: errors.length } }];\n\nreturn jobs.map((j, i) => {\n  const company = typeof j.arbeitgeber === 'object' ? (j.arbeitgeber?.name || '') : (j.arbeitgeber || '');\n  const location = j.arbeitsort?.ort || '';\n  const region = j.arbeitsort?.region || '';\n  const extUrl = j.externeUrl || '';\n  const refUrl = j.refnr ? `https://www.arbeitsagentur.de/jobsuche/suche?id=${j.refnr}` : '';\n  const url = extUrl || refUrl;\n  const desc = `${j.titel || ''} bei ${company} in ${location}${region ? ' (' + region + ')' : ''}. Beruf: ${j.beruf || ''}. Eintrittsdatum: ${j.eintrittsdatum || 'k.A.'}`;\n  const jobData = {\n    source: 'arbeitsagentur',\n    external_id: j.refnr || '',\n    url: url,\n    title: j.titel || '',\n    company: company,\n    location: location,\n    description: desc,\n    tags: [],\n    remote: false,\n    _likely_english: false\n  };\n  const filterData = JSON.stringify({\n    title: jobData.title,\n    company: jobData.company,\n    location: jobData.location,\n    description: desc,\n    tags: jobData.tags,\n    url: jobData.url,\n    _likely_english: false\n  });\n  const b64 = Buffer.from(filterData).toString('base64');\n  return { json: { ...jobData, _b64: b64, _idx: i } };\n});"
+        "jsCode": "// Arbeitsagentur: run multiple server-side filtered searches + fetch full descriptions\nconst config = JSON.parse(require('fs').readFileSync(\n  ($env.JOBS_FUNNEL_PROJECT_DIR || '.').replace(/\\\\/g, '/') + '/config.json', 'utf-8'\n));\nconst BASE = 'https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobs';\nconst HEADERS = { 'X-API-Key': 'jobboerse-jobsuche', 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' };\n\nconst searches = [\n  'Python Developer', 'Backend Engineer', 'Data Engineer', 'Software Engineer',\n  'Python Entwickler', 'Software Entwickler', 'Backend Entwickler',\n  'ETL Developer', 'ETL Entwickler', 'Cloud Engineer',\n  'Flask', 'Django', 'FastAPI', 'PHP Symfony', 'DevOps'\n];\nconst commonParams = 'wo=Hamburg&umkreis=200&veroeffentlichtseit=30&pav=false&zeitarbeit=false&size=100';\n\nconst seenIds = new Set();\nconst jobs = [];\nconst errors = [];\nconst MAX_PAGES = config.aa_max_pages || 3;\n\nfor (let i = 0; i < searches.length; i++) {\n  for (let page = 1; page <= MAX_PAGES; page++) {\n    const url = `${BASE}?was=${encodeURIComponent(searches[i])}&${commonParams}&page=${page}`;\n    let body;\n    try {\n      const raw = await this.helpers.httpRequest({ method: 'GET', url, headers: HEADERS });\n      body = typeof raw === 'string' ? JSON.parse(raw) : raw;\n    } catch (e) { errors.push({ search: searches[i], page, error: e.message || String(e) }); continue; }\n    const results = body.stellenangebote || [];\n    if (results.length === 0) break;\n    for (const s of results) {\n      const id = s.refnr || s.titel;\n      if (!seenIds.has(id)) { seenIds.add(id); jobs.push(s); }\n    }\n    const maxPage = body.maxErgebnisse ? Math.ceil(body.maxErgebnisse / 100) : 1;\n    if (page >= maxPage) break;\n  }\n}\n\nif (jobs.length === 0) return [];\n\n// Fetch full descriptions from employer pages (externeUrl)\nfunction decodeEntities(text) {\n  return text\n    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<')\n    .replace(/&gt;/g, '>').replace(/&quot;/g, '\"').replace(/&apos;/g, \"'\")\n    .replace(/&#(\\d+);/g, (_, n) => String.fromCharCode(Number(n)))\n    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCharCode(parseInt(h, 16)));\n}\n\nconst FETCH_DELAY = config.aa_fetch_delay_ms || 300;\nconst MAX_FETCHES = config.aa_max_fetches || 200;\nlet fetchCount = 0;\nlet descFailCount = 0;\nfor (let i = 0; i < jobs.length && fetchCount < MAX_FETCHES; i++) {\n  const extUrl = jobs[i].externeUrl;\n  if (!extUrl) continue;\n  if (fetchCount > 0) await new Promise(r => setTimeout(r, FETCH_DELAY));\n  fetchCount++;\n  try {\n    const html = await this.helpers.httpRequest({ method: 'GET', url: extUrl, encoding: 'utf-8', timeout: config.aa_fetch_timeout_ms || 5000 });\n    let text = String(html).replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim();\n    text = decodeEntities(text);\n    if (text.length > 100) jobs[i]._fullDesc = text.substring(0, config.description_max_chars || 5000);\n  } catch (e) { descFailCount++; }\n}\n\nconst _crawlMeta = {\n  source: 'arbeitsagentur',\n  searches_run: searches.length,\n  total_results: jobs.length,\n  fetch_errors: errors.length,\n  errors: errors.slice(0, 10),\n  descriptions_attempted: fetchCount,\n  descriptions_failed: descFailCount,\n};\n\nconst mapped = jobs.map(j => {\n  const company = typeof j.arbeitgeber === 'object' ? (j.arbeitgeber?.name || '') : (j.arbeitgeber || '');\n  const location = j.arbeitsort?.ort || '';\n  const region = j.arbeitsort?.region || '';\n  const extUrl = j.externeUrl || '';\n  const refUrl = j.refnr ? `https://www.arbeitsagentur.de/jobsuche/suche?id=${j.refnr}` : '';\n  const url = extUrl || refUrl;\n  const fallbackDesc = `${j.titel || ''} bei ${company} in ${location}${region ? ' (' + region + ')' : ''}. Beruf: ${j.beruf || ''}. Eintrittsdatum: ${j.eintrittsdatum || 'k.A.'}`;\n  const desc = (j._fullDesc || fallbackDesc).substring(0, config.description_max_chars || 5000);\n  return { json: {\n    source: 'arbeitsagentur',\n    external_id: j.refnr || '',\n    url: url,\n    title: j.titel || '',\n    company: company,\n    location: location,\n    description: desc,\n    tags: [],\n    remote: false,\n    likely_english: false\n  }};\n});\nif (mapped.length > 0) mapped[0].json._crawlMeta = _crawlMeta;\nreturn mapped;"
       },
       "id": "aa-fetch",
       "name": "AA: Fetch Jobs",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        300,
-        500
-      ]
+      "position": [300, 500]
     },
     {
       "parameters": {
@@ -47,131 +78,164 @@
       "name": "Merge Sources",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
-      "position": [
-        600,
-        300
-      ]
+      "position": [600, 300]
     },
     {
       "parameters": {
-        "jsCode": "// Deduplicate merged results by company+title\nconst all = $input.all().filter(i => !i.json._empty);\nconst seen = new Set();\nconst unique = [];\n\nfor (const item of all) {\n  const job = item.json;\n  const key = ((job.company||'') + '|' + (job.title||'')).toLowerCase().trim();\n  if (!seen.has(key)) {\n    seen.add(key);\n    unique.push(job);\n  }\n}\n\nif (unique.length === 0) return [{ json: { _empty: true } }];\nreturn unique.map((j, i) => ({ json: { ...j, _idx: i } }));"
+        "jsCode": "// Deduplicate merged results by normalized company+title\nconst all = $input.all().filter(i => i.json.url);\nconst seen = new Set();\nconst unique = [];\n\nfunction normalize(s) {\n  return (s || '')\n    .toLowerCase()\n    .trim()\n    .replace(/\\s+(gmbh|ag|se|kg|co|ltd|inc|ug|mbh|e\\.v\\.|ohg|gbr)\\.?\\s*$/i, '')\n    .replace(/\\s+/g, ' ')\n    .replace(/[^\\w\\s]/g, '');\n}\n\nfor (const item of all) {\n  const job = item.json;\n  const key = normalize(job.company) + '|' + normalize(job.title);\n  if (!seen.has(key)) {\n    seen.add(key);\n    unique.push(job);\n  }\n}\n\nif (unique.length === 0) return [];\nreturn unique.map(j => ({ json: j }));"
       },
       "id": "dedup-merge",
       "name": "Dedup Merge",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        800,
-        300
-      ]
+      "position": [800, 300]
     },
     {
       "parameters": {
         "conditions": {
-          "options": {
-            "caseSensitive": true
-          },
+          "options": { "caseSensitive": true },
           "conditions": [
             {
               "leftValue": "={{ $json._empty }}",
               "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "notTrue"
-              }
+              "operator": { "type": "boolean", "operation": "notTrue" }
             }
           ]
         }
       },
-      "id": "an-has-results",
+      "id": "has-results",
       "name": "Has Results?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [
-        1050,
-        300
-      ]
+      "position": [1050, 300]
     },
     {
       "parameters": {
-        "operation": "read",
-        "documentId": {
-          "__rl": true,
-          "mode": "id",
-          "value": "={{ $env.JOBS_FUNNEL_SHEET_ID }}"
-        },
-        "sheetName": {
-          "__rl": true,
-          "mode": "name",
-          "value": "Tracker"
-        },
-        "options": {
-          "outputFormatting": false
+        "operation": "executeQuery",
+        "query": "SELECT url FROM jobs",
+        "options": {}
+      },
+      "id": "dedup-get-urls",
+      "name": "Dedup: Get Seen URLs",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1300, 300],
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_ME",
+          "name": "Postgres - Jobs Funnel"
         }
       },
-      "id": "dedup-read",
-      "name": "Dedup: Read Seen",
-      "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 4.5,
-      "position": [
-        1300,
-        300
-      ],
       "executeOnce": true,
       "alwaysOutputData": true
     },
     {
       "parameters": {
-        "jsCode": "// Filter out already-seen URLs by reading Job URL column from Sheet\nlet sheetRows;\ntry { sheetRows = $('Dedup: Read Seen').all(); } catch(e) { sheetRows = []; }\nconst seen = new Set(sheetRows.map(r => r.json['Job URL']).filter(Boolean));\n\nconst jobs = $('Has Results?').all().filter(item => {\n  const url = item.json?.url;\n  return url && !seen.has(url);\n});\n\n// Cap at 80 new items to keep Claude calls manageable\nreturn jobs.length > 0 ? jobs.slice(0, 80) : [{ json: { _empty: true } }];"
+        "jsCode": "// Filter out URLs already in Postgres, cap at configurable limit\nconst config = JSON.parse(require('fs').readFileSync(\n  ($env.JOBS_FUNNEL_PROJECT_DIR || '.').replace(/\\\\/g, '/') + '/config.json', 'utf-8'\n));\nconst CAP = config.dedup_cap || 80;\nlet seenRows;\ntry { seenRows = $('Dedup: Get Seen URLs').all(); } catch (e) { seenRows = []; }\nconst seenUrls = new Set(seenRows.map(r => r.json.url).filter(Boolean));\n\nconst jobs = $('Has Results?').all().filter(item => {\n  const url = item.json?.url;\n  return url && !seenUrls.has(url);\n});\n\nif (jobs.length === 0) return [];\nconst capped = jobs.slice(0, CAP);\nif (jobs.length > CAP && capped.length > 0) {\n  capped[0].json._truncated = true;\n  capped[0].json._droppedCount = jobs.length - CAP;\n}\nreturn capped;"
       },
       "id": "dedup-filter",
-      "name": "Dedup: Filter",
+      "name": "Dedup: Filter New",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        1550,
-        300
-      ]
+      "position": [1550, 300]
     },
     {
       "parameters": {
         "conditions": {
-          "options": {
-            "caseSensitive": true
-          },
+          "options": { "caseSensitive": true },
           "conditions": [
             {
               "leftValue": "={{ $json._empty }}",
               "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "notTrue"
-              }
+              "operator": { "type": "boolean", "operation": "notTrue" }
             }
           ]
         }
       },
-      "id": "dedup-has-new",
+      "id": "has-new",
       "name": "Has New?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [
-        1800,
-        300
-      ]
+      "position": [1800, 300]
     },
     {
       "parameters": {
-        "jsCode": "// Batch items into groups of 8 for efficient Claude filtering\n// Writes batch JSON to temp file (requires NODE_FUNCTION_ALLOW_BUILTIN=fs in start.bat)\nconst fs = require('fs');\nconst all = $input.all();\nconst BATCH_SIZE = 8;\nconst batches = [];\nconst tmpDir = ($env.JOBS_FUNNEL_PROJECT_DIR || '.').replace(/\\\\/g, '/') + '/temp';\n\n// Clean up leftover temp files from previous runs\ntry {\n  const oldFiles = fs.readdirSync(tmpDir).filter(f => f.startsWith('n8n_batch_'));\n  for (const f of oldFiles) { try { fs.unlinkSync(tmpDir + '/' + f); } catch(e) {} }\n} catch(e) {}\n\nfor (let i = 0; i < all.length; i += BATCH_SIZE) {\n  const chunk = all.slice(i, i + BATCH_SIZE);\n  const jobs = chunk.map(item => {\n    return JSON.parse(Buffer.from(item.json._b64, 'base64').toString('utf-8'));\n  });\n  const batchJson = JSON.stringify(jobs);\n  const tmpName = 'n8n_batch_' + Date.now() + '_' + i + '.json';\n  const tmpPath = tmpDir + '/' + tmpName;\n  fs.writeFileSync(tmpPath, batchJson, 'utf-8');\n  const originals = chunk.map(item => ({\n    source: item.json.source,\n    url: item.json.url,\n    title: item.json.title,\n    company: item.json.company,\n    location: item.json.location,\n    description: item.json.description,\n    tags: item.json.tags,\n    remote: item.json.remote,\n  }));\n  batches.push({\n    json: { _tmpPath: tmpPath, _batchOriginals: originals, _batchSize: chunk.length }\n  });\n}\nreturn batches;"
+        "jsCode": "// Build safe INSERT query for each job\n// Proper SQL escaping: handles quotes, backslashes, null bytes\nfunction sqlStr(s) {\n  if (s === null || s === undefined) return 'NULL';\n  return \"'\" + String(s).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"''\").replace(/\\0/g, '') + \"'\";\n}\n\nreturn $input.all().map(item => {\n  const j = item.json;\n  const query = `INSERT INTO jobs (url, title, company, location, description, source, external_id, tags, remote, likely_english, salary_min, salary_max, salary_currency) VALUES (${sqlStr(j.url)}, ${sqlStr(j.title)}, ${sqlStr(j.company)}, ${sqlStr(j.location)}, ${sqlStr((j.description || '').substring(0, 10000))}, ${sqlStr(j.source)}, ${sqlStr(j.external_id)}, ${sqlStr(JSON.stringify(j.tags || []))}::jsonb, ${j.remote || false}, ${j.likely_english || false}, ${j.salary_min || 'NULL'}, ${j.salary_max || 'NULL'}, ${sqlStr(j.salary_currency || null)}) ON CONFLICT (url) DO NOTHING`;\n  return { json: { _insertQuery: query } };\n});"
+      },
+      "id": "prep-insert",
+      "name": "Prep Insert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2050, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json._insertQuery }}",
+        "options": {}
+      },
+      "id": "db-insert",
+      "name": "DB: Insert Jobs",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2300, 300],
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_ME",
+          "name": "Postgres - Jobs Funnel"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Emit a single item to trigger the analyze phase\nreturn [{ json: { _trigger: 'crawl_complete' } }];"
+      },
+      "id": "goto-analyze",
+      "name": "Start Analyze",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2550, 300],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM jobs WHERE status IN ('pending', 'error') AND retry_count < 3 ORDER BY crawled_at ASC LIMIT 80",
+        "options": {}
+      },
+      "id": "db-fetch-pending",
+      "name": "DB: Fetch Pending",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2600, 600],
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_ME",
+          "name": "Postgres - Jobs Funnel"
+        }
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Check if there are pending jobs\nconst items = $input.all().filter(i => i.json.id != null);\nif (items.length === 0) return [];\nreturn items;"
+      },
+      "id": "has-pending",
+      "name": "Has Pending?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2850, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Batch all pending jobs into groups of N, write each to a temp file\nconst fs = require('fs');\nconst config = JSON.parse(fs.readFileSync(\n  ($env.JOBS_FUNNEL_PROJECT_DIR || '.').replace(/\\\\/g, '/') + '/config.json', 'utf-8'\n));\nconst BATCH_SIZE = config.batch_size || 8;\nconst all = $input.all();\nconst tmpDir = ($env.JOBS_FUNNEL_PROJECT_DIR || '.').replace(/\\\\/g, '/') + '/temp';\n\n// Ensure temp dir exists and clean old batch files\ntry { fs.mkdirSync(tmpDir, { recursive: true }); } catch (e) {}\ntry {\n  const oldFiles = fs.readdirSync(tmpDir).filter(f => f.startsWith('n8n_batch_'));\n  for (const f of oldFiles) { try { fs.unlinkSync(tmpDir + '/' + f); } catch (e) {} }\n} catch (e) {}\n\nconst batches = [];\nfor (let i = 0; i < all.length; i += BATCH_SIZE) {\n  const chunk = all.slice(i, i + BATCH_SIZE);\n  const batchJobs = chunk.map(item => ({\n    title: item.json.title || '',\n    company: item.json.company || '',\n    location: item.json.location || '',\n    description: (item.json.description || '').substring(0, 3000),\n    tags: item.json.tags || [],\n    url: item.json.url || '',\n    _likely_english: item.json.likely_english || false\n  }));\n  const tmpPath = tmpDir + '/n8n_batch_' + Date.now() + '_' + i + '.json';\n  fs.writeFileSync(tmpPath, JSON.stringify(batchJobs), 'utf-8');\n  const originals = chunk.map(item => ({\n    id: item.json.id,\n    url: item.json.url,\n    title: item.json.title,\n    company: item.json.company,\n    location: item.json.location,\n    source: item.json.source\n  }));\n  batches.push({ json: { _tmpPath: tmpPath, _batchOriginals: originals, _batchSize: chunk.length } });\n}\nreturn batches;"
       },
       "id": "batch-items",
       "name": "Batch Items",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        1925,
-        300
-      ]
+      "position": [3100, 600]
     },
     {
       "parameters": {
@@ -181,89 +245,98 @@
       "name": "Filter: Claude",
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
-      "position": [
-        2050,
-        300
-      ],
-      "executeOnce": false,
+      "position": [3600, 600],
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 30000
     },
     {
       "parameters": {
-        "jsCode": "// Unbatch: explode batch results back into individual items\n// Get originals from Batch Items node (data doesn't flow through Write Batch File / Execute Command)\nconst batchItems = $('Batch Items').all();\nconst results = [];\nfor (let b = 0; b < $input.all().length; b++) {\n  const item = $input.all()[b];\n  const stdout = item.json.stdout || '[]';\n  let assessments;\n  try {\n    assessments = JSON.parse(stdout);\n    if (!Array.isArray(assessments)) assessments = [assessments];\n  } catch(e) {\n    assessments = [];\n  }\n  const originals = (batchItems[b] && batchItems[b].json._batchOriginals) || [];\n  for (let i = 0; i < originals.length; i++) {\n    const assessment = assessments[i] || {\n      fit_score: 0, decision: 'SKIP', cv_variant: 'software',\n      hard_blockers: ['Missing from batch response'], soft_gaps: [], strong_matches: [],\n      reasoning: 'Batch evaluation did not return result for this job', priority_notes: null\n    };\n    results.push({ json: { _stdout: JSON.stringify(assessment), ...originals[i] } });\n  }\n}\nreturn results;"
+        "jsCode": "// Unbatch: match each Claude response to its batch, then build UPDATE SQL\nconst batchItems = $('Batch Items').all();\nconst VALID_VARIANTS = ['software', 'data', 'fullstack', 'systems'];\nconst ERROR_KEYWORDS = ['parse error', 'incomplete', 'timed out', 'filter error', 'claude response parse'];\n\n// Proper SQL escaping: handles quotes, backslashes, null bytes\nfunction sqlStr(s) {\n  if (s === null || s === undefined) return 'NULL';\n  return \"'\" + String(s).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"''\").replace(/\\0/g, '') + \"'\";\n}\n\nconst results = [];\nfor (let b = 0; b < $input.all().length; b++) {\n  const item = $input.all()[b];\n  const stdout = item.json.stdout || '[]';\n  const originals = (batchItems[b] && batchItems[b].json._batchOriginals) || [];\n\n  let assessments;\n  try {\n    assessments = JSON.parse(stdout);\n    if (!Array.isArray(assessments)) assessments = [assessments];\n  } catch (e) {\n    for (const orig of originals) {\n      results.push({ json: {\n        _updateQuery: `UPDATE jobs SET status = 'error', error = ${sqlStr('Failed to parse Claude response: ' + e.message)}, retry_count = retry_count + 1 WHERE id = ${orig.id}`\n      }});\n    }\n    continue;\n  }\n\n  for (let i = 0; i < originals.length; i++) {\n    const orig = originals[i];\n    const assessment = assessments[i];\n\n    if (!assessment) {\n      results.push({ json: {\n        _updateQuery: `UPDATE jobs SET status = 'error', error = 'No result returned for this job in batch response', retry_count = retry_count + 1 WHERE id = ${orig.id}`\n      }});\n      continue;\n    }\n\n    const rawDecision = String(assessment.decision || 'SKIP').trim().toUpperCase();\n    const decision = ['PASS', 'MAYBE', 'SKIP'].includes(rawDecision) ? rawDecision : 'SKIP';\n    const score = Number(assessment.fit_score) || 0;\n\n    // Detect batch padding (job was never evaluated by Claude)\n    const isBatchPadding = (assessment.priority_notes || '').includes('BATCH_PADDING');\n\n    // Detect fallback/error responses from filter.py\n    const isErrorFallback = isBatchPadding || (score === 0 && (assessment.hard_blockers || []).some(b =>\n      ERROR_KEYWORDS.some(kw => b.toLowerCase().includes(kw))\n    ));\n\n    if (isErrorFallback) {\n      results.push({ json: {\n        _updateQuery: `UPDATE jobs SET status = 'error', error = ${sqlStr(assessment.reasoning || 'Fallback SKIP from failed Claude call')}, retry_count = retry_count + 1 WHERE id = ${orig.id}`\n      }});\n      continue;\n    }\n\n    // Validate cv_variant\n    const cvVariant = VALID_VARIANTS.includes(assessment.cv_variant) ? assessment.cv_variant : 'software';\n\n    results.push({ json: {\n      _updateQuery: `UPDATE jobs SET status = 'analyzed', analyzed_at = NOW(), error = NULL, retry_count = 0, fit_score = ${score}, decision = '${decision}', cv_variant = '${cvVariant}', hard_blockers = ${sqlStr(JSON.stringify(assessment.hard_blockers || []))}::jsonb, soft_gaps = ${sqlStr(JSON.stringify(assessment.soft_gaps || []))}::jsonb, strong_matches = ${sqlStr(JSON.stringify(assessment.strong_matches || []))}::jsonb, reasoning = ${sqlStr(assessment.reasoning || '')}, priority_notes = ${sqlStr(assessment.priority_notes || null)} WHERE id = ${orig.id}`\n    }});\n  }\n}\nreturn results;"
       },
-      "id": "unbatch-results",
-      "name": "Unbatch Results",
+      "id": "parse-update",
+      "name": "Parse + Prep Update",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        2175,
-        300
-      ]
+      "position": [3850, 600]
     },
     {
       "parameters": {
-        "jsCode": "// Parse filter results and carry forward job data for Generate step\nconst results = [];\nfor (const item of $input.all()) {\n  const stdout = item.json._stdout || '{}';\n  let assessment;\n  try {\n    assessment = JSON.parse(stdout);\n  } catch(e) {\n    assessment = { fit_score: 0, decision: 'SKIP', cv_variant: 'software', hard_blockers: ['Claude parse error'], reasoning: stdout.substring(0,200) };\n  }\n\n  const jobData = item.json;\n\n  // Normalize decision: only PASS, MAYBE, or SKIP\n  const rawDecision = String(assessment.decision || 'SKIP').trim().toUpperCase();\n  const decision = ['PASS','MAYBE','SKIP'].includes(rawDecision) ? rawDecision : 'SKIP';\n  const score = Number(assessment.fit_score) || 0;\n\n  results.push({\n    json: {\n      'Date': new Date().toISOString().slice(0,10),\n      'Fetched At': new Date().toISOString().replace('T',' ').slice(0,19) + ' UTC',\n      'Source': jobData.source || 'arbeitnow',\n      'Company': assessment.company || jobData.company || '',\n      'Role': assessment.role || jobData.title || '',\n      'Location': assessment.location || jobData.location || '',\n      'Score': score,\n      'Decision': decision,\n      'CV Variant': assessment.cv_variant || 'software',\n      'Blockers': (assessment.hard_blockers || []).join('; '),\n      'Strong Matches': (assessment.strong_matches || []).join('; '),\n      'Reasoning': assessment.reasoning || '',\n      'Status': decision === 'SKIP' ? 'skipped' : 'review',\n      'Drive Link': '',\n      'Job URL': jobData.url || '',\n      'Notes': '',\n      _assessment: assessment,\n      _url: jobData.url || '',\n      _description: jobData.description || ''\n    }\n  });\n}\nreturn results;"
+        "operation": "executeQuery",
+        "query": "={{ $json._updateQuery }}",
+        "options": {}
       },
-      "id": "filter-parse",
-      "name": "Filter: Parse",
+      "id": "db-update",
+      "name": "DB: Update Jobs",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [4100, 600],
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_ME",
+          "name": "Postgres - Jobs Funnel"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Emit a single item to trigger the sync phase\nreturn [{ json: { _trigger: 'analyze_complete' } }];"
+      },
+      "id": "goto-sync",
+      "name": "Start Sync",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        2300,
-        300
-      ]
+      "position": [4350, 600],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM jobs WHERE status = 'analyzed' AND sheet_synced = FALSE ORDER BY crawled_at ASC",
+        "options": {}
+      },
+      "id": "db-fetch-unsynced",
+      "name": "DB: Fetch Unsynced",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [4800, 600],
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_ME",
+          "name": "Postgres - Jobs Funnel"
+        }
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format Postgres rows into Google Sheet columns, skip if no unsynced rows\nconst all = $input.all().filter(item => item.json.id != null);\nif (all.length === 0) return [];\n\nreturn all.map(item => {\n  const j = item.json;\n  const crawledAt = j.crawled_at ? new Date(j.crawled_at) : new Date();\n  const blockers = Array.isArray(j.hard_blockers) ? j.hard_blockers.join('; ') : (j.hard_blockers || '');\n  const matches = Array.isArray(j.strong_matches) ? j.strong_matches.join('; ') : (j.strong_matches || '');\n  const decision = j.decision || 'SKIP';\n\n  return { json: {\n    'Date': crawledAt.toISOString().slice(0, 10),\n    'Fetched At': crawledAt.toISOString().replace('T', ' ').slice(0, 19) + ' UTC',\n    'Source': j.source || '',\n    'Company': j.company || '',\n    'Role': j.title || '',\n    'Location': j.location || '',\n    'Salary': j.salary_min && j.salary_max\n      ? `${j.salary_min}-${j.salary_max} ${j.salary_currency || 'EUR'}`\n      : (j.salary_min ? `${j.salary_min}+ ${j.salary_currency || 'EUR'}` : ''),\n    'Score': j.fit_score || 0,\n    'Decision': decision,\n    'CV Variant': j.cv_variant || 'software',\n    'Blockers': blockers,\n    'Strong Matches': matches,\n    'Reasoning': j.reasoning || '',\n    'Status': decision === 'SKIP' ? 'skipped' : 'review',\n    'Drive Link': '',\n    'Job URL': j.url || '',\n    'Notes': j.priority_notes || '',\n    _dbId: j.id\n  }};\n});"
+      },
+      "id": "format-sheet",
+      "name": "Format Sheet Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [5100, 600]
     },
     {
       "parameters": {
         "conditions": {
-          "options": {
-            "caseSensitive": true
-          },
-          "combinator": "and",
+          "options": { "caseSensitive": true },
           "conditions": [
             {
-              "leftValue": "={{ $json.Decision }}",
-              "rightValue": "PASS",
-              "operator": {
-                "type": "string",
-                "operation": "equals"
-              }
-            },
-            {
-              "leftValue": "={{ $json.Score }}",
-              "rightValue": 7,
-              "operator": {
-                "type": "number",
-                "operation": "gte"
-              }
+              "leftValue": "={{ $json._empty }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "notTrue" }
             }
           ]
         }
       },
-      "id": "route-decision",
-      "name": "Is PASS?",
+      "id": "has-unsynced",
+      "name": "Has Unsynced?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [
-        2550,
-        300
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "// Strip internal fields before Sheet logging\nreturn $input.all().map(item => {\n  const d = item.json;\n  return { json: {\n    'Date': d['Date'] || '',\n    'Fetched At': d['Fetched At'] || '',\n    'Source': d['Source'] || '',\n    'Company': d['Company'] || '',\n    'Role': d['Role'] || '',\n    'Location': d['Location'] || '',\n    'Score': d['Score'] || 0,\n    'Decision': d['Decision'] || 'SKIP',\n    'CV Variant': d['CV Variant'] || 'software',\n    'Blockers': d['Blockers'] || '',\n    'Strong Matches': d['Strong Matches'] || '',\n    'Reasoning': d['Reasoning'] || '',\n    'Status': d['Status'] || 'skipped',\n    'Drive Link': '',\n    'Job URL': d['Job URL'] || '',\n    'Notes': d['Notes'] || ''\n  }};\n});"
-      },
-      "id": "clean-skip",
-      "name": "Clean MAYBE/SKIP",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2700,
-        500
-      ]
+      "position": [5300, 600]
     },
     {
       "parameters": {
@@ -282,194 +355,57 @@
           "mappingMode": "autoMapInputData",
           "value": {},
           "matchingColumns": [],
-          "ignoreFields": ""
+          "ignoreFields": "_dbId"
         }
       },
-      "id": "sheet-log-skip",
-      "name": "Sheet: Log MAYBE/SKIP",
+      "id": "sheet-append",
+      "name": "Sheet: Append Rows",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
-      "position": [
-        2800,
-        500
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "// Build generate input \u00e2\u20ac\u201d lightweight, generate.py fetches full posting\nreturn $input.all().map(item => {\n  const d = item.json;\n  const generateInput = JSON.stringify({\n    cv_variant: d['CV Variant'] || 'software',\n    job: {\n      title: d['Role'] || '',\n      company: d['Company'] || '',\n      location: d['Location'] || '',\n      url: d['Job URL'] || ''\n    },\n    assessment: {\n      company: d._assessment?.company || '',\n      role: d._assessment?.role || '',\n      fit_score: d._assessment?.fit_score || 0,\n      decision: d._assessment?.decision || '',\n      cv_variant: d._assessment?.cv_variant || 'software',\n      strong_matches: d._assessment?.strong_matches || [],\n      soft_gaps: d._assessment?.soft_gaps || [],\n      reasoning: (d._assessment?.reasoning || '').substring(0, 500)\n    }\n  });\n  const b64 = Buffer.from(generateInput).toString('base64');\n  return {\n    json: {\n      ...d,\n      _generateB64: b64\n    }\n  };\n});"
-      },
-      "id": "prep-generate",
-      "name": "Prep Generate",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2700,
-        100
-      ]
-    },
-    {
-      "parameters": {
-        "command": "=python \"{{ $env.JOBS_FUNNEL_PROJECT_DIR }}/scripts/run_generate.py\" \"{{ $env.JOBS_FUNNEL_PROJECT_DIR }}\" \"{{ $json._generateB64 }}\""
-      },
-      "id": "generate-claude",
-      "name": "Generate: Claude",
-      "type": "n8n-nodes-base.executeCommand",
-      "typeVersion": 1,
-      "position": [
-        2800,
-        100
-      ],
-      "executeOnce": false,
+      "position": [5550, 600],
       "retryOnFail": true,
-      "maxTries": 2,
+      "maxTries": 3,
       "waitBetweenTries": 10000
     },
     {
       "parameters": {
-        "jsCode": "// Parse generate output and merge with filter data for file writing\nconst results = [];\nconst passItems = $('Is PASS?').all();\n\nfor (let i = 0; i < $input.all().length; i++) {\n  const item = $input.all()[i];\n  const passItem = passItems[i] || {};\n  const stdout = item.json.stdout || '{}';\n  let generated;\n  try {\n    generated = JSON.parse(stdout);\n  } catch(e) {\n    generated = { error: 'Failed to parse generate output', raw: stdout.substring(0,200) };\n  }\n\n  const filterData = passItem.json || {};\n\n  // Build input for write_output.py\n  const writeObj = {\n    company: filterData['Company'] || '',\n    title: filterData['Role'] || '',\n    location: filterData['Location'] || '',\n    url: filterData['Job URL'] || '',\n    description: filterData._description || '',\n    tailored_cv_html: generated.tailored_cv_html || '',\n    cover_letter_html: generated.cover_letter_html || '',\n    cover_letter_text: generated.cover_letter_text || '',\n    assessment: filterData._assessment || {},\n    tailoring_notes: generated.tailoring_notes || ''\n  };\n  const writeB64 = Buffer.from(JSON.stringify(writeObj)).toString('base64');\n\n  results.push({\n    json: {\n      ...filterData,\n      _writeB64: writeB64,\n      _generated: generated,\n      _hasError: !!generated.error\n    }\n  });\n}\nreturn results;"
+        "jsCode": "// Collect all DB IDs that were synced to Sheet and build UPDATE query\nlet formatItems;\ntry { formatItems = $('Format Sheet Rows').all(); } catch (e) { formatItems = []; }\nconst ids = formatItems.map(item => item.json._dbId).filter(Boolean);\n\nif (ids.length === 0) return [{ json: { _syncQuery: 'SELECT 1', _synced: 0 } }];\n\nreturn [{ json: {\n  _syncQuery: `UPDATE jobs SET sheet_synced = TRUE, sheet_synced_at = NOW() WHERE id IN (${ids.join(',')})`,\n  _synced: ids.length\n}}];"
       },
-      "id": "generate-parse",
-      "name": "Generate: Parse",
+      "id": "prep-sync-ids",
+      "name": "Prep Sync IDs",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        3050,
-        100
-      ]
+      "position": [5800, 600],
+      "executeOnce": true
     },
     {
       "parameters": {
-        "command": "=python \"{{ $env.JOBS_FUNNEL_PROJECT_DIR }}/scripts/run_write_output.py\" \"{{ $env.JOBS_FUNNEL_PROJECT_DIR }}\" \"{{ $json._writeB64 }}\""
+        "operation": "executeQuery",
+        "query": "={{ $json._syncQuery }}",
+        "options": {}
       },
-      "id": "write-local",
-      "name": "Write Local Files",
-      "type": "n8n-nodes-base.executeCommand",
-      "typeVersion": 1,
-      "position": [
-        3300,
-        100
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "// Prepare data for Drive upload and Sheet logging\nconst results = [];\nconst genItems = $('Generate: Parse').all();\n\nfor (let i = 0; i < $input.all().length; i++) {\n  const item = $input.all()[i];\n  const genItem = genItems[i] || {};\n  const filterData = genItem.json || {};\n  let writeResult;\n  try {\n    writeResult = JSON.parse(item.json.stdout || '{}');\n  } catch(e) {\n    writeResult = { outputDir: '', folderName: '' };\n  }\n\n  const hasError = filterData._hasError || !!writeResult.error;\n\n  results.push({\n    json: {\n      'Date': filterData['Date'] || new Date().toISOString().slice(0,10),\n      'Source': filterData['Source'] || '',\n      'Company': filterData['Company'] || '',\n      'Role': filterData['Role'] || '',\n      'Location': filterData['Location'] || '',\n      'Score': filterData['Score'] || 0,\n      'Decision': 'PASS',\n      'CV Variant': filterData['CV Variant'] || 'software',\n      'Blockers': filterData['Blockers'] || '',\n      'Strong Matches': filterData['Strong Matches'] || '',\n      'Reasoning': filterData['Reasoning'] || '',\n      'Status': hasError ? 'review' : 'generated',\n      'Drive Link': writeResult.outputDir || '',\n      'Job URL': filterData['Job URL'] || '',\n      'Notes': hasError ? 'Generate failed \u00e2\u20ac\u201d review manually' : (filterData._generated?.tailoring_notes || ''),\n      _outputDir: writeResult.outputDir || '',\n      _folderName: writeResult.folderName || '',\n      _files: writeResult.files || {},\n      _hasError: hasError\n    }\n  });\n}\nreturn results;"
-      },
-      "id": "prep-drive",
-      "name": "Prep Drive Upload",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        3550,
-        100
-      ]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "conditions": [
-            {
-              "leftValue": "={{ $json._hasError }}",
-              "rightValue": true,
-              "operator": {
-                "type": "boolean",
-                "operation": "notTrue"
-              }
-            },
-            {
-              "leftValue": "={{ $json._outputDir }}",
-              "rightValue": "",
-              "operator": {
-                "type": "string",
-                "operation": "notEquals"
-              }
-            }
-          ]
+      "id": "db-mark-synced",
+      "name": "DB: Mark Synced",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [6050, 600],
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_ME",
+          "name": "Postgres - Jobs Funnel"
         }
-      },
-      "id": "has-files",
-      "name": "Has Files?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        3800,
-        100
-      ]
+      }
     },
     {
       "parameters": {
-        "name": "={{ $json._folderName }}",
-        "driveId": {
-          "__rl": true,
-          "mode": "list",
-          "value": "myDrive"
-        },
-        "folderId": {
-          "__rl": true,
-          "mode": "id",
-          "value": "={{ $env.JOBS_FUNNEL_DRIVE_FOLDER_ID }}"
-        },
-        "options": {}
+        "jsCode": "// Collect pipeline run metrics and format for Metrics sheet tab\nlet formatItems = [];\ntry { formatItems = $('Format Sheet Rows').all().filter(i => i.json.Date); } catch (e) { /* no items */ }\n\nconst pass = formatItems.filter(i => i.json.Decision === 'PASS').length;\nconst maybe = formatItems.filter(i => i.json.Decision === 'MAYBE').length;\nconst skip = formatItems.filter(i => i.json.Decision === 'SKIP').length;\nconst total = pass + maybe + skip;\nconst now = new Date();\n\nreturn [{ json: {\n  'Date': now.toISOString().slice(0, 10),\n  'Timestamp': now.toISOString().replace('T', ' ').slice(0, 19) + ' UTC',\n  'Analyzed': total,\n  'PASS': pass,\n  'MAYBE': maybe,\n  'SKIP': skip,\n  'Pass Rate': total > 0 ? Math.round(pass / total * 100) + '%' : '0%',\n  'Synced': formatItems.length,\n}}];"
       },
-      "id": "drive-create-folder",
-      "name": "Drive: Create Folder",
-      "type": "n8n-nodes-base.googleDrive",
-      "typeVersion": 3,
-      "position": [
-        4050,
-        0
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "// Prepare file upload list — emit one item per file with binary data\n// Reads files from disk using fs (requires NODE_FUNCTION_ALLOW_BUILTIN=fs in start.bat)\nconst fs = require('fs');\nconst item = $input.all()[0];\nconst prepItem = $('Has Files?').all()[0];\nconst folderId = item.json.id;\nconst outputDir = prepItem.json._outputDir;\n\nconst fileNames = ['cv.html', 'cover_letter.html', 'cover_letter.txt', 'assessment.json', 'job.json'];\nconst results = [];\n\nfor (const fileName of fileNames) {\n  const filePath = outputDir + '/' + fileName;\n  try {\n    const content = fs.readFileSync(filePath);\n    const binary = await this.helpers.prepareBinaryData(content, fileName);\n    results.push({\n      json: {\n        fileName,\n        folderId,\n        folderUrl: `https://drive.google.com/drive/folders/${folderId}`,\n        ...prepItem.json\n      },\n      binary: { data: binary }\n    });\n  } catch(e) {\n    // Skip files that don't exist\n  }\n}\nreturn results;"
-      },
-      "id": "prep-files",
-      "name": "Prep File List",
+      "id": "pipeline-metrics",
+      "name": "Pipeline Metrics",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        4300,
-        0
-      ]
-    },
-    {
-      "parameters": {
-        "operation": "upload",
-        "name": "={{ $json.fileName }}",
-        "driveId": {
-          "__rl": true,
-          "mode": "list",
-          "value": "myDrive"
-        },
-        "folderId": {
-          "__rl": true,
-          "mode": "id",
-          "value": "={{ $json.folderId }}"
-        },
-        "inputDataFieldName": "data",
-        "options": {}
-      },
-      "id": "drive-upload",
-      "name": "Drive: Upload File",
-      "type": "n8n-nodes-base.googleDrive",
-      "typeVersion": 3,
-      "position": [
-        4550,
-        0
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "// After all files uploaded, emit one item per job for Sheet logging\nconst allUploaded = $input.all();\nif (allUploaded.length === 0) return [];\n\n// Group by folder \u00e2\u20ac\u201d all files share the same folderUrl\nconst first = allUploaded[0].json;\nreturn [{\n  json: {\n    'Date': first['Date'] || '',\n    'Fetched At': first['Fetched At'] || '',\n    'Source': first['Source'] || '',\n    'Company': first['Company'] || '',\n    'Role': first['Role'] || '',\n    'Location': first['Location'] || '',\n    'Score': first['Score'] || 0,\n    'Decision': 'PASS',\n    'CV Variant': first['CV Variant'] || 'software',\n    'Blockers': first['Blockers'] || '',\n    'Strong Matches': first['Strong Matches'] || '',\n    'Reasoning': first['Reasoning'] || '',\n    'Status': 'generated',\n    'Drive Link': first.folderUrl || '',\n    'Job URL': first['Job URL'] || '',\n    'Notes': first['Notes'] || ''\n  }\n}];"
-      },
-      "id": "post-upload",
-      "name": "Post Upload",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        4800,
-        0
-      ]
+      "position": [6300, 600],
+      "executeOnce": true
     },
     {
       "parameters": {
@@ -482,389 +418,175 @@
         "sheetName": {
           "__rl": true,
           "mode": "name",
-          "value": "Tracker"
+          "value": "Metrics"
         },
         "columns": {
           "mappingMode": "autoMapInputData",
           "value": {},
-          "matchingColumns": [],
-          "ignoreFields": "_assessment,_url,_description,_hasError,_outputDir,_folderName,_generated,_writeB64"
+          "matchingColumns": []
         }
       },
-      "id": "sheet-log-pass",
-      "name": "Sheet: Log PASS",
+      "id": "sheet-metrics",
+      "name": "Sheet: Log Metrics",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
-      "position": [
-        5050,
-        0
-      ]
-    },
-    {
-      "parameters": {
-        "jsCode": "// Log PASS items that had errors (no Drive upload)\nconst items = $input.all();\nreturn items.map(item => {\n  const d = item.json;\n  return {\n    json: {\n      'Date': d['Date'] || '',\n      'Fetched At': d['Fetched At'] || '',\n      'Source': d['Source'] || '',\n      'Company': d['Company'] || '',\n      'Role': d['Role'] || '',\n      'Location': d['Location'] || '',\n      'Score': d['Score'] || 0,\n      'Decision': 'PASS',\n      'CV Variant': d['CV Variant'] || 'software',\n      'Blockers': d['Blockers'] || '',\n      'Strong Matches': d['Strong Matches'] || '',\n      'Reasoning': d['Reasoning'] || '',\n      'Status': 'review',\n      'Drive Link': '',\n      'Job URL': d['Job URL'] || '',\n      'Notes': d['Notes'] || 'Generate/upload failed'\n    }\n  };\n});"
-      },
-      "id": "error-pass-prep",
-      "name": "Prep Error PASS",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        4050,
-        200
-      ]
-    },
-    {
-      "parameters": {
-        "operation": "append",
-        "documentId": {
-          "__rl": true,
-          "mode": "id",
-          "value": "={{ $env.JOBS_FUNNEL_SHEET_ID }}"
-        },
-        "sheetName": {
-          "__rl": true,
-          "mode": "name",
-          "value": "Tracker"
-        },
-        "columns": {
-          "mappingMode": "autoMapInputData",
-          "value": {},
-          "matchingColumns": [],
-          "ignoreFields": "_assessment,_url,_description,_hasError,_outputDir,_folderName,_generated,_writeB64"
-        }
-      },
-      "id": "sheet-log-error-pass",
-      "name": "Sheet: Log Error PASS",
-      "type": "n8n-nodes-base.googleSheets",
-      "typeVersion": 4.5,
-      "position": [
-        4300,
-        200
-      ]
+      "position": [6550, 600],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
     }
   ],
   "connections": {
-    "Run Search": {
-      "main": [
-        [
-          {
-            "node": "AN: Fetch & Filter",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "AA: Fetch Jobs",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Run Full Pipeline": {
+      "main": [[
+        { "node": "AN: Fetch & Filter", "type": "main", "index": 0 },
+        { "node": "AA: Fetch Jobs", "type": "main", "index": 0 }
+      ]]
+    },
+    "Cron Schedule": {
+      "main": [[
+        { "node": "AN: Fetch & Filter", "type": "main", "index": 0 },
+        { "node": "AA: Fetch Jobs", "type": "main", "index": 0 }
+      ]]
     },
     "AN: Fetch & Filter": {
-      "main": [
-        [
-          {
-            "node": "Merge Sources",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[
+        { "node": "Merge Sources", "type": "main", "index": 0 }
+      ]]
     },
     "AA: Fetch Jobs": {
-      "main": [
-        [
-          {
-            "node": "Merge Sources",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
+      "main": [[
+        { "node": "Merge Sources", "type": "main", "index": 1 }
+      ]]
     },
     "Merge Sources": {
-      "main": [
-        [
-          {
-            "node": "Dedup Merge",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[
+        { "node": "Dedup Merge", "type": "main", "index": 0 }
+      ]]
     },
     "Dedup Merge": {
-      "main": [
-        [
-          {
-            "node": "Has Results?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[
+        { "node": "Has Results?", "type": "main", "index": 0 }
+      ]]
     },
     "Has Results?": {
       "main": [
-        [
-          {
-            "node": "Dedup: Read Seen",
-            "type": "main",
-            "index": 0
-          }
-        ],
+        [{ "node": "Dedup: Get Seen URLs", "type": "main", "index": 0 }],
         []
       ]
     },
-    "Dedup: Read Seen": {
-      "main": [
-        [
-          {
-            "node": "Dedup: Filter",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Dedup: Get Seen URLs": {
+      "main": [[
+        { "node": "Dedup: Filter New", "type": "main", "index": 0 }
+      ]]
     },
-    "Dedup: Filter": {
-      "main": [
-        [
-          {
-            "node": "Has New?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Dedup: Filter New": {
+      "main": [[
+        { "node": "Has New?", "type": "main", "index": 0 }
+      ]]
     },
     "Has New?": {
       "main": [
-        [
-          {
-            "node": "Batch Items",
-            "type": "main",
-            "index": 0
-          }
-        ],
+        [{ "node": "Prep Insert", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Prep Insert": {
+      "main": [[
+        { "node": "DB: Insert Jobs", "type": "main", "index": 0 }
+      ]]
+    },
+    "DB: Insert Jobs": {
+      "main": [[
+        { "node": "Start Analyze", "type": "main", "index": 0 }
+      ]]
+    },
+    "Start Analyze": {
+      "main": [[
+        { "node": "DB: Fetch Pending", "type": "main", "index": 0 }
+      ]]
+    },
+    "Run Analyze Only": {
+      "main": [[
+        { "node": "DB: Fetch Pending", "type": "main", "index": 0 }
+      ]]
+    },
+    "DB: Fetch Pending": {
+      "main": [[
+        { "node": "Has Pending?", "type": "main", "index": 0 }
+      ]]
+    },
+    "Has Pending?": {
+      "main": [
+        [{ "node": "Batch Items", "type": "main", "index": 0 }],
         []
       ]
     },
     "Batch Items": {
-      "main": [
-        [
-          {
-            "node": "Filter: Claude",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[
+        { "node": "Filter: Claude", "type": "main", "index": 0 }
+      ]]
     },
     "Filter: Claude": {
-      "main": [
-        [
-          {
-            "node": "Unbatch Results",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[
+        { "node": "Parse + Prep Update", "type": "main", "index": 0 }
+      ]]
     },
-    "Unbatch Results": {
-      "main": [
-        [
-          {
-            "node": "Filter: Parse",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Parse + Prep Update": {
+      "main": [[
+        { "node": "DB: Update Jobs", "type": "main", "index": 0 }
+      ]]
     },
-    "Filter: Parse": {
-      "main": [
-        [
-          {
-            "node": "Is PASS?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "DB: Update Jobs": {
+      "main": [[
+        { "node": "Start Sync", "type": "main", "index": 0 }
+      ]]
     },
-    "Is PASS?": {
-      "main": [
-        [
-          {
-            "node": "Prep Generate",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Clean MAYBE/SKIP",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Start Sync": {
+      "main": [[
+        { "node": "DB: Fetch Unsynced", "type": "main", "index": 0 }
+      ]]
     },
-    "Clean MAYBE/SKIP": {
-      "main": [
-        [
-          {
-            "node": "Sheet: Log MAYBE/SKIP",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Run Sync Only": {
+      "main": [[
+        { "node": "DB: Fetch Unsynced", "type": "main", "index": 0 }
+      ]]
     },
-    "Prep Generate": {
-      "main": [
-        [
-          {
-            "node": "Generate: Claude",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "DB: Fetch Unsynced": {
+      "main": [[
+        { "node": "Format Sheet Rows", "type": "main", "index": 0 }
+      ]]
     },
-    "Generate: Claude": {
-      "main": [
-        [
-          {
-            "node": "Generate: Parse",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Format Sheet Rows": {
+      "main": [[
+        { "node": "Has Unsynced?", "type": "main", "index": 0 }
+      ]]
     },
-    "Generate: Parse": {
+    "Has Unsynced?": {
       "main": [
-        [
-          {
-            "node": "Write Local Files",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Write Local Files": {
-      "main": [
-        [
-          {
-            "node": "Prep Drive Upload",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Prep Drive Upload": {
-      "main": [
-        [
-          {
-            "node": "Has Files?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Has Files?": {
-      "main": [
-        [
-          {
-            "node": "Sheet: Log PASS",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Prep Error PASS",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Drive: Create Folder": {
-      "main": [
-        [
-          {
-            "node": "Prep File List",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Prep File List": {
-      "main": [
-        [
-          {
-            "node": "Drive: Upload File",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Drive: Upload File": {
-      "main": [
-        [
-          {
-            "node": "Post Upload",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Post Upload": {
-      "main": [
-        [
-          {
-            "node": "Sheet: Log PASS",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Sheet: Log PASS": {
-      "main": [
+        [{ "node": "Sheet: Append Rows", "type": "main", "index": 0 }],
         []
       ]
     },
-    "Prep Error PASS": {
-      "main": [
-        [
-          {
-            "node": "Sheet: Log Error PASS",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Sheet: Append Rows": {
+      "main": [[
+        { "node": "Prep Sync IDs", "type": "main", "index": 0 }
+      ]]
     },
-    "Sheet: Log Error PASS": {
-      "main": [
-        []
-      ]
+    "Prep Sync IDs": {
+      "main": [[
+        { "node": "DB: Mark Synced", "type": "main", "index": 0 }
+      ]]
     },
-    "Sheet: Log MAYBE/SKIP": {
-      "main": [
-        []
-      ]
+    "DB: Mark Synced": {
+      "main": [[
+        { "node": "Pipeline Metrics", "type": "main", "index": 0 }
+      ]]
+    },
+    "Pipeline Metrics": {
+      "main": [[
+        { "node": "Sheet: Log Metrics", "type": "main", "index": 0 }
+      ]]
     }
   },
   "settings": {
@@ -873,8 +595,6 @@
     "timezone": "Europe/Berlin"
   },
   "tags": [
-    {
-      "name": "job-search-local"
-    }
+    { "name": "job-search-v2" }
   ]
 }
