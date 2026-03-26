@@ -37,6 +37,20 @@
     },
     {
       "parameters": {
+        "httpMethod": "GET",
+        "path": "sync",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "trigger-sync",
+      "name": "Run Sync Only",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 1000],
+      "webhookId": "sync"
+    },
+    {
+      "parameters": {
         "jsCode": "// Arbeitnow: paginate up to 10 pages, relaxed client-side filters\nconst fs = require('fs');\nconst projectDir = ($env.JOBS_FUNNEL_PROJECT_DIR || '.').replace(/\\\\/g, '/');\nconst config = JSON.parse(fs.readFileSync(projectDir + '/config.json', 'utf-8'));\nconst profileDir = projectDir + '/profiles/' + ($env.JOBS_FUNNEL_PROFILE);\nconst search = JSON.parse(fs.readFileSync(profileDir + '/search.json', 'utf-8'));\n\nconst MAX_PAGES = config.an_max_pages || 10;\nconst DELAY_MS = config.an_delay_ms || 5000;\nconst cutoff = Date.now() - (config.an_days_back || 30) * 24 * 60 * 60 * 1000;\n\nconst titleKw = search.an_title_keywords || [];\nconst tagKw = search.an_tag_keywords || [];\nconst locKw = search.an_location_keywords || [];\nconst negKw = search.an_negative_keywords || [];\nconst engWords = ['the','and','you','we','team','experience','requirements','about','our','will','work','join','role','position'];\n\nfunction isLikelyEnglish(desc) {\n  const sample = (desc || '').substring(0, 500).toLowerCase();\n  const hits = engWords.filter(w => sample.includes(w)).length;\n  return hits >= 3;\n}\n\nconst allJobs = [];\nconst seen = new Set();\nconst errors = [];\nvar lastPage = 0;\n\nfor (let page = 1; page <= MAX_PAGES; page++) {\n  if (page > 1) await new Promise(r => setTimeout(r, DELAY_MS));\n  lastPage = page;\n  let body;\n  try {\n    body = await this.helpers.httpRequest({ method: 'GET', url: `https://www.arbeitnow.com/api/job-board-api?page=${page}`, json: true });\n  } catch (e) { errors.push({ page, error: e.message || String(e) }); break; }\n  const data = body.data || [];\n  if (data.length === 0) break;\n\n  let allOld = true;\n  for (const job of data) {\n    const created = new Date(job.created_at * 1000 || job.created_at).getTime();\n    if (created > cutoff) allOld = false;\n\n    const t = (job.title || '').toLowerCase();\n    const l = (job.location || '').toLowerCase();\n    const tags = (job.tags || []).map(t => t.toLowerCase());\n    const titleMatch = titleKw.some(k => t.includes(k));\n    const tagMatch = tagKw.some(k => tags.includes(k));\n    const locMatch = locKw.some(k => l.includes(k)) || job.remote;\n    const negMatch = negKw.some(k => t.includes(k));\n\n    if (!negMatch && (titleMatch || tagMatch || locMatch) && created > cutoff) {\n      const key = job.slug || job.url || job.title;\n      if (!seen.has(key)) {\n        seen.add(key);\n        allJobs.push(job);\n      }\n    }\n  }\n  if (allOld) break;\n  const maxPage = body.meta?.last_page || MAX_PAGES;\n  if (page >= maxPage) break;\n}\n\nif (allJobs.length === 0) return [];\n\nfunction parseSalary(job) {\n  let min = job.salary_min || null;\n  let max = job.salary_max || null;\n  let currency = job.salary_currency || null;\n  if (!min && job.salary) {\n    const nums = String(job.salary).replace(/[.,]/g, '').match(/\\d+/g);\n    if (nums && nums.length >= 2) { min = Number(nums[0]); max = Number(nums[1]); }\n    else if (nums && nums.length === 1) { min = Number(nums[0]); }\n    if (!currency && /eur|€/i.test(job.salary)) currency = 'EUR';\n    if (!currency && /usd|\\$/i.test(job.salary)) currency = 'USD';\n    if (!currency && /chf/i.test(job.salary)) currency = 'CHF';\n    if (!currency && /gbp|£/i.test(job.salary)) currency = 'GBP';\n  }\n  return { salary_min: min, salary_max: max, salary_currency: currency || (min ? 'EUR' : null) };\n}\n\nconst _crawlMeta = {\n  source: 'arbeitnow',\n  pages_fetched: lastPage,\n  total_results: allJobs.length,\n  fetch_errors: errors.length,\n  errors: errors.slice(0, 10),\n};\n\nconst mapped = allJobs.map(j => {\n  const desc = (j.description || '').substring(0, config.description_max_chars || 5000);\n  const sal = parseSalary(j);\n  return { json: {\n    source: 'arbeitnow',\n    external_id: j.slug || '',\n    url: j.url || `https://www.arbeitnow.com/view/${j.slug}`,\n    title: j.title || '',\n    company: j.company_name || '',\n    location: j.location || '',\n    description: desc,\n    tags: j.tags || [],\n    remote: j.remote || false,\n    likely_english: isLikelyEnglish(desc),\n    salary_min: sal.salary_min,\n    salary_max: sal.salary_max,\n    salary_currency: sal.salary_currency,\n  }};\n});\nif (mapped.length > 0) mapped[0].json._crawlMeta = _crawlMeta;\nreturn mapped;"
       },
       "id": "an-fetch",
@@ -263,6 +277,183 @@
           "name": "Postgres - Jobs Funnel"
         }
       }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Emit a single item to trigger the sync phase\nreturn [{ json: { _trigger: 'analyze_complete' } }];"
+      },
+      "id": "goto-sync",
+      "name": "Start Sync",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4350, 600],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM {{ $env.JOBS_FUNNEL_TABLE }} WHERE status = 'analyzed' AND sheet_synced = FALSE ORDER BY crawled_at ASC",
+        "options": {}
+      },
+      "id": "db-fetch-unsynced",
+      "name": "DB: Fetch Unsynced",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [4800, 600],
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_ME",
+          "name": "Postgres - Jobs Funnel"
+        }
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format Postgres rows into Google Sheet columns, skip if no unsynced rows\nconst all = $input.all().filter(item => item.json.id != null);\nif (all.length === 0) return [];\n\nreturn all.map(item => {\n  const j = item.json;\n  const crawledAt = j.crawled_at ? new Date(j.crawled_at) : new Date();\n  const blockers = Array.isArray(j.hard_blockers) ? j.hard_blockers.join('; ') : (j.hard_blockers || '');\n  const matches = Array.isArray(j.strong_matches) ? j.strong_matches.join('; ') : (j.strong_matches || '');\n  const decision = j.decision || 'SKIP';\n\n  // Status reflects user action, not auto-classification\n  let status = j.user_status || '';\n  if (!status && decision === 'SKIP') status = 'skipped';\n\n  return { json: {\n    'Date': crawledAt.toISOString().slice(0, 10),\n    'Fetched At': crawledAt.toISOString().replace('T', ' ').slice(0, 19) + ' UTC',\n    'Source': j.source || '',\n    'Company': j.company || '',\n    'Role': j.title || '',\n    'Location': j.location || '',\n    'Salary': j.salary_min && j.salary_max\n      ? `${j.salary_min}-${j.salary_max} ${j.salary_currency || 'EUR'}`\n      : (j.salary_min ? `${j.salary_min}+ ${j.salary_currency || 'EUR'}` : ''),\n    'Score': j.fit_score || 0,\n    'Decision': decision,\n    'CV Variant': j.cv_variant || 'software',\n    'Blockers': blockers,\n    'Strong Matches': matches,\n    'Reasoning': j.reasoning || '',\n    'Status': status,\n    'Drive Link': '',\n    'Job URL': j.url || '',\n    'Notes': j.priority_notes || '',\n    'My Notes': j.notes || '',\n    '_dbId': j.id\n  }};\n});"
+      },
+      "id": "format-sheet",
+      "name": "Format Sheet Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [5100, 600]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "leftValue": "={{ $json._empty }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "notTrue" }
+            }
+          ]
+        }
+      },
+      "id": "has-unsynced",
+      "name": "Has Unsynced?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [5300, 600]
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.JOBS_FUNNEL_SHEET_ID }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Tracker"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": ["Job URL"],
+          "schema": [
+            {"id": "Date", "displayName": "Date", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "Fetched At", "displayName": "Fetched At", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "Source", "displayName": "Source", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "Company", "displayName": "Company", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "Role", "displayName": "Role", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "Location", "displayName": "Location", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "Salary", "displayName": "Salary", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "Score", "displayName": "Score", "required": false, "defaultMatch": false, "display": true, "type": "number", "canBeUsedToMatch": false},
+            {"id": "Decision", "displayName": "Decision", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "CV Variant", "displayName": "CV Variant", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "Blockers", "displayName": "Blockers", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "Strong Matches", "displayName": "Strong Matches", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "Reasoning", "displayName": "Reasoning", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "Status", "displayName": "Status", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "Drive Link", "displayName": "Drive Link", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "Job URL", "displayName": "Job URL", "required": false, "defaultMatch": true, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "Notes", "displayName": "Notes", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "My Notes", "displayName": "My Notes", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "_dbId", "displayName": "_dbId", "required": false, "defaultMatch": false, "display": true, "type": "number", "canBeUsedToMatch": false}
+          ]
+        }
+      },
+      "id": "sheet-append",
+      "name": "Sheet: Sync Rows",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [5550, 600],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 10000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collect all DB IDs that were synced to Sheet and build UPDATE query\nconst table = $env.JOBS_FUNNEL_TABLE;\nlet formatItems;\ntry { formatItems = $('Format Sheet Rows').all(); } catch (e) { formatItems = []; }\nconst ids = formatItems.map(item => item.json._dbId).filter(Boolean);\n\nif (ids.length === 0) return [{ json: { _syncQuery: 'SELECT 1', _synced: 0 } }];\n\nreturn [{ json: {\n  _syncQuery: `UPDATE ${table} SET sheet_synced = TRUE, sheet_synced_at = NOW() WHERE id IN (${ids.join(',')})`,\n  _synced: ids.length\n}}];"
+      },
+      "id": "prep-sync-ids",
+      "name": "Prep Sync IDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [5800, 600],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json._syncQuery }}",
+        "options": {}
+      },
+      "id": "db-mark-synced",
+      "name": "DB: Mark Synced",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [6050, 600],
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_ME",
+          "name": "Postgres - Jobs Funnel"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collect pipeline run metrics and format for Metrics sheet tab\nlet formatItems = [];\ntry { formatItems = $('Format Sheet Rows').all().filter(i => i.json.Date); } catch (e) { /* no items */ }\n\nconst pass = formatItems.filter(i => i.json.Decision === 'PASS').length;\nconst maybe = formatItems.filter(i => i.json.Decision === 'MAYBE').length;\nconst skip = formatItems.filter(i => i.json.Decision === 'SKIP').length;\nconst total = pass + maybe + skip;\nconst now = new Date();\n\nreturn [{ json: {\n  'Date': now.toISOString().slice(0, 10),\n  'Timestamp': now.toISOString().replace('T', ' ').slice(0, 19) + ' UTC',\n  'Analyzed': total,\n  'PASS': pass,\n  'MAYBE': maybe,\n  'SKIP': skip,\n  'Pass Rate': total > 0 ? Math.round(pass / total * 100) + '%' : '0%',\n  'Synced': formatItems.length,\n}}];"
+      },
+      "id": "pipeline-metrics",
+      "name": "Pipeline Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [6300, 600],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.JOBS_FUNNEL_SHEET_ID }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Metrics"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": []
+        }
+      },
+      "id": "sheet-metrics",
+      "name": "Sheet: Log Metrics",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [6550, 600],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
     }
   ],
   "connections": {
@@ -364,6 +555,57 @@
     "Parse + Prep Update": {
       "main": [[
         { "node": "DB: Update Jobs", "type": "main", "index": 0 }
+      ]]
+    },
+    "DB: Update Jobs": {
+      "main": [[
+        { "node": "Start Sync", "type": "main", "index": 0 }
+      ]]
+    },
+    "Start Sync": {
+      "main": [[
+        { "node": "DB: Fetch Unsynced", "type": "main", "index": 0 }
+      ]]
+    },
+    "Run Sync Only": {
+      "main": [[
+        { "node": "DB: Fetch Unsynced", "type": "main", "index": 0 }
+      ]]
+    },
+    "DB: Fetch Unsynced": {
+      "main": [[
+        { "node": "Format Sheet Rows", "type": "main", "index": 0 }
+      ]]
+    },
+    "Format Sheet Rows": {
+      "main": [[
+        { "node": "Has Unsynced?", "type": "main", "index": 0 }
+      ]]
+    },
+    "Has Unsynced?": {
+      "main": [
+        [{ "node": "Sheet: Sync Rows", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Sheet: Sync Rows": {
+      "main": [[
+        { "node": "Prep Sync IDs", "type": "main", "index": 0 }
+      ]]
+    },
+    "Prep Sync IDs": {
+      "main": [[
+        { "node": "DB: Mark Synced", "type": "main", "index": 0 }
+      ]]
+    },
+    "DB: Mark Synced": {
+      "main": [[
+        { "node": "Pipeline Metrics", "type": "main", "index": 0 }
+      ]]
+    },
+    "Pipeline Metrics": {
+      "main": [[
+        { "node": "Sheet: Log Metrics", "type": "main", "index": 0 }
       ]]
     }
   },

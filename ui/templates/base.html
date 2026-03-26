@@ -355,6 +355,13 @@
       // Trigger the filter form to re-fetch
       htmx.trigger(form, 'change');
     });
+
+    // Download Excel with current filters
+    function downloadExcel() {
+      var form = document.querySelector('.filter-bar');
+      var params = new URLSearchParams(new FormData(form)).toString();
+      window.location.href = '/export?' + params;
+    }
   </script>
 </body>
 </html>

@@ -5,17 +5,21 @@ Start:
     python -m uvicorn ui.server:app --port 8080 --reload
 """
 
+import io
 import os
 import re
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 
 import psycopg2
 import psycopg2.extras
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
 
 # ── Config ───────────────────────────────────────────────────────────
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
@@ -145,6 +149,29 @@ def get_stats():
     return stats
 
 
+# ── Query builder ────────────────────────────────────────────────────
+def build_job_filter(decision="", applied="", min_score=0, max_score=10, search=""):
+    conditions = ["status IN ('analyzed', 'pending')"]
+    params: list = []
+    if decision:
+        conditions.append("decision = %s")
+        params.append(decision)
+    if applied == "applied":
+        conditions.append("user_status = 'applied'")
+    elif applied == "dismissed":
+        conditions.append("user_status = 'dismissed'")
+    elif applied == "pending":
+        conditions.append("user_status IS NULL")
+    conditions.append("COALESCE(fit_score, 0) >= %s")
+    params.append(min_score)
+    conditions.append("COALESCE(fit_score, 0) <= %s")
+    params.append(max_score)
+    if search:
+        conditions.append("(title ILIKE %s OR company ILIKE %s)")
+        params.extend([f"%{search}%", f"%{search}%"])
+    return " AND ".join(conditions), params
+
+
 # ── Routes ───────────────────────────────────────────────────────────
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
@@ -171,27 +198,7 @@ async def list_jobs(
     sort_col = sort if sort in allowed_sorts else "crawled_at"
     sort_dir = "ASC" if order.lower() == "asc" else "DESC"
 
-    conditions = ["status IN ('analyzed', 'pending')"]
-    params: list = []
-
-    if decision:
-        conditions.append("decision = %s")
-        params.append(decision)
-    if applied == "applied":
-        conditions.append("user_status = 'applied'")
-    elif applied == "dismissed":
-        conditions.append("user_status = 'dismissed'")
-    elif applied == "pending":
-        conditions.append("user_status IS NULL")
-    conditions.append("COALESCE(fit_score, 0) >= %s")
-    params.append(min_score)
-    conditions.append("COALESCE(fit_score, 0) <= %s")
-    params.append(max_score)
-    if search:
-        conditions.append("(title ILIKE %s OR company ILIKE %s)")
-        params.extend([f"%{search}%", f"%{search}%"])
-
-    where = " AND ".join(conditions)
+    where, params = build_job_filter(decision, applied, min_score, max_score, search)
     query = (
         f"SELECT {ROW_COLS} FROM {TABLE} WHERE {where} "
         f"ORDER BY {sort_col} {sort_dir} LIMIT %s OFFSET %s"
@@ -205,6 +212,110 @@ async def list_jobs(
     return render(request, "partials/job_rows.html", {
         "jobs": jobs, "total": total, "limit": limit, "offset": offset,
     })
+
+
+@app.get("/export")
+async def export_excel(
+    decision: str = Query(""),
+    applied: str = Query(""),
+    min_score: int = Query(0),
+    max_score: int = Query(10),
+    search: str = Query(""),
+    sort: str = Query("crawled_at"),
+    order: str = Query("desc"),
+):
+    allowed_sorts = {
+        "crawled_at", "fit_score", "company", "title", "location",
+        "decision", "applied", "analyzed_at",
+    }
+    sort_col = sort if sort in allowed_sorts else "crawled_at"
+    sort_dir = "ASC" if order.lower() == "asc" else "DESC"
+
+    where, params = build_job_filter(decision, applied, min_score, max_score, search)
+    query = (
+        f"SELECT {ROW_COLS} FROM {TABLE} WHERE {where} "
+        f"ORDER BY {sort_col} {sort_dir}"
+    )
+    jobs = fetch_all(query, tuple(params))
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Jobs"
+
+    headers = [
+        "Date", "Fetched At", "Source", "Company", "Role", "Location", "Salary",
+        "Score", "Decision", "CV Variant", "Blockers", "Strong Matches",
+        "Reasoning", "Status", "Job URL", "Notes", "My Notes", "_dbId",
+    ]
+    header_font = Font(bold=True)
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=h)
+        cell.font = header_font
+
+    fill_applied = PatternFill(start_color="DCFCE7", end_color="DCFCE7", fill_type="solid")
+    fill_action = PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid")
+    fill_dismissed = PatternFill(start_color="F3F4F6", end_color="F3F4F6", fill_type="solid")
+
+    for row_idx, j in enumerate(jobs, 2):
+        score = j["fit_score"] or 0
+        us = j["user_status"] or ""
+        blockers = "; ".join(j["hard_blockers"]) if j.get("hard_blockers") else ""
+        matches = "; ".join(j["strong_matches"]) if j.get("strong_matches") else ""
+        salary = format_salary(j)
+
+        crawled = j.get("crawled_at")
+        values = [
+            crawled.strftime("%Y-%m-%d") if crawled else "",
+            crawled.strftime("%Y-%m-%d %H:%M:%S UTC") if crawled else "",
+            j.get("source", ""),
+            j.get("company", ""),
+            j.get("title", ""),
+            j.get("location", ""),
+            salary,
+            score,
+            j.get("decision", ""),
+            j.get("cv_variant", ""),
+            blockers,
+            matches,
+            j.get("reasoning", ""),
+            us,
+            j.get("url", ""),
+            j.get("priority_notes", "") or "",
+            j.get("notes", "") or "",
+            j.get("id"),
+        ]
+        for col, val in enumerate(values, 1):
+            ws.cell(row=row_idx, column=col, value=val)
+
+        # Row coloring
+        if us == "applied":
+            fill = fill_applied
+        elif us == "dismissed":
+            fill = fill_dismissed
+        elif score >= 6 and not us:
+            fill = fill_action
+        else:
+            fill = None
+
+        if fill:
+            for col in range(1, len(headers) + 1):
+                ws.cell(row=row_idx, column=col).fill = fill
+
+    # Auto-width for key columns
+    for col in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 14]:
+        ws.column_dimensions[ws.cell(row=1, column=col).column_letter].width = 14
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+    filename = f"jobs_export_{timestamp}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/jobs/{job_id}", response_class=HTMLResponse)
