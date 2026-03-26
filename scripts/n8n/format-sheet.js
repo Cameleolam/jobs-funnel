@@ -9,6 +9,11 @@ return all.map(item => {
   const matches = Array.isArray(j.strong_matches) ? j.strong_matches.join('; ') : (j.strong_matches || '');
   const decision = j.decision || 'SKIP';
 
+  // Status reflects user action, not auto-classification
+  let status = '';
+  if (j.applied) status = 'applied';
+  else if (decision === 'SKIP') status = 'skipped';
+
   return { json: {
     'Date': crawledAt.toISOString().slice(0, 10),
     'Fetched At': crawledAt.toISOString().replace('T', ' ').slice(0, 19) + ' UTC',
@@ -25,7 +30,7 @@ return all.map(item => {
     'Blockers': blockers,
     'Strong Matches': matches,
     'Reasoning': j.reasoning || '',
-    'Status': decision === 'SKIP' ? 'skipped' : 'review',
+    'Status': status,
     'Drive Link': '',
     'Job URL': j.url || '',
     'Notes': j.priority_notes || '',

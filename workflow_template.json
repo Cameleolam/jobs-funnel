@@ -340,7 +340,7 @@
     },
     {
       "parameters": {
-        "operation": "append",
+        "operation": "appendOrUpdate",
         "documentId": {
           "__rl": true,
           "mode": "id",
@@ -354,12 +354,12 @@
         "columns": {
           "mappingMode": "autoMapInputData",
           "value": {},
-          "matchingColumns": [],
+          "matchingColumns": ["Job URL"],
           "ignoreFields": "_dbId"
         }
       },
       "id": "sheet-append",
-      "name": "Sheet: Append Rows",
+      "name": "Sheet: Sync Rows",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
       "position": [5550, 600],
@@ -564,11 +564,11 @@
     },
     "Has Unsynced?": {
       "main": [
-        [{ "node": "Sheet: Append Rows", "type": "main", "index": 0 }],
+        [{ "node": "Sheet: Sync Rows", "type": "main", "index": 0 }],
         []
       ]
     },
-    "Sheet: Append Rows": {
+    "Sheet: Sync Rows": {
       "main": [[
         { "node": "Prep Sync IDs", "type": "main", "index": 0 }
       ]]

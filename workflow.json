@@ -311,7 +311,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Format Postgres rows into Google Sheet columns, skip if no unsynced rows\nconst all = $input.all().filter(item => item.json.id != null);\nif (all.length === 0) return [];\n\nreturn all.map(item => {\n  const j = item.json;\n  const crawledAt = j.crawled_at ? new Date(j.crawled_at) : new Date();\n  const blockers = Array.isArray(j.hard_blockers) ? j.hard_blockers.join('; ') : (j.hard_blockers || '');\n  const matches = Array.isArray(j.strong_matches) ? j.strong_matches.join('; ') : (j.strong_matches || '');\n  const decision = j.decision || 'SKIP';\n\n  return { json: {\n    'Date': crawledAt.toISOString().slice(0, 10),\n    'Fetched At': crawledAt.toISOString().replace('T', ' ').slice(0, 19) + ' UTC',\n    'Source': j.source || '',\n    'Company': j.company || '',\n    'Role': j.title || '',\n    'Location': j.location || '',\n    'Salary': j.salary_min && j.salary_max\n      ? `${j.salary_min}-${j.salary_max} ${j.salary_currency || 'EUR'}`\n      : (j.salary_min ? `${j.salary_min}+ ${j.salary_currency || 'EUR'}` : ''),\n    'Score': j.fit_score || 0,\n    'Decision': decision,\n    'CV Variant': j.cv_variant || 'software',\n    'Blockers': blockers,\n    'Strong Matches': matches,\n    'Reasoning': j.reasoning || '',\n    'Status': decision === 'SKIP' ? 'skipped' : 'review',\n    'Drive Link': '',\n    'Job URL': j.url || '',\n    'Notes': j.priority_notes || '',\n    _dbId: j.id\n  }};\n});"
+        "jsCode": "// Format Postgres rows into Google Sheet columns, skip if no unsynced rows\nconst all = $input.all().filter(item => item.json.id != null);\nif (all.length === 0) return [];\n\nreturn all.map(item => {\n  const j = item.json;\n  const crawledAt = j.crawled_at ? new Date(j.crawled_at) : new Date();\n  const blockers = Array.isArray(j.hard_blockers) ? j.hard_blockers.join('; ') : (j.hard_blockers || '');\n  const matches = Array.isArray(j.strong_matches) ? j.strong_matches.join('; ') : (j.strong_matches || '');\n  const decision = j.decision || 'SKIP';\n\n  // Status reflects user action, not auto-classification\n  let status = '';\n  if (j.applied) status = 'applied';\n  else if (decision === 'SKIP') status = 'skipped';\n\n  return { json: {\n    'Date': crawledAt.toISOString().slice(0, 10),\n    'Fetched At': crawledAt.toISOString().replace('T', ' ').slice(0, 19) + ' UTC',\n    'Source': j.source || '',\n    'Company': j.company || '',\n    'Role': j.title || '',\n    'Location': j.location || '',\n    'Salary': j.salary_min && j.salary_max\n      ? `${j.salary_min}-${j.salary_max} ${j.salary_currency || 'EUR'}`\n      : (j.salary_min ? `${j.salary_min}+ ${j.salary_currency || 'EUR'}` : ''),\n    'Score': j.fit_score || 0,\n    'Decision': decision,\n    'CV Variant': j.cv_variant || 'software',\n    'Blockers': blockers,\n    'Strong Matches': matches,\n    'Reasoning': j.reasoning || '',\n    'Status': status,\n    'Drive Link': '',\n    'Job URL': j.url || '',\n    'Notes': j.priority_notes || '',\n    _dbId: j.id\n  }};\n});"
       },
       "id": "format-sheet",
       "name": "Format Sheet Rows",
@@ -340,7 +340,7 @@
     },
     {
       "parameters": {
-        "operation": "append",
+        "operation": "appendOrUpdate",
         "documentId": {
           "__rl": true,
           "mode": "id",
@@ -354,12 +354,12 @@
         "columns": {
           "mappingMode": "autoMapInputData",
           "value": {},
-          "matchingColumns": [],
+          "matchingColumns": ["Job URL"],
           "ignoreFields": "_dbId"
         }
       },
       "id": "sheet-append",
-      "name": "Sheet: Append Rows",
+      "name": "Sheet: Sync Rows",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
       "position": [5550, 600],
@@ -564,11 +564,11 @@
     },
     "Has Unsynced?": {
       "main": [
-        [{ "node": "Sheet: Append Rows", "type": "main", "index": 0 }],
+        [{ "node": "Sheet: Sync Rows", "type": "main", "index": 0 }],
         []
       ]
     },
-    "Sheet: Append Rows": {
+    "Sheet: Sync Rows": {
       "main": [[
         { "node": "Prep Sync IDs", "type": "main", "index": 0 }
       ]]
