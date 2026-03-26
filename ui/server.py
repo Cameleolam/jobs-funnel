@@ -7,7 +7,7 @@ Start:
 
 import os
 import re
-import urllib.request
+
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -29,7 +29,6 @@ DB_CONF = dict(
     password=os.environ.get("JOBS_FUNNEL_PG_PASSWORD", ""),
 )
 TABLE = os.environ.get("JOBS_FUNNEL_TABLE", "jobs")
-N8N_BASE = os.environ.get("JOBS_FUNNEL_N8N_BASE", "http://localhost:5678")
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 
@@ -203,16 +202,6 @@ async def rescore_job(request: Request, job_id: int, description: str = Form(...
     )
     return render(request, "partials/job_row_single.html", {"job": job})
 
-
-@app.post("/trigger/analyze", response_class=HTMLResponse)
-async def trigger_analyze(request: Request):
-    try:
-        req = urllib.request.Request(f"{N8N_BASE}/webhook/analyze-only", method="GET")
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            pass
-    except Exception:
-        pass  # n8n may return before analysis completes; that's fine
-    return render(request, "partials/stats.html", {"stats": get_stats()})
 
 
 @app.get("/stats", response_class=HTMLResponse)

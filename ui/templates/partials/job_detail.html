@@ -59,7 +59,7 @@
       <textarea name="description" placeholder="Paste full job description here...">{{ job.description|html_to_text }}</textarea>
       <div style="margin-top:0.5rem;">
         <button type="submit" class="btn btn-primary">Queue Re-score</button>
-        <span class="text-muted" style="margin-left:0.5rem;">Then click "Trigger Analyze" above to process.</span>
+        <span class="text-muted" style="margin-left:0.5rem;">Sets status to pending. n8n will re-analyze on next run.</span>
       </div>
     </form>
   </div>
