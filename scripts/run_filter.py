@@ -51,7 +51,7 @@ def main():
             if result.stdout:
                 print(result.stdout, end="")
             elif result.returncode != 0:
-                # filter.py failed without output — emit fallback SKIP
+                # filter.py failed without output - emit fallback SKIP
                 err_msg = (result.stderr or "Unknown error")[:200]
                 print(json.dumps([{
                     "fit_score": 0, "decision": "SKIP", "cv_variant": "software",

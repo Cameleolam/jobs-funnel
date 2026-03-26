@@ -6,6 +6,8 @@ cvs/
 !cvs/README.md
 prompts/
 !prompts/README.md
+profiles/*/
+!profiles/README.md
 /docs
 
 # Generated output

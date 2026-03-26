@@ -1,15 +1,18 @@
 // Arbeitnow: paginate up to 10 pages, relaxed client-side filters
-const config = JSON.parse(require('fs').readFileSync(
-  ($env.JOBS_FUNNEL_PROJECT_DIR || '.').replace(/\\/g, '/') + '/config.json', 'utf-8'
-));
+const fs = require('fs');
+const projectDir = ($env.JOBS_FUNNEL_PROJECT_DIR || '.').replace(/\\/g, '/');
+const config = JSON.parse(fs.readFileSync(projectDir + '/config.json', 'utf-8'));
+const profileDir = projectDir + '/profiles/' + ($env.JOBS_FUNNEL_PROFILE);
+const search = JSON.parse(fs.readFileSync(profileDir + '/search.json', 'utf-8'));
+
 const MAX_PAGES = config.an_max_pages || 10;
 const DELAY_MS = config.an_delay_ms || 5000;
 const cutoff = Date.now() - (config.an_days_back || 30) * 24 * 60 * 60 * 1000;
 
-const titleKw = ['python','backend','back-end','back end','data engineer','data engineering','software engineer','software developer','platform engineer','api developer','developer python','entwickler','softwareentwickler','devops','site reliability','sre','etl','junior developer','junior engineer','flask','django','fastapi','developer','engineer','cloud','infrastructure','programmierer','informatiker','application engineer','system engineer','web developer','webentwickler','it engineer','automation','machine learning','ml engineer','data scientist','data analyst','full stack','fullstack'];
-const tagKw = ['python','backend','data','engineering','devops','api','flask','django','fastapi','docker','aws','postgresql','kubernetes','linux','sql','java','node','typescript','go','rust','cloud','azure','gcp','terraform','ci/cd','microservices'];
-const locKw = ['hamburg','berlin','germany','remote','deutschland','münchen','munich','frankfurt','köln','cologne','deutsch','düsseldorf','hannover','stuttgart','bremen','nürnberg','nuremberg','leipzig','dresden','essen','dortmund','bonn','karlsruhe','mannheim','freiburg','heidelberg','europe','eu','dach'];
-const negKw = ['manager','consultant','designer','marketing','sales','recruiter','sap','sap consultant','abap','salesforce','product owner','scrum master','project manager','buchhalter','accounting','finance','legal','rechtsanwalt','jurist','pflege','nurse','arzt','physician','lehrer','teacher','werkstudent','working student','dual student','intern','praktikant','trainee','senior director','vp ','vice president','head of','chief','principal','staff engineer','lead architect'];
+const titleKw = search.an_title_keywords || [];
+const tagKw = search.an_tag_keywords || [];
+const locKw = search.an_location_keywords || [];
+const negKw = search.an_negative_keywords || [];
 const engWords = ['the','and','you','we','team','experience','requirements','about','our','will','work','join','role','position'];
 
 function isLikelyEnglish(desc) {

@@ -12,6 +12,7 @@ Output: JSON assessment (object or array) with score, decision, cv_variant
 """
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -19,7 +20,8 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PIPELINE_DIR = SCRIPT_DIR.parent
-PROMPT_FILE = PIPELINE_DIR / "prompts" / "filter_prompt.md"
+PROFILE = os.environ["JOBS_FUNNEL_PROFILE"]
+PROMPT_FILE = PIPELINE_DIR / "profiles" / PROFILE / "filter_prompt.md"
 
 
 def main():
@@ -106,7 +108,7 @@ def main():
     except json.JSONDecodeError:
         pass  # Not wrapped in Claude's JSON format, use raw
 
-    # Clean markdown code fences (robust — handles whitespace variations)
+    # Clean markdown code fences (robust - handles whitespace variations)
     clean = result_text.strip()
     # Try to find JSON array or object directly, ignoring any surrounding text/fences
     # This handles cases where result_text has code fences, extra whitespace, etc.
@@ -131,7 +133,7 @@ def main():
     try:
         assessment = json.loads(clean)
     except json.JSONDecodeError:
-        # Output SKIP fallback instead of failing — let downstream nodes handle it
+        # Output SKIP fallback instead of failing - let downstream nodes handle it
         fallback = {
             "fit_score": 0,
             "decision": "SKIP",

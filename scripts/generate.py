@@ -8,6 +8,7 @@ Output: JSON with tailored_cv_html, cover_letter_text, cover_letter_html, tailor
 """
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -16,8 +17,10 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PIPELINE_DIR = SCRIPT_DIR.parent
-PROMPT_FILE = PIPELINE_DIR / "prompts" / "generate_prompt.md"
-CVS_DIR = PIPELINE_DIR / "cvs"
+PROFILE = os.environ["JOBS_FUNNEL_PROFILE"]
+PROFILE_DIR = PIPELINE_DIR / "profiles" / PROFILE
+PROMPT_FILE = PROFILE_DIR / "generate_prompt.md"
+CVS_DIR = PROFILE_DIR / "cvs"
 
 VARIANT_MAP = {
     "software": "software.html",

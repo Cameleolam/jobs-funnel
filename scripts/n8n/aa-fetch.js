@@ -1,17 +1,15 @@
 // Arbeitsagentur: run multiple server-side filtered searches + fetch full descriptions
-const config = JSON.parse(require('fs').readFileSync(
-  ($env.JOBS_FUNNEL_PROJECT_DIR || '.').replace(/\\/g, '/') + '/config.json', 'utf-8'
-));
+const fs = require('fs');
+const projectDir = ($env.JOBS_FUNNEL_PROJECT_DIR || '.').replace(/\\/g, '/');
+const config = JSON.parse(fs.readFileSync(projectDir + '/config.json', 'utf-8'));
+const profileDir = projectDir + '/profiles/' + ($env.JOBS_FUNNEL_PROFILE);
+const search = JSON.parse(fs.readFileSync(profileDir + '/search.json', 'utf-8'));
+
 const BASE = 'https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobs';
 const HEADERS = { 'X-API-Key': 'jobboerse-jobsuche', 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' };
 
-const searches = [
-  'Python Developer', 'Backend Engineer', 'Data Engineer', 'Software Engineer',
-  'Python Entwickler', 'Software Entwickler', 'Backend Entwickler',
-  'ETL Developer', 'ETL Entwickler', 'Cloud Engineer',
-  'Flask', 'Django', 'FastAPI', 'PHP Symfony', 'DevOps'
-];
-const commonParams = 'wo=Hamburg&umkreis=200&veroeffentlichtseit=30&pav=false&zeitarbeit=false&size=100';
+const searches = search.aa_searches || [];
+const commonParams = `wo=${encodeURIComponent(search.aa_location)}&umkreis=${search.aa_radius_km}&veroeffentlichtseit=30&pav=false&zeitarbeit=false&size=100`;
 
 const seenIds = new Set();
 const jobs = [];

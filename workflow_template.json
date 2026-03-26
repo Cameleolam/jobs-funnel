@@ -112,7 +112,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT url FROM jobs",
+        "query": "SELECT url FROM {{ $env.JOBS_FUNNEL_TABLE }}",
         "options": {}
       },
       "id": "dedup-get-urls",
@@ -200,7 +200,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM jobs WHERE status IN ('pending', 'error') AND retry_count < 3 ORDER BY crawled_at ASC LIMIT 80",
+        "query": "SELECT * FROM {{ $env.JOBS_FUNNEL_TABLE }} WHERE status IN ('pending', 'error') AND retry_count < 3 ORDER BY crawled_at ASC LIMIT 80",
         "options": {}
       },
       "id": "db-fetch-pending",
@@ -292,7 +292,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM jobs WHERE status = 'analyzed' AND sheet_synced = FALSE ORDER BY crawled_at ASC",
+        "query": "SELECT * FROM {{ $env.JOBS_FUNNEL_TABLE }} WHERE status = 'analyzed' AND sheet_synced = FALSE ORDER BY crawled_at ASC",
         "options": {}
       },
       "id": "db-fetch-unsynced",
