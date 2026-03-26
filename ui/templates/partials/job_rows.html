@@ -7,6 +7,7 @@
 {% endif %}
 
 {% if total > offset + limit %}
+{% set remaining = total - offset - limit %}
 <tr id="load-more-row">
   <td colspan="8" style="text-align:center; padding:0.8rem;">
     <button class="btn btn-primary btn-sm"
@@ -14,7 +15,14 @@
             hx-target="#load-more-row"
             hx-swap="outerHTML"
             hx-include=".filter-bar">
-      Load more ({{ total - offset - limit }} remaining)
+      Load more ({{ remaining }} remaining)
+    </button>
+    <button class="btn btn-sm btn-skip"
+            hx-get="/jobs?offset={{ offset + limit }}&limit={{ remaining }}"
+            hx-target="#load-more-row"
+            hx-swap="outerHTML"
+            hx-include=".filter-bar">
+      Load all {{ remaining }}
     </button>
   </td>
 </tr>
