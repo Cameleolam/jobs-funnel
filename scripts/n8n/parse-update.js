@@ -10,6 +10,15 @@ function sqlStr(s) {
   return "'" + String(s).replace(/\\/g, '\\\\').replace(/'/g, "''").replace(/\0/g, '') + "'";
 }
 
+// Dollar-quoted JSONB literal: avoids double-encoding from sqlStr + ::jsonb cast
+function jsonbLiteral(value) {
+  const arr = Array.isArray(value) ? value : [];
+  const json = JSON.stringify(arr);
+  let tag = '$jb$';
+  if (json.includes(tag)) tag = '$jb2$';
+  return tag + json + tag + '::jsonb';
+}
+
 const results = [];
 for (let b = 0; b < $input.all().length; b++) {
   const item = $input.all()[b];
@@ -63,7 +72,7 @@ for (let b = 0; b < $input.all().length; b++) {
     const cvVariant = VALID_VARIANTS.includes(assessment.cv_variant) ? assessment.cv_variant : 'software';
 
     results.push({ json: {
-      _updateQuery: `UPDATE ${table} SET status = 'analyzed', analyzed_at = NOW(), error = NULL, retry_count = 0, fit_score = ${score}, decision = '${decision}', cv_variant = '${cvVariant}', hard_blockers = ${sqlStr(JSON.stringify(assessment.hard_blockers || []))}::jsonb, soft_gaps = ${sqlStr(JSON.stringify(assessment.soft_gaps || []))}::jsonb, strong_matches = ${sqlStr(JSON.stringify(assessment.strong_matches || []))}::jsonb, reasoning = ${sqlStr(assessment.reasoning || '')}, priority_notes = ${sqlStr(assessment.priority_notes || null)} WHERE id = ${orig.id}`
+      _updateQuery: `UPDATE ${table} SET status = 'analyzed', analyzed_at = NOW(), error = NULL, retry_count = 0, fit_score = ${score}, decision = '${decision}', cv_variant = '${cvVariant}', hard_blockers = ${jsonbLiteral(assessment.hard_blockers)}, soft_gaps = ${jsonbLiteral(assessment.soft_gaps)}, strong_matches = ${jsonbLiteral(assessment.strong_matches)}, reasoning = ${sqlStr(assessment.reasoning || '')}, priority_notes = ${sqlStr(assessment.priority_notes || null)} WHERE id = ${orig.id}`
     }});
   }
 }
