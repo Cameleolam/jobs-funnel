@@ -42,7 +42,10 @@ CREATE TABLE IF NOT EXISTS jobs (
     sheet_synced    BOOLEAN DEFAULT FALSE,
     sheet_synced_at TIMESTAMPTZ,
 
-    user_status     TEXT              -- future: review/applied/interview/offer/rejected
+    user_status     TEXT,             -- future: review/applied/interview/offer/rejected
+    applied         BOOLEAN DEFAULT FALSE,
+    applied_at      TIMESTAMPTZ,
+    notes           TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);

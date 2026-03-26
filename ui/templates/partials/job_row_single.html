@@ -1,9 +1,27 @@
-{% set score_class = "score-high" if (job.fit_score or 0) >= 7 else ("score-mid" if (job.fit_score or 0) >= 5 else "score-low") %}
-{% set decision_class = "decision-" ~ (job.decision or "SKIP") if job.status == "analyzed" else "status-pending" %}
+{% set score_val = job.fit_score or 0 %}
+{% set score_class = "score-high" if score_val >= 7 else ("score-mid" if score_val >= 5 else "score-low") %}
+{% set is_applied = job.applied or false %}
+{% set needs_action = score_val >= 6 and not is_applied and job.status == "analyzed" %}
+{% set has_flag = job.priority_notes and ("manual check" in (job.priority_notes|lower) or "flag" in (job.priority_notes|lower) or "fetch full" in (job.priority_notes|lower) or "fetch the" in (job.priority_notes|lower)) %}
+
+{% if job.status != "analyzed" %}
+  {% set row_class = "status-pending" %}
+{% elif is_applied %}
+  {% set row_class = "applied-done" %}
+{% elif needs_action %}
+  {% set row_class = "needs-action" %}
+{% elif (job.decision or "SKIP") == "PASS" %}
+  {% set row_class = "decision-PASS" %}
+{% elif (job.decision or "SKIP") == "MAYBE" %}
+  {% set row_class = "decision-MAYBE" %}
+{% else %}
+  {% set row_class = "decision-SKIP" %}
+{% endif %}
+
 {% set badge_class = "badge-" ~ (job.decision or "skip")|lower if job.status == "analyzed" else "badge-pending" %}
 {% set badge_text = job.decision if job.status == "analyzed" else "PENDING" %}
 
-<tr class="job-row {{ decision_class }}"
+<tr class="job-row {{ row_class }}"
     hx-get="/jobs/{{ job.id }}"
     hx-target="#detail-{{ job.id }}"
     hx-swap="innerHTML"
@@ -13,9 +31,24 @@
   <td><strong>{{ job.company }}</strong></td>
   <td>{{ job.title }}</td>
   <td>{{ job.location }}</td>
-  <td class="text-muted">{{ job.source }}</td>
+  <td class="text-muted">{{ job|format_salary }}</td>
   <td><span class="score {{ score_class }}">{{ job.fit_score if job.fit_score is not none else '?' }}</span></td>
   <td><span class="badge {{ badge_class }}">{{ badge_text }}</span></td>
   <td class="text-muted">{{ job.cv_variant or '' }}</td>
+  <td class="info-icons">
+    {% if job.remote %}<span class="icon-badge icon-remote" title="Remote">R</span>{% endif %}
+    {% if job.likely_english %}<span class="icon-badge icon-en" title="Likely English">EN</span>{% endif %}
+    {% if has_flag %}<span class="icon-badge icon-flag" title="{{ job.priority_notes[:80] }}">!</span>{% endif %}
+    {% if job.notes %}<span class="icon-badge icon-note" title="{{ job.notes[:80] }}">N</span>{% endif %}
+  </td>
+  <td class="applied-cell" onclick="event.stopPropagation()">
+    <input type="checkbox"
+           class="applied-checkbox"
+           {{ "checked" if is_applied else "" }}
+           hx-patch="/jobs/{{ job.id }}/applied"
+           hx-vals='{"applied": "{{ "false" if is_applied else "true" }}"}'
+           hx-target="#row-{{ job.id }}"
+           hx-swap="outerHTML settle:0.1s">
+  </td>
 </tr>
-<tr class="detail-row"><td colspan="8" class="detail-cell" id="detail-{{ job.id }}"></td></tr>
+<tr class="detail-row"><td colspan="10" class="detail-cell" id="detail-{{ job.id }}"></td></tr>

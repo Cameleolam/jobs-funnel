@@ -3,6 +3,20 @@
     <button class="btn btn-sm btn-skip" onclick="this.closest('.detail-cell').innerHTML=''">Close</button>
   </div>
 
+  {% set has_flag = job.priority_notes and ("manual check" in (job.priority_notes|lower) or "flag" in (job.priority_notes|lower) or "fetch full" in (job.priority_notes|lower) or "fetch the" in (job.priority_notes|lower)) %}
+
+  {% if has_flag %}
+  <div class="flag-banner">
+    <strong>Flagged for review:</strong> {{ job.priority_notes }}
+  </div>
+  {% endif %}
+
+  <div class="detail-meta">
+    <span class="text-muted">Crawled: {{ job.crawled_at.strftime('%Y-%m-%d %H:%M') if job.crawled_at else 'N/A' }}</span>
+    <span class="text-muted">Analyzed: {{ job.analyzed_at.strftime('%Y-%m-%d %H:%M') if job.analyzed_at else 'N/A' }}</span>
+    <span class="text-muted">Source: {{ job.source }}</span>
+  </div>
+
   <h4>Reasoning</h4>
   <p>{{ job.reasoning or 'No reasoning available.' }}</p>
 
@@ -27,10 +41,25 @@
   </ul>
   {% endif %}
 
-  {% if job.priority_notes %}
+  {% if job.tags and job.tags|length > 0 %}
+  <h4>Tags</h4>
+  <div class="tag-list">
+    {% for t in job.tags %}<span class="tag-badge">{{ t }}</span>{% endfor %}
+  </div>
+  {% endif %}
+
+  {% if job.priority_notes and not has_flag %}
   <h4>Notes</h4>
   <p>{{ job.priority_notes }}</p>
   {% endif %}
+
+  <h4>Notes</h4>
+  <form class="notes-form" hx-patch="/jobs/{{ job.id }}/notes" hx-target="#row-{{ job.id }}" hx-swap="outerHTML settle:0.1s">
+    <div style="display:flex; gap:0.5rem; align-items:flex-start;">
+      <input type="text" name="notes" value="{{ job.notes or '' }}" placeholder="Add a note..." class="notes-input">
+      <button type="submit" class="btn btn-sm btn-primary">Save</button>
+    </div>
+  </form>
 
   <h4>Link</h4>
   <a class="job-link" href="{{ job.url }}" target="_blank" rel="noopener">{{ job.url }}</a>

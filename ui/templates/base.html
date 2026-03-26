@@ -15,7 +15,7 @@
       line-height: 1.5;
     }
 
-    .container { max-width: 1400px; margin: 0 auto; padding: 1rem; }
+    .container { max-width: 1600px; margin: 0 auto; padding: 1rem; }
 
     /* ── Stats bar ──────────────────────────────── */
     .stats-bar {
@@ -39,6 +39,7 @@
     .stat-card.maybe .value { color: #ca8a04; }
     .stat-card.skip .value { color: #9ca3af; }
     .stat-card.pending .value { color: #2563eb; }
+    .stat-card.applied .value { color: #7c3aed; }
 
     /* ── Filter bar ─────────────────────────────── */
     .filter-bar {
@@ -116,11 +117,15 @@
     .jobs-table tr.job-row { cursor: pointer; transition: background 0.1s; }
     .jobs-table tr.job-row:hover { background: #fafafa; }
 
-    /* Decision colors */
+    /* Row colors */
     tr.decision-PASS { border-left: 3px solid #16a34a; }
     tr.decision-MAYBE { border-left: 3px solid #ca8a04; }
     tr.decision-SKIP { border-left: 3px solid #d1d5db; }
     tr.status-pending { border-left: 3px solid #2563eb; }
+    tr.needs-action { border-left: 3px solid #ef4444; background: #fef2f2; }
+    tr.needs-action:hover { background: #fee2e2; }
+    tr.applied-done { border-left: 3px solid #16a34a; background: #f0fdf4; }
+    tr.applied-done:hover { background: #dcfce7; }
 
     .badge {
       display: inline-block;
@@ -175,6 +180,70 @@
     .tag-blocker { color: #dc2626; }
     .tag-match { color: #16a34a; }
     .tag-gap { color: #ca8a04; }
+
+    /* ── Info icons ──────────────────────────────── */
+    .info-icons { white-space: nowrap; }
+    .icon-badge {
+      display: inline-block;
+      padding: 0.1rem 0.35rem;
+      border-radius: 3px;
+      font-size: 0.65rem;
+      font-weight: 700;
+      margin-right: 2px;
+      vertical-align: middle;
+    }
+    .icon-remote { background: #dbeafe; color: #1e40af; }
+    .icon-en { background: #ede9fe; color: #6d28d9; }
+    .icon-flag { background: #fef3c7; color: #92400e; }
+    .icon-note { background: #e0e7ff; color: #3730a3; }
+
+    /* ── Applied checkbox ────────────────────────── */
+    .applied-cell { text-align: center; }
+    .applied-checkbox {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+      accent-color: #16a34a;
+    }
+
+    /* ── Tag badges (detail panel) ───────────────── */
+    .tag-list { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.2rem; }
+    .tag-badge {
+      display: inline-block;
+      padding: 0.1rem 0.5rem;
+      background: #f3f4f6;
+      color: #374151;
+      border-radius: 999px;
+      font-size: 0.7rem;
+    }
+
+    /* ── Notes input ──────────────────────────────── */
+    .notes-input {
+      flex: 1;
+      padding: 0.3rem 0.5rem;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 0.82rem;
+      font-family: inherit;
+    }
+
+    /* ── Flag banner ─────────────────────────────── */
+    .flag-banner {
+      background: #fef3c7;
+      border: 1px solid #fbbf24;
+      border-radius: 6px;
+      padding: 0.5rem 0.8rem;
+      font-size: 0.82rem;
+      color: #92400e;
+      margin-bottom: 0.8rem;
+    }
+
+    /* ── Detail meta ─────────────────────────────── */
+    .detail-meta {
+      display: flex;
+      gap: 1.5rem;
+      margin-bottom: 0.5rem;
+    }
 
     .detail-actions {
       display: flex;

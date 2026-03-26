@@ -7,7 +7,6 @@ Start:
 
 import os
 import re
-
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -35,7 +34,16 @@ TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 app = FastAPI(title="Jobs Funnel UI")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
+# ── Row columns selected for list views ──────────────────────────────
+ROW_COLS = (
+    "id, url, title, company, location, source, fit_score, decision, "
+    "cv_variant, reasoning, status, crawled_at, analyzed_at, "
+    "salary_min, salary_max, salary_currency, remote, likely_english, "
+    "tags, priority_notes, applied, notes"
+)
 
+
+# ── Jinja filters ────────────────────────────────────────────────────
 def html_to_text(value):
     if not value:
         return ""
@@ -51,7 +59,29 @@ def html_to_text(value):
     return text.strip()
 
 
+def format_salary(job):
+    mn, mx = job.get("salary_min"), job.get("salary_max")
+    if not mn and not mx:
+        return ""
+    cur = (job.get("salary_currency") or "EUR").upper()
+    sym = {"EUR": "\u20ac", "USD": "$", "CHF": "CHF", "GBP": "\u00a3"}.get(cur, cur)
+    if mn and mx:
+        return f"{mn // 1000}-{mx // 1000}k {sym}"
+    if mn:
+        return f"{mn // 1000}k+ {sym}"
+    return f"{mx // 1000}k {sym}"
+
+
+def has_flag(notes):
+    if not notes:
+        return False
+    lower = notes.lower()
+    return any(kw in lower for kw in ("manual check", "flag", "fetch full", "fetch the"))
+
+
 templates.env.filters["html_to_text"] = html_to_text
+templates.env.filters["format_salary"] = format_salary
+templates.env.filters["has_flag"] = has_flag
 
 
 def render(request: Request, name: str, ctx: dict | None = None):
@@ -104,6 +134,10 @@ def get_stats():
         f"SELECT COUNT(*) as cnt FROM {TABLE} WHERE status = 'pending'"
     )
     stats["pending"] = pending["cnt"] if pending else 0
+    applied = fetch_one(
+        f"SELECT COUNT(*) as cnt FROM {TABLE} WHERE applied = TRUE"
+    )
+    stats["applied"] = applied["cnt"] if applied else 0
     return stats
 
 
@@ -117,6 +151,7 @@ async def index(request: Request):
 async def list_jobs(
     request: Request,
     decision: str = Query("", alias="decision"),
+    applied: str = Query("", alias="applied"),
     min_score: int = Query(0, alias="min_score"),
     max_score: int = Query(10, alias="max_score"),
     search: str = Query("", alias="search"),
@@ -126,7 +161,8 @@ async def list_jobs(
     offset: int = Query(0, alias="offset"),
 ):
     allowed_sorts = {
-        "crawled_at", "fit_score", "company", "title", "location", "decision",
+        "crawled_at", "fit_score", "company", "title", "location",
+        "decision", "applied", "analyzed_at",
     }
     sort_col = sort if sort in allowed_sorts else "crawled_at"
     sort_dir = "ASC" if order.lower() == "asc" else "DESC"
@@ -137,6 +173,10 @@ async def list_jobs(
     if decision:
         conditions.append("decision = %s")
         params.append(decision)
+    if applied == "yes":
+        conditions.append("applied = TRUE")
+    elif applied == "no":
+        conditions.append("(applied = FALSE OR applied IS NULL)")
     conditions.append("COALESCE(fit_score, 0) >= %s")
     params.append(min_score)
     conditions.append("COALESCE(fit_score, 0) <= %s")
@@ -147,9 +187,7 @@ async def list_jobs(
 
     where = " AND ".join(conditions)
     query = (
-        f"SELECT id, url, title, company, location, source, fit_score, decision, "
-        f"cv_variant, reasoning, status, crawled_at "
-        f"FROM {TABLE} WHERE {where} "
+        f"SELECT {ROW_COLS} FROM {TABLE} WHERE {where} "
         f"ORDER BY {sort_col} {sort_dir} LIMIT %s OFFSET %s"
     )
     params.extend([limit, offset])
@@ -167,7 +205,7 @@ async def list_jobs(
 async def job_detail(request: Request, job_id: int):
     job = fetch_one(f"SELECT * FROM {TABLE} WHERE id = %s", (job_id,))
     if not job:
-        return HTMLResponse("<tr><td colspan='8'>Job not found</td></tr>", status_code=404)
+        return HTMLResponse("<tr><td colspan='11'>Job not found</td></tr>", status_code=404)
     return render(request, "partials/job_detail.html", {"job": job})
 
 
@@ -179,11 +217,34 @@ async def update_job(request: Request, job_id: int, decision: str = Form(...)):
         f"UPDATE {TABLE} SET decision = %s WHERE id = %s",
         (decision, job_id),
     )
-    job = fetch_one(
-        f"SELECT id, url, title, company, location, source, fit_score, decision, "
-        f"cv_variant, reasoning, status, crawled_at FROM {TABLE} WHERE id = %s",
-        (job_id,),
+    job = fetch_one(f"SELECT {ROW_COLS} FROM {TABLE} WHERE id = %s", (job_id,))
+    return render(request, "partials/job_row_single.html", {"job": job})
+
+
+@app.patch("/jobs/{job_id}/applied", response_class=HTMLResponse)
+async def toggle_applied(request: Request, job_id: int, applied: str = Form(...)):
+    is_applied = applied == "true"
+    if is_applied:
+        execute(
+            f"UPDATE {TABLE} SET applied = TRUE, applied_at = NOW() WHERE id = %s",
+            (job_id,),
+        )
+    else:
+        execute(
+            f"UPDATE {TABLE} SET applied = FALSE, applied_at = NULL WHERE id = %s",
+            (job_id,),
+        )
+    job = fetch_one(f"SELECT {ROW_COLS} FROM {TABLE} WHERE id = %s", (job_id,))
+    return render(request, "partials/job_row_single.html", {"job": job})
+
+
+@app.patch("/jobs/{job_id}/notes", response_class=HTMLResponse)
+async def update_notes(request: Request, job_id: int, notes: str = Form("")):
+    execute(
+        f"UPDATE {TABLE} SET notes = %s WHERE id = %s",
+        (notes if notes.strip() else None, job_id),
     )
+    job = fetch_one(f"SELECT {ROW_COLS} FROM {TABLE} WHERE id = %s", (job_id,))
     return render(request, "partials/job_row_single.html", {"job": job})
 
 
@@ -195,13 +256,8 @@ async def rescore_job(request: Request, job_id: int, description: str = Form(...
         f"sheet_synced = FALSE, sheet_synced_at = NULL WHERE id = %s",
         (description, job_id),
     )
-    job = fetch_one(
-        f"SELECT id, url, title, company, location, source, fit_score, decision, "
-        f"cv_variant, reasoning, status, crawled_at FROM {TABLE} WHERE id = %s",
-        (job_id,),
-    )
+    job = fetch_one(f"SELECT {ROW_COLS} FROM {TABLE} WHERE id = %s", (job_id,))
     return render(request, "partials/job_row_single.html", {"job": job})
-
 
 
 @app.get("/stats", response_class=HTMLResponse)

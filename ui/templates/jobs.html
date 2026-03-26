@@ -25,6 +25,13 @@
     <option value="SKIP">SKIP</option>
   </select>
 
+  <label>Applied</label>
+  <select name="applied">
+    <option value="">All</option>
+    <option value="yes">Applied</option>
+    <option value="no">Not applied</option>
+  </select>
+
   <label>Score</label>
   <input type="number" name="min_score" value="0" min="0" max="10" title="Min score">
   <span>-</span>
@@ -34,7 +41,6 @@
   <input type="search" name="search" placeholder="Company or title...">
 
   <span class="htmx-indicator" id="filter-spinner"><span class="spinner"></span></span>
-
 </form>
 
 <!-- Jobs table -->
@@ -45,10 +51,12 @@
       <th class="sortable" data-sort="company">Company</th>
       <th class="sortable" data-sort="title">Role</th>
       <th class="sortable" data-sort="location">Location</th>
-      <th>Source</th>
+      <th>Salary</th>
       <th class="sortable" data-sort="fit_score">Score</th>
       <th class="sortable" data-sort="decision">Decision</th>
       <th>CV</th>
+      <th>Info</th>
+      <th class="sortable" data-sort="applied">Applied</th>
     </tr>
   </thead>
   <tbody id="job-table-body"
