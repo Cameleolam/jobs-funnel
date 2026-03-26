@@ -105,6 +105,8 @@
       white-space: nowrap;
     }
     .jobs-table th:hover { color: #111; }
+    .jobs-table th .sort-arrow { font-size: 0.6rem; color: #999; margin-left: 0.2rem; }
+    .jobs-table th.active .sort-arrow { color: #2563eb; }
     .jobs-table td {
       padding: 0.5rem 0.8rem;
       border-bottom: 1px solid #f0f0f0;
@@ -241,6 +243,40 @@
         e.preventDefault();
         detailCell.innerHTML = '';
       }
+    });
+
+    // Column sorting
+    document.addEventListener('click', function(e) {
+      var th = e.target.closest('th.sortable');
+      if (!th) return;
+      var col = th.dataset.sort;
+      var form = document.querySelector('.filter-bar');
+      var sortInput = form.querySelector('input[name="sort"]');
+      var orderInput = form.querySelector('input[name="order"]');
+      var currentSort = sortInput.value;
+      var currentOrder = orderInput.value;
+
+      if (currentSort === col) {
+        orderInput.value = currentOrder === 'desc' ? 'asc' : 'desc';
+      } else {
+        sortInput.value = col;
+        orderInput.value = 'desc';
+      }
+
+      // Update arrow indicators
+      document.querySelectorAll('th.sortable').forEach(function(h) {
+        h.classList.remove('active');
+        var arrow = h.querySelector('.sort-arrow');
+        if (arrow) arrow.remove();
+      });
+      th.classList.add('active');
+      var arrow = document.createElement('span');
+      arrow.className = 'sort-arrow';
+      arrow.innerHTML = orderInput.value === 'desc' ? '&#9660;' : '&#9650;';
+      th.appendChild(arrow);
+
+      // Trigger the filter form to re-fetch
+      htmx.trigger(form, 'change');
     });
   </script>
 </body>
