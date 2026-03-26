@@ -39,7 +39,7 @@ ROW_COLS = (
     "id, url, title, company, location, source, fit_score, decision, "
     "cv_variant, reasoning, status, crawled_at, analyzed_at, "
     "salary_min, salary_max, salary_currency, remote, likely_english, "
-    "tags, priority_notes, applied, notes"
+    "tags, priority_notes, applied, notes, user_status"
 )
 
 
@@ -135,9 +135,13 @@ def get_stats():
     )
     stats["pending"] = pending["cnt"] if pending else 0
     applied = fetch_one(
-        f"SELECT COUNT(*) as cnt FROM {TABLE} WHERE applied = TRUE"
+        f"SELECT COUNT(*) as cnt FROM {TABLE} WHERE user_status = 'applied'"
     )
     stats["applied"] = applied["cnt"] if applied else 0
+    dismissed = fetch_one(
+        f"SELECT COUNT(*) as cnt FROM {TABLE} WHERE user_status = 'dismissed'"
+    )
+    stats["dismissed"] = dismissed["cnt"] if dismissed else 0
     return stats
 
 
@@ -173,10 +177,12 @@ async def list_jobs(
     if decision:
         conditions.append("decision = %s")
         params.append(decision)
-    if applied == "yes":
-        conditions.append("applied = TRUE")
-    elif applied == "no":
-        conditions.append("(applied = FALSE OR applied IS NULL)")
+    if applied == "applied":
+        conditions.append("user_status = 'applied'")
+    elif applied == "dismissed":
+        conditions.append("user_status = 'dismissed'")
+    elif applied == "pending":
+        conditions.append("user_status IS NULL")
     conditions.append("COALESCE(fit_score, 0) >= %s")
     params.append(min_score)
     conditions.append("COALESCE(fit_score, 0) <= %s")
@@ -221,19 +227,17 @@ async def update_job(request: Request, job_id: int, decision: str = Form(...)):
     return render(request, "partials/job_row_single.html", {"job": job})
 
 
-@app.patch("/jobs/{job_id}/applied", response_class=HTMLResponse)
-async def toggle_applied(request: Request, job_id: int, applied: str = Form(...)):
-    is_applied = applied == "true"
-    if is_applied:
-        execute(
-            f"UPDATE {TABLE} SET applied = TRUE, applied_at = NOW() WHERE id = %s",
-            (job_id,),
-        )
-    else:
-        execute(
-            f"UPDATE {TABLE} SET applied = FALSE, applied_at = NULL WHERE id = %s",
-            (job_id,),
-        )
+@app.patch("/jobs/{job_id}/status", response_class=HTMLResponse)
+async def set_user_status(request: Request, job_id: int, user_status: str = Form(...)):
+    if user_status not in ("applied", "dismissed", ""):
+        return HTMLResponse("Invalid status", status_code=400)
+    status_val = user_status if user_status else None
+    is_applied = status_val == "applied"
+    execute(
+        f"UPDATE {TABLE} SET user_status = %s, applied = %s, "
+        f"applied_at = CASE WHEN %s THEN NOW() ELSE NULL END WHERE id = %s",
+        (status_val, is_applied, is_applied, job_id),
+    )
     job = fetch_one(f"SELECT {ROW_COLS} FROM {TABLE} WHERE id = %s", (job_id,))
     return render(request, "partials/job_row_single.html", {"job": job})
 

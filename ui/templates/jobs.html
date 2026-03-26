@@ -25,11 +25,12 @@
     <option value="SKIP">SKIP</option>
   </select>
 
-  <label>Applied</label>
+  <label>Status</label>
   <select name="applied">
     <option value="">All</option>
-    <option value="yes">Applied</option>
-    <option value="no">Not applied</option>
+    <option value="pending">Not reviewed</option>
+    <option value="applied">Applied</option>
+    <option value="dismissed">Dismissed</option>
   </select>
 
   <label>Score</label>
@@ -56,7 +57,7 @@
       <th class="sortable" data-sort="decision">Decision</th>
       <th>CV</th>
       <th>Info</th>
-      <th class="sortable" data-sort="applied">Applied</th>
+      <th>Status</th>
     </tr>
   </thead>
   <tbody id="job-table-body"

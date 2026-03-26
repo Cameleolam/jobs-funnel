@@ -10,9 +10,8 @@ return all.map(item => {
   const decision = j.decision || 'SKIP';
 
   // Status reflects user action, not auto-classification
-  let status = '';
-  if (j.applied) status = 'applied';
-  else if (decision === 'SKIP') status = 'skipped';
+  let status = j.user_status || '';
+  if (!status && decision === 'SKIP') status = 'skipped';
 
   return { json: {
     'Date': crawledAt.toISOString().slice(0, 10),

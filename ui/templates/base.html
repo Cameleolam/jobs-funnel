@@ -40,6 +40,7 @@
     .stat-card.skip .value { color: #9ca3af; }
     .stat-card.pending .value { color: #2563eb; }
     .stat-card.applied .value { color: #7c3aed; }
+    .stat-card.dismissed .value { color: #6b7280; }
 
     /* ── Filter bar ─────────────────────────────── */
     .filter-bar {
@@ -126,6 +127,8 @@
     tr.needs-action:hover { background: #fee2e2; }
     tr.applied-done { border-left: 3px solid #16a34a; background: #f0fdf4; }
     tr.applied-done:hover { background: #dcfce7; }
+    tr.dismissed-done { border-left: 3px solid #9ca3af; background: #f9fafb; opacity: 0.6; }
+    tr.dismissed-done:hover { opacity: 0.8; }
 
     .badge {
       display: inline-block;
@@ -197,14 +200,19 @@
     .icon-flag { background: #fef3c7; color: #92400e; }
     .icon-note { background: #e0e7ff; color: #3730a3; }
 
-    /* ── Applied checkbox ────────────────────────── */
-    .applied-cell { text-align: center; }
-    .applied-checkbox {
-      width: 16px;
-      height: 16px;
+    /* ── Status select ────────────────────────────── */
+    .status-cell { text-align: center; }
+    .status-select {
+      padding: 0.15rem 0.3rem;
+      border: 1px solid #ddd;
+      border-radius: 3px;
+      font-size: 0.7rem;
       cursor: pointer;
-      accent-color: #16a34a;
+      background: #fff;
     }
+    .status-select.status-applied { background: #dcfce7; color: #166534; border-color: #16a34a; }
+    .status-select.status-dismissed { background: #f3f4f6; color: #6b7280; border-color: #9ca3af; }
+    .status-select.status-none { background: #fff; }
 
     /* ── Tag badges (detail panel) ───────────────── */
     .tag-list { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.2rem; }
