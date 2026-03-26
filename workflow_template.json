@@ -355,7 +355,27 @@
           "mappingMode": "autoMapInputData",
           "value": {},
           "matchingColumns": ["Job URL"],
-          "ignoreFields": "_dbId"
+          "schema": [
+            {"id": "Date", "displayName": "Date", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "Fetched At", "displayName": "Fetched At", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "Source", "displayName": "Source", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "Company", "displayName": "Company", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "Role", "displayName": "Role", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "Location", "displayName": "Location", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "Salary", "displayName": "Salary", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "Score", "displayName": "Score", "required": false, "defaultMatch": false, "display": true, "type": "number", "canBeUsedToMatch": false},
+            {"id": "Decision", "displayName": "Decision", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "CV Variant", "displayName": "CV Variant", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "Blockers", "displayName": "Blockers", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "Strong Matches", "displayName": "Strong Matches", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "Reasoning", "displayName": "Reasoning", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "Status", "displayName": "Status", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "Drive Link", "displayName": "Drive Link", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "Job URL", "displayName": "Job URL", "required": false, "defaultMatch": true, "display": true, "type": "string", "canBeUsedToMatch": true},
+            {"id": "Notes", "displayName": "Notes", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "My Notes", "displayName": "My Notes", "required": false, "defaultMatch": false, "display": true, "type": "string", "canBeUsedToMatch": false},
+            {"id": "_dbId", "displayName": "_dbId", "required": false, "defaultMatch": false, "display": true, "type": "number", "canBeUsedToMatch": false}
+          ]
         }
       },
       "id": "sheet-append",

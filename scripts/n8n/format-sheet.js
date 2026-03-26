@@ -33,6 +33,7 @@ return all.map(item => {
     'Drive Link': '',
     'Job URL': j.url || '',
     'Notes': j.priority_notes || '',
-    _dbId: j.id
+    'My Notes': j.notes || '',
+    '_dbId': j.id
   }};
 });

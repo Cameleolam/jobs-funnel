@@ -42,8 +42,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     sheet_synced    BOOLEAN DEFAULT FALSE,
     sheet_synced_at TIMESTAMPTZ,
 
-    user_status     TEXT,             -- future: review/applied/interview/offer/rejected
-    applied         BOOLEAN DEFAULT FALSE,
+    user_status     TEXT,             -- applied/dismissed/null
     applied_at      TIMESTAMPTZ,
     notes           TEXT
 );

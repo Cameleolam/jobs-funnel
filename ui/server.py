@@ -39,7 +39,7 @@ ROW_COLS = (
     "id, url, title, company, location, source, fit_score, decision, "
     "cv_variant, reasoning, status, crawled_at, analyzed_at, "
     "salary_min, salary_max, salary_currency, remote, likely_english, "
-    "tags, priority_notes, applied, notes, user_status"
+    "tags, priority_notes, notes, user_status"
 )
 
 
@@ -232,11 +232,11 @@ async def set_user_status(request: Request, job_id: int, user_status: str = Form
     if user_status not in ("applied", "dismissed", ""):
         return HTMLResponse("Invalid status", status_code=400)
     status_val = user_status if user_status else None
-    is_applied = status_val == "applied"
     execute(
-        f"UPDATE {TABLE} SET user_status = %s, applied = %s, "
-        f"applied_at = CASE WHEN %s THEN NOW() ELSE NULL END WHERE id = %s",
-        (status_val, is_applied, is_applied, job_id),
+        f"UPDATE {TABLE} SET user_status = %s, "
+        f"applied_at = CASE WHEN %s = 'applied' THEN NOW() ELSE NULL END, "
+        f"sheet_synced = FALSE WHERE id = %s",
+        (status_val, status_val, job_id),
     )
     job = fetch_one(f"SELECT {ROW_COLS} FROM {TABLE} WHERE id = %s", (job_id,))
     return render(request, "partials/job_row_single.html", {"job": job})
@@ -245,7 +245,7 @@ async def set_user_status(request: Request, job_id: int, user_status: str = Form
 @app.patch("/jobs/{job_id}/notes", response_class=HTMLResponse)
 async def update_notes(request: Request, job_id: int, notes: str = Form("")):
     execute(
-        f"UPDATE {TABLE} SET notes = %s WHERE id = %s",
+        f"UPDATE {TABLE} SET notes = %s, sheet_synced = FALSE WHERE id = %s",
         (notes if notes.strip() else None, job_id),
     )
     job = fetch_one(f"SELECT {ROW_COLS} FROM {TABLE} WHERE id = %s", (job_id,))
