@@ -230,5 +230,18 @@
   <div class="container">
     {% block content %}{% endblock %}
   </div>
+  <script>
+    // Toggle detail panel: if already open, close it instead of re-fetching
+    document.addEventListener('htmx:configRequest', function(e) {
+      var row = e.detail.elt;
+      if (!row.classList.contains('job-row')) return;
+      var detailId = row.getAttribute('hx-target');
+      var detailCell = document.querySelector(detailId);
+      if (detailCell && detailCell.innerHTML.trim() !== '') {
+        e.preventDefault();
+        detailCell.innerHTML = '';
+      }
+    });
+  </script>
 </body>
 </html>

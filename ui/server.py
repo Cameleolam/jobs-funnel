@@ -6,6 +6,7 @@ Start:
 """
 
 import os
+import re
 import urllib.request
 from contextlib import contextmanager
 from pathlib import Path
@@ -34,6 +35,24 @@ TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 
 app = FastAPI(title="Jobs Funnel UI")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+
+def html_to_text(value):
+    if not value:
+        return ""
+    text = re.sub(r'<br\s*/?>', '\n', str(value))
+    text = re.sub(r'</(?:p|div|li|tr|h[1-6])>', '\n', text)
+    text = re.sub(r'<[^>]+>', '', text)
+    text = re.sub(r'&nbsp;', ' ', text)
+    text = re.sub(r'&amp;', '&', text)
+    text = re.sub(r'&lt;', '<', text)
+    text = re.sub(r'&gt;', '>', text)
+    text = re.sub(r'&quot;', '"', text)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
+
+templates.env.filters["html_to_text"] = html_to_text
 
 
 def render(request: Request, name: str, ctx: dict | None = None):

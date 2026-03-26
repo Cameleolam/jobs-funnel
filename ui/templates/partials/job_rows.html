@@ -13,7 +13,7 @@
             hx-get="/jobs?offset={{ offset + limit }}&limit={{ limit }}"
             hx-target="#load-more-row"
             hx-swap="outerHTML"
-            hx-include="closest form">
+            hx-include=".filter-bar">
       Load more ({{ total - offset - limit }} remaining)
     </button>
   </td>
