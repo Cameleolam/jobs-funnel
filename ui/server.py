@@ -192,7 +192,8 @@ async def update_job(request: Request, job_id: int, decision: str = Form(...)):
 async def rescore_job(request: Request, job_id: int, description: str = Form(...)):
     execute(
         f"UPDATE {TABLE} SET description = %s, status = 'pending', "
-        f"analyzed_at = NULL, error = NULL, retry_count = 0 WHERE id = %s",
+        f"analyzed_at = NULL, error = NULL, retry_count = 0, "
+        f"sheet_synced = FALSE, sheet_synced_at = NULL WHERE id = %s",
         (description, job_id),
     )
     job = fetch_one(
