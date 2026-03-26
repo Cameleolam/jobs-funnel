@@ -1,0 +1,21 @@
+{% set score_class = "score-high" if (job.fit_score or 0) >= 7 else ("score-mid" if (job.fit_score or 0) >= 5 else "score-low") %}
+{% set decision_class = "decision-" ~ (job.decision or "SKIP") if job.status == "analyzed" else "status-pending" %}
+{% set badge_class = "badge-" ~ (job.decision or "skip")|lower if job.status == "analyzed" else "badge-pending" %}
+{% set badge_text = job.decision if job.status == "analyzed" else "PENDING" %}
+
+<tr class="job-row {{ decision_class }}"
+    hx-get="/jobs/{{ job.id }}"
+    hx-target="#detail-{{ job.id }}"
+    hx-swap="innerHTML"
+    hx-trigger="click"
+    id="row-{{ job.id }}">
+  <td class="text-muted">{{ job.crawled_at.strftime('%Y-%m-%d') if job.crawled_at else '' }}</td>
+  <td><strong>{{ job.company }}</strong></td>
+  <td>{{ job.title }}</td>
+  <td>{{ job.location }}</td>
+  <td class="text-muted">{{ job.source }}</td>
+  <td><span class="score {{ score_class }}">{{ job.fit_score if job.fit_score is not none else '?' }}</span></td>
+  <td><span class="badge {{ badge_class }}">{{ badge_text }}</span></td>
+  <td class="text-muted">{{ job.cv_variant or '' }}</td>
+</tr>
+<tr class="detail-row"><td colspan="8" class="detail-cell" id="detail-{{ job.id }}"></td></tr>

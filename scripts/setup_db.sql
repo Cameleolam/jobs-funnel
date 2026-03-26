@@ -40,8 +40,11 @@ CREATE TABLE IF NOT EXISTS jobs (
 
     retry_count     INTEGER DEFAULT 0,
     sheet_synced    BOOLEAN DEFAULT FALSE,
-    sheet_synced_at TIMESTAMPTZ
+    sheet_synced_at TIMESTAMPTZ,
+
+    user_status     TEXT              -- future: review/applied/interview/offer/rejected
 );
 
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_sheet_synced ON jobs(sheet_synced) WHERE sheet_synced = FALSE;
+CREATE INDEX IF NOT EXISTS idx_jobs_decision ON jobs(decision);

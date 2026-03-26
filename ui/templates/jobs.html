@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block content %}
+
+<!-- Stats bar -->
+<div id="stats-bar" hx-get="/stats" hx-trigger="every 30s" hx-swap="innerHTML">
+  {% include "partials/stats.html" %}
+</div>
+
+<!-- Filter bar -->
+<form class="filter-bar"
+      hx-get="/jobs"
+      hx-target="#job-table-body"
+      hx-trigger="change, input[name='search'] changed delay:300ms"
+      hx-include="[name]"
+      hx-indicator="#filter-spinner">
+
+  <label>Decision</label>
+  <select name="decision">
+    <option value="">All</option>
+    <option value="PASS">PASS</option>
+    <option value="MAYBE">MAYBE</option>
+    <option value="SKIP">SKIP</option>
+  </select>
+
+  <label>Score</label>
+  <input type="number" name="min_score" value="0" min="0" max="10" title="Min score">
+  <span>-</span>
+  <input type="number" name="max_score" value="10" min="0" max="10" title="Max score">
+
+  <label>Search</label>
+  <input type="search" name="search" placeholder="Company or title...">
+
+  <span class="htmx-indicator" id="filter-spinner"><span class="spinner"></span></span>
+
+  <div class="ml-auto" style="display:flex; gap:0.5rem; align-items:center;">
+    <button type="button" class="btn btn-warn"
+            hx-post="/trigger/analyze"
+            hx-target="#stats-bar"
+            hx-swap="innerHTML"
+            hx-indicator="#analyze-spinner">
+      Trigger Analyze
+    </button>
+    <span class="htmx-indicator" id="analyze-spinner"><span class="spinner"></span></span>
+  </div>
+</form>
+
+<!-- Jobs table -->
+<table class="jobs-table">
+  <thead>
+    <tr>
+      <th>Date</th>
+      <th>Company</th>
+      <th>Role</th>
+      <th>Location</th>
+      <th>Source</th>
+      <th>Score</th>
+      <th>Decision</th>
+      <th>CV</th>
+    </tr>
+  </thead>
+  <tbody id="job-table-body"
+         hx-get="/jobs"
+         hx-trigger="load"
+         hx-swap="innerHTML"
+         hx-indicator="#filter-spinner">
+  </tbody>
+</table>
+
+{% endblock %}

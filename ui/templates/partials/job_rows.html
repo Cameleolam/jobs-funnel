@@ -1,0 +1,21 @@
+{% for job in jobs %}
+{% include "partials/job_row_single.html" %}
+{% endfor %}
+
+{% if jobs|length == 0 %}
+<tr><td colspan="8" style="text-align:center; padding:2rem; color:#999;">No jobs match the current filters.</td></tr>
+{% endif %}
+
+{% if total > offset + limit %}
+<tr id="load-more-row">
+  <td colspan="8" style="text-align:center; padding:0.8rem;">
+    <button class="btn btn-primary btn-sm"
+            hx-get="/jobs?offset={{ offset + limit }}&limit={{ limit }}"
+            hx-target="#load-more-row"
+            hx-swap="outerHTML"
+            hx-include="closest form">
+      Load more ({{ total - offset - limit }} remaining)
+    </button>
+  </td>
+</tr>
+{% endif %}

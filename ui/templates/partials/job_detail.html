@@ -1,0 +1,64 @@
+<div class="detail-panel">
+
+  <h4>Reasoning</h4>
+  <p>{{ job.reasoning or 'No reasoning available.' }}</p>
+
+  {% if job.hard_blockers and job.hard_blockers|length > 0 %}
+  <h4>Hard Blockers</h4>
+  <ul>
+    {% for b in job.hard_blockers %}<li class="tag-blocker">{{ b }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if job.strong_matches and job.strong_matches|length > 0 %}
+  <h4>Strong Matches</h4>
+  <ul>
+    {% for m in job.strong_matches %}<li class="tag-match">{{ m }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if job.soft_gaps and job.soft_gaps|length > 0 %}
+  <h4>Soft Gaps</h4>
+  <ul>
+    {% for g in job.soft_gaps %}<li class="tag-gap">{{ g }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if job.priority_notes %}
+  <h4>Notes</h4>
+  <p>{{ job.priority_notes }}</p>
+  {% endif %}
+
+  <h4>Link</h4>
+  <a class="job-link" href="{{ job.url }}" target="_blank" rel="noopener">{{ job.url }}</a>
+
+  <!-- Actions -->
+  <div class="detail-actions">
+    {% if job.decision == 'MAYBE' %}
+    <form hx-patch="/jobs/{{ job.id }}" hx-target="#row-{{ job.id }}" hx-swap="outerHTML settle:0.1s" style="display:inline">
+      <input type="hidden" name="decision" value="PASS">
+      <button type="submit" class="btn btn-pass">Accept (PASS)</button>
+    </form>
+    <form hx-patch="/jobs/{{ job.id }}" hx-target="#row-{{ job.id }}" hx-swap="outerHTML settle:0.1s" style="display:inline">
+      <input type="hidden" name="decision" value="SKIP">
+      <button type="submit" class="btn btn-skip">Reject (SKIP)</button>
+    </form>
+    {% endif %}
+  </div>
+
+  <!-- Re-score section -->
+  <div class="rescore-section">
+    <h4>Re-score with better description</h4>
+    <p class="text-muted">Paste the full job description below. This updates the DB and queues the job for re-analysis.</p>
+    <form hx-post="/jobs/{{ job.id }}/rescore"
+          hx-target="#row-{{ job.id }}"
+          hx-swap="outerHTML settle:0.1s">
+      <textarea name="description" placeholder="Paste full job description here...">{{ job.description or '' }}</textarea>
+      <div style="margin-top:0.5rem;">
+        <button type="submit" class="btn btn-primary">Queue Re-score</button>
+        <span class="text-muted" style="margin-left:0.5rem;">Then click "Trigger Analyze" above to process.</span>
+      </div>
+    </form>
+  </div>
+
+</div>
