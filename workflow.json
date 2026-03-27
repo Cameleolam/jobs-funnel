@@ -117,7 +117,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Filter out URLs already in Postgres, cap at configurable limit\nconst config = JSON.parse(require('fs').readFileSync(\n  ($env.JOBS_FUNNEL_PROJECT_DIR || '.').replace(/\\\\/g, '/') + '/config.json', 'utf-8'\n));\nconst CAP = config.dedup_cap || 80;\n// Let this throw if upstream DB node failed — better than bypassing dedup\nconst seenRows = $('Dedup: Get Seen URLs').all();\nconst seenUrls = new Set(seenRows.map(r => r.json.url).filter(Boolean));\n\nconst jobs = $('Has Results?').all().filter(item => {\n  const url = item.json?.url;\n  return url && !seenUrls.has(url);\n});\n\nif (jobs.length === 0) return [];\nconst capped = jobs.slice(0, CAP);\nif (jobs.length > CAP && capped.length > 0) {\n  capped[0].json._truncated = true;\n  capped[0].json._droppedCount = jobs.length - CAP;\n}\nreturn capped;"
+        "jsCode": "// Filter out URLs already in Postgres — insert all new jobs, analyze phase handles batching\n// Let this throw if upstream DB node failed — better than bypassing dedup\nconst seenRows = $('Dedup: Get Seen URLs').all();\nconst seenUrls = new Set(seenRows.map(r => r.json.url).filter(Boolean));\n\nconst jobs = $('Has Results?').all().filter(item => {\n  const url = item.json?.url;\n  return url && !seenUrls.has(url);\n});\n\nif (jobs.length === 0) return [];\nreturn jobs;"
       },
       "id": "dedup-filter",
       "name": "Dedup: Filter New",
