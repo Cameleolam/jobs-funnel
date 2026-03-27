@@ -263,6 +263,17 @@
           "name": "Postgres - Jobs Funnel"
         }
       }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Check if more pending jobs remain — loop back if so\nreturn [{ json: { _trigger: 'check_more' } }];"
+      },
+      "id": "check-more",
+      "name": "Check More Pending",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4350, 600],
+      "executeOnce": true
     }
   ],
   "connections": {
@@ -364,6 +375,16 @@
     "Parse + Prep Update": {
       "main": [[
         { "node": "DB: Update Jobs", "type": "main", "index": 0 }
+      ]]
+    },
+    "DB: Update Jobs": {
+      "main": [[
+        { "node": "Check More Pending", "type": "main", "index": 0 }
+      ]]
+    },
+    "Check More Pending": {
+      "main": [[
+        { "node": "DB: Fetch Pending", "type": "main", "index": 0 }
       ]]
     }
   },
