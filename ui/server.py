@@ -15,7 +15,7 @@ from pathlib import Path
 import psycopg2
 import psycopg2.extras
 from dotenv import load_dotenv
-from fastapi import FastAPI, Form, Query, Request
+from fastapi import FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from openpyxl import Workbook
@@ -96,7 +96,10 @@ def render(request: Request, name: str, ctx: dict | None = None):
 # ── DB helpers ───────────────────────────────────────────────────────
 @contextmanager
 def get_db():
-    conn = psycopg2.connect(**DB_CONF)
+    try:
+        conn = psycopg2.connect(**DB_CONF)
+    except psycopg2.OperationalError:
+        raise HTTPException(status_code=503, detail="Database unavailable")
     try:
         yield conn
         conn.commit()

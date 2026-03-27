@@ -7,6 +7,22 @@ const search = JSON.parse(fs.readFileSync(profileDir + '/search.json', 'utf-8'))
 
 const BASE = 'https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobs';
 const HEADERS = { 'X-API-Key': 'jobboerse-jobsuche', 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' };
+const MAX_RETRIES = config.api_max_retries || 2;
+const RETRY_DELAY = config.api_retry_delay_ms || 1000;
+
+// Retry with exponential backoff; skip retries for 4xx (permanent errors)
+async function fetchWithRetry(opts) {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await this.helpers.httpRequest(opts);
+    } catch (e) {
+      const msg = e.message || String(e);
+      const is4xx = /\b4\d{2}\b/.test(msg) || msg.includes('Bad Request') || msg.includes('Not Found');
+      if (is4xx || attempt === MAX_RETRIES) throw e;
+      await new Promise(r => setTimeout(r, RETRY_DELAY * Math.pow(2, attempt)));
+    }
+  }
+}
 
 const searches = search.aa_searches || [];
 // Support multiple locations: aa_locations array or legacy aa_location string
@@ -26,9 +42,12 @@ for (const loc of locations) {
       const url = `${BASE}?was=${encodeURIComponent(searches[i])}&${locParams}&page=${page}`;
       let body;
       try {
-        const raw = await this.helpers.httpRequest({ method: 'GET', url, headers: HEADERS });
+        const raw = await fetchWithRetry.call(this, { method: 'GET', url, headers: HEADERS });
         body = typeof raw === 'string' ? JSON.parse(raw) : raw;
-      } catch (e) { errors.push({ location: loc.location, search: searches[i], page, error: e.message || String(e) }); continue; }
+      } catch (e) {
+        errors.push({ location: loc.location, search: searches[i], page, error: e.message || String(e) });
+        continue;
+      }
       const results = body.stellenangebote || [];
       if (results.length === 0) break;
       for (const s of results) {
@@ -39,6 +58,11 @@ for (const loc of locations) {
       if (page >= maxPage) break;
     }
   }
+}
+
+// Fail visibly if ALL requests errored (not just "no jobs found")
+if (jobs.length === 0 && errors.length > 0) {
+  throw new Error(`AA: all ${errors.length} requests failed after retries. First error: ${errors[0].error}`);
 }
 
 if (jobs.length === 0) return [];
@@ -56,17 +80,30 @@ const FETCH_DELAY = config.aa_fetch_delay_ms || 300;
 const MAX_FETCHES = config.aa_max_fetches || 200;
 let fetchCount = 0;
 let descFailCount = 0;
+const descFailUrls = [];
 for (let i = 0; i < jobs.length && fetchCount < MAX_FETCHES; i++) {
   const extUrl = jobs[i].externeUrl;
   if (!extUrl) continue;
   if (fetchCount > 0) await new Promise(r => setTimeout(r, FETCH_DELAY));
   fetchCount++;
-  try {
-    const html = await this.helpers.httpRequest({ method: 'GET', url: extUrl, encoding: 'utf-8', timeout: config.aa_fetch_timeout_ms || 5000 });
-    let text = String(html).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-    text = decodeEntities(text);
-    if (text.length > 100) jobs[i]._fullDesc = text.substring(0, config.description_max_chars || 5000);
-  } catch (e) { descFailCount++; }
+  let success = false;
+  // 1 retry for descriptions (nice-to-have)
+  for (let attempt = 0; attempt <= 1 && !success; attempt++) {
+    try {
+      const html = await this.helpers.httpRequest({ method: 'GET', url: extUrl, encoding: 'utf-8', timeout: config.aa_fetch_timeout_ms || 5000 });
+      let text = String(html).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      text = decodeEntities(text);
+      if (text.length > 100) jobs[i]._fullDesc = text.substring(0, config.description_max_chars || 5000);
+      success = true;
+    } catch (e) {
+      if (attempt === 1) {
+        descFailCount++;
+        descFailUrls.push(extUrl);
+      } else {
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
+  }
 }
 
 const _crawlMeta = {
@@ -78,6 +115,7 @@ const _crawlMeta = {
   errors: errors.slice(0, 10),
   descriptions_attempted: fetchCount,
   descriptions_failed: descFailCount,
+  descriptions_failed_urls: descFailUrls.slice(0, 10),
 };
 
 const mapped = jobs.map(j => {

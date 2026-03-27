@@ -7,7 +7,23 @@ const search = JSON.parse(fs.readFileSync(profileDir + '/search.json', 'utf-8'))
 
 const MAX_PAGES = config.an_max_pages || 10;
 const DELAY_MS = config.an_delay_ms || 5000;
+const MAX_RETRIES = config.api_max_retries || 2;
+const RETRY_DELAY = config.api_retry_delay_ms || 1000;
 const cutoff = Date.now() - (config.an_days_back || 30) * 24 * 60 * 60 * 1000;
+
+// Retry with exponential backoff; skip retries for 4xx (permanent errors)
+async function fetchWithRetry(opts) {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await this.helpers.httpRequest(opts);
+    } catch (e) {
+      const msg = e.message || String(e);
+      const is4xx = /\b4\d{2}\b/.test(msg) || msg.includes('Bad Request') || msg.includes('Not Found');
+      if (is4xx || attempt === MAX_RETRIES) throw e;
+      await new Promise(r => setTimeout(r, RETRY_DELAY * Math.pow(2, attempt)));
+    }
+  }
+}
 
 const titleKw = search.an_title_keywords || [];
 const tagKw = search.an_tag_keywords || [];
@@ -31,8 +47,11 @@ for (let page = 1; page <= MAX_PAGES; page++) {
   lastPage = page;
   let body;
   try {
-    body = await this.helpers.httpRequest({ method: 'GET', url: `https://www.arbeitnow.com/api/job-board-api?page=${page}`, json: true });
-  } catch (e) { errors.push({ page, error: e.message || String(e) }); break; }
+    body = await fetchWithRetry.call(this, { method: 'GET', url: `https://www.arbeitnow.com/api/job-board-api?page=${page}`, json: true });
+  } catch (e) {
+    errors.push({ page, error: e.message || String(e) });
+    continue; // Try next page instead of breaking
+  }
   const data = body.data || [];
   if (data.length === 0) break;
 
@@ -60,6 +79,11 @@ for (let page = 1; page <= MAX_PAGES; page++) {
   if (allOld) break;
   const maxPage = body.meta?.last_page || MAX_PAGES;
   if (page >= maxPage) break;
+}
+
+// Fail visibly if ALL requests errored
+if (allJobs.length === 0 && errors.length > 0) {
+  throw new Error(`AN: all ${errors.length} page requests failed after retries. First error: ${errors[0].error}`);
 }
 
 if (allJobs.length === 0) return [];

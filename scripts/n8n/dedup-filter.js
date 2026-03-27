@@ -3,8 +3,8 @@ const config = JSON.parse(require('fs').readFileSync(
   ($env.JOBS_FUNNEL_PROJECT_DIR || '.').replace(/\\/g, '/') + '/config.json', 'utf-8'
 ));
 const CAP = config.dedup_cap || 80;
-let seenRows;
-try { seenRows = $('Dedup: Get Seen URLs').all(); } catch (e) { seenRows = []; }
+// Let this throw if upstream DB node failed — better than bypassing dedup
+const seenRows = $('Dedup: Get Seen URLs').all();
 const seenUrls = new Set(seenRows.map(r => r.json.url).filter(Boolean));
 
 const jobs = $('Has Results?').all().filter(item => {

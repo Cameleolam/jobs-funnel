@@ -7,8 +7,9 @@ const BATCH_SIZE = config.batch_size || 8;
 const all = $input.all();
 const tmpDir = ($env.JOBS_FUNNEL_PROJECT_DIR || '.').replace(/\\/g, '/') + '/temp';
 
-// Ensure temp dir exists and clean old batch files
-try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (e) {}
+// Ensure temp dir exists (let it throw if it can't create)
+fs.mkdirSync(tmpDir, { recursive: true });
+// Clean old batch files (non-critical, silent on failure)
 try {
   const oldFiles = fs.readdirSync(tmpDir).filter(f => f.startsWith('n8n_batch_'));
   for (const f of oldFiles) { try { fs.unlinkSync(tmpDir + '/' + f); } catch (e) {} }
