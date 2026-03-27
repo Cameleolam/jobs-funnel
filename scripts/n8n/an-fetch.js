@@ -129,6 +129,8 @@ const mapped = allJobs.map(j => {
     salary_min: sal.salary_min,
     salary_max: sal.salary_max,
     salary_currency: sal.salary_currency,
+    start_date: null,
+    posted_at: j.created_at ? new Date(j.created_at * 1000 || j.created_at).toISOString() : null,
   }};
 });
 if (mapped.length > 0) mapped[0].json._crawlMeta = _crawlMeta;

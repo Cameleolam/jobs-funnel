@@ -44,7 +44,12 @@ CREATE TABLE IF NOT EXISTS jobs (
 
     user_status     TEXT,             -- applied/dismissed/null
     applied_at      TIMESTAMPTZ,
-    notes           TEXT
+    notes           TEXT,
+
+    posted_at       TIMESTAMPTZ,      -- when the job was posted (from API)
+    employment_type TEXT,              -- full-time/part-time/contract/freelance/minijob
+    seniority_level TEXT,              -- junior/mid/senior/lead
+    start_date      TEXT               -- extracted start date (e.g. "sofort", "01.05.2026")
 );
 
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);

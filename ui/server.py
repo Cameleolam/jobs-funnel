@@ -43,7 +43,8 @@ ROW_COLS = (
     "id, url, title, company, location, source, fit_score, decision, "
     "cv_variant, reasoning, status, crawled_at, analyzed_at, "
     "salary_min, salary_max, salary_currency, remote, likely_english, "
-    "tags, priority_notes, notes, user_status"
+    "tags, priority_notes, notes, user_status, "
+    "posted_at, employment_type, seniority_level, start_date"
 )
 
 
@@ -89,7 +90,7 @@ templates.env.filters["has_flag"] = has_flag
 
 
 def render(request: Request, name: str, ctx: dict | None = None):
-    context = {"request": request, **(ctx or {})}
+    context = {"request": request, "now": datetime.now().astimezone(), **(ctx or {})}
     return templates.TemplateResponse(request=request, name=name, context=context)
 
 
@@ -246,9 +247,10 @@ async def export_excel(
     ws.title = "Jobs"
 
     headers = [
-        "Date", "Fetched At", "Source", "Company", "Role", "Location", "Salary",
-        "Score", "Decision", "CV Variant", "Blockers", "Strong Matches",
-        "Reasoning", "Status", "Job URL", "Notes", "My Notes", "_dbId",
+        "Date", "Fetched At", "Posted", "Source", "Company", "Role", "Location", "Salary",
+        "Score", "Decision", "CV Variant", "Seniority", "Employment", "Start Date",
+        "Blockers", "Strong Matches", "Reasoning", "Status", "Job URL",
+        "Notes", "My Notes", "_dbId",
     ]
     header_font = Font(bold=True)
     for col, h in enumerate(headers, 1):
@@ -267,9 +269,11 @@ async def export_excel(
         salary = format_salary(j)
 
         crawled = j.get("crawled_at")
+        posted = j.get("posted_at")
         values = [
             crawled.strftime("%Y-%m-%d") if crawled else "",
             crawled.strftime("%Y-%m-%d %H:%M:%S UTC") if crawled else "",
+            posted.strftime("%Y-%m-%d") if posted else "",
             j.get("source", ""),
             j.get("company", ""),
             j.get("title", ""),
@@ -278,6 +282,9 @@ async def export_excel(
             score,
             j.get("decision", ""),
             j.get("cv_variant", ""),
+            j.get("seniority_level", "") or "",
+            j.get("employment_type", "") or "",
+            j.get("start_date", "") or "",
             blockers,
             matches,
             j.get("reasoning", ""),

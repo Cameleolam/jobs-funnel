@@ -14,7 +14,11 @@
   <div class="detail-meta">
     <span class="text-muted">Crawled: {{ job.crawled_at.strftime('%Y-%m-%d %H:%M') if job.crawled_at else 'N/A' }}</span>
     <span class="text-muted">Analyzed: {{ job.analyzed_at.strftime('%Y-%m-%d %H:%M') if job.analyzed_at else 'N/A' }}</span>
+    {% if job.posted_at %}<span class="text-muted">Posted: {{ job.posted_at.strftime('%Y-%m-%d') }}</span>{% endif %}
     <span class="text-muted">Source: {{ job.source }}</span>
+    {% if job.employment_type %}<span class="icon-badge icon-en">{{ job.employment_type }}</span>{% endif %}
+    {% if job.seniority_level %}<span class="icon-badge icon-remote">{{ job.seniority_level }}</span>{% endif %}
+    {% if job.start_date %}<span class="text-muted">Start: {{ job.start_date }}</span>{% endif %}
   </div>
 
   <h4>Reasoning</h4>

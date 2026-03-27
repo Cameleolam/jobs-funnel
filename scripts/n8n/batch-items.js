@@ -25,6 +25,12 @@ for (let i = 0; i < all.length; i += BATCH_SIZE) {
     description: (item.json.description || '').substring(0, 3000),
     tags: item.json.tags || [],
     url: item.json.url || '',
+    remote: item.json.remote || false,
+    source: item.json.source || '',
+    salary_min: item.json.salary_min || null,
+    salary_max: item.json.salary_max || null,
+    salary_currency: item.json.salary_currency || null,
+    start_date: item.json.start_date || null,
     _likely_english: item.json.likely_english || false
   }));
   const tmpPath = tmpDir + '/n8n_batch_' + Date.now() + '_' + i + '.json';

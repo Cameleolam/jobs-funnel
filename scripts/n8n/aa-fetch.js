@@ -137,7 +137,9 @@ const mapped = jobs.map(j => {
     description: desc,
     tags: [],
     remote: false,
-    likely_english: false
+    likely_english: false,
+    start_date: j.eintrittsdatum || null,
+    posted_at: null
   }};
 });
 if (mapped.length > 0) mapped[0].json._crawlMeta = _crawlMeta;
