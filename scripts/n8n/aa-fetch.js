@@ -9,29 +9,35 @@ const BASE = 'https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jo
 const HEADERS = { 'X-API-Key': 'jobboerse-jobsuche', 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' };
 
 const searches = search.aa_searches || [];
-const commonParams = `wo=${encodeURIComponent(search.aa_location)}&umkreis=${search.aa_radius_km}&veroeffentlichtseit=30&pav=false&zeitarbeit=false&size=100`;
+// Support multiple locations: aa_locations array or legacy aa_location string
+const locations = search.aa_locations || [
+  { location: search.aa_location, radius_km: search.aa_radius_km }
+];
 
 const seenIds = new Set();
 const jobs = [];
 const errors = [];
 const MAX_PAGES = config.aa_max_pages || 3;
 
-for (let i = 0; i < searches.length; i++) {
-  for (let page = 1; page <= MAX_PAGES; page++) {
-    const url = `${BASE}?was=${encodeURIComponent(searches[i])}&${commonParams}&page=${page}`;
-    let body;
-    try {
-      const raw = await this.helpers.httpRequest({ method: 'GET', url, headers: HEADERS });
-      body = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    } catch (e) { errors.push({ search: searches[i], page, error: e.message || String(e) }); continue; }
-    const results = body.stellenangebote || [];
-    if (results.length === 0) break;
-    for (const s of results) {
-      const id = s.refnr || s.titel;
-      if (!seenIds.has(id)) { seenIds.add(id); jobs.push(s); }
+for (const loc of locations) {
+  const locParams = `wo=${encodeURIComponent(loc.location)}&umkreis=${loc.radius_km || 200}&veroeffentlichtseit=30&pav=false&zeitarbeit=false&size=100`;
+  for (let i = 0; i < searches.length; i++) {
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      const url = `${BASE}?was=${encodeURIComponent(searches[i])}&${locParams}&page=${page}`;
+      let body;
+      try {
+        const raw = await this.helpers.httpRequest({ method: 'GET', url, headers: HEADERS });
+        body = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      } catch (e) { errors.push({ location: loc.location, search: searches[i], page, error: e.message || String(e) }); continue; }
+      const results = body.stellenangebote || [];
+      if (results.length === 0) break;
+      for (const s of results) {
+        const id = s.refnr || s.titel;
+        if (!seenIds.has(id)) { seenIds.add(id); jobs.push(s); }
+      }
+      const maxPage = body.maxErgebnisse ? Math.ceil(body.maxErgebnisse / 100) : 1;
+      if (page >= maxPage) break;
     }
-    const maxPage = body.maxErgebnisse ? Math.ceil(body.maxErgebnisse / 100) : 1;
-    if (page >= maxPage) break;
   }
 }
 
@@ -65,7 +71,8 @@ for (let i = 0; i < jobs.length && fetchCount < MAX_FETCHES; i++) {
 
 const _crawlMeta = {
   source: 'arbeitsagentur',
-  searches_run: searches.length,
+  locations: locations.map(l => l.location),
+  searches_run: searches.length * locations.length,
   total_results: jobs.length,
   fetch_errors: errors.length,
   errors: errors.slice(0, 10),
