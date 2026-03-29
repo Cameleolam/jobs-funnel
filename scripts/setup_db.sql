@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     crawled_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     analyzed_at     TIMESTAMPTZ,
 
-    status          TEXT NOT NULL DEFAULT 'pending',
+    status          TEXT NOT NULL DEFAULT 'pending',  -- pending/analyzed/error/dead
     error           TEXT,
     error_code      TEXT,                -- TIMEOUT/PARSE_FAIL/API_ERROR/EMPTY_DESCRIPTION/BATCH_PADDING/NO_RESULT
 
@@ -58,6 +58,7 @@ CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_sheet_synced ON jobs(sheet_synced) WHERE sheet_synced = FALSE;
 CREATE INDEX IF NOT EXISTS idx_jobs_decision ON jobs(decision);
 CREATE INDEX IF NOT EXISTS idx_jobs_error_code ON jobs(error_code) WHERE error_code IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_jobs_dead ON jobs(status) WHERE status = 'dead';
 
 CREATE TABLE IF NOT EXISTS job_raw_data (
     id          SERIAL PRIMARY KEY,

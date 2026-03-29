@@ -31,6 +31,9 @@ function classifyErrorCode(assessment) {
   return 'API_ERROR';
 }
 
+// Transition to 'dead' when retry budget exhausted, otherwise 'error'
+const DEAD_STATUS_EXPR = "CASE WHEN retry_count + 1 >= 3 THEN 'dead' ELSE 'error' END";
+
 const results = [];
 for (let b = 0; b < $input.all().length; b++) {
   const item = $input.all()[b];
@@ -44,7 +47,7 @@ for (let b = 0; b < $input.all().length; b++) {
   } catch (e) {
     for (const orig of originals) {
       results.push({ json: {
-        _updateQuery: `UPDATE ${table} SET status = 'error', error = ${sqlStr('Failed to parse Claude response: ' + e.message)}, error_code = 'PARSE_FAIL', retry_count = retry_count + 1 WHERE id = ${orig.id}`
+        _updateQuery: `UPDATE ${table} SET status = ${DEAD_STATUS_EXPR}, error = ${sqlStr('Failed to parse Claude response: ' + e.message)}, error_code = 'PARSE_FAIL', retry_count = retry_count + 1 WHERE id = ${orig.id}`
       }});
     }
     continue;
@@ -56,7 +59,7 @@ for (let b = 0; b < $input.all().length; b++) {
 
     if (!assessment) {
       results.push({ json: {
-        _updateQuery: `UPDATE ${table} SET status = 'error', error = 'No result returned for this job in batch response', error_code = 'NO_RESULT', retry_count = retry_count + 1 WHERE id = ${orig.id}`
+        _updateQuery: `UPDATE ${table} SET status = ${DEAD_STATUS_EXPR}, error = 'No result returned for this job in batch response', error_code = 'NO_RESULT', retry_count = retry_count + 1 WHERE id = ${orig.id}`
       }});
       continue;
     }
@@ -76,7 +79,7 @@ for (let b = 0; b < $input.all().length; b++) {
     if (isErrorFallback) {
       const errCode = classifyErrorCode(assessment);
       results.push({ json: {
-        _updateQuery: `UPDATE ${table} SET status = 'error', error = ${sqlStr(assessment.reasoning || 'Fallback SKIP from failed Claude call')}, error_code = '${errCode}', retry_count = retry_count + 1 WHERE id = ${orig.id}`
+        _updateQuery: `UPDATE ${table} SET status = ${DEAD_STATUS_EXPR}, error = ${sqlStr(assessment.reasoning || 'Fallback SKIP from failed Claude call')}, error_code = '${errCode}', retry_count = retry_count + 1 WHERE id = ${orig.id}`
       }});
       continue;
     }

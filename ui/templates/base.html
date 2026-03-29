@@ -41,6 +41,8 @@
     .stat-card.pending .value { color: #2563eb; }
     .stat-card.applied .value { color: #7c3aed; }
     .stat-card.dismissed .value { color: #6b7280; }
+    .stat-card.error .value { color: #ea580c; }
+    .stat-card.dead .value { color: #dc2626; }
 
     /* ── Filter bar ─────────────────────────────── */
     .filter-bar {
@@ -129,6 +131,10 @@
     tr.applied-done:hover { background: #dcfce7; }
     tr.dismissed-done { border-left: 3px solid #9ca3af; background: #f9fafb; opacity: 0.6; }
     tr.dismissed-done:hover { opacity: 0.8; }
+    tr.status-error { border-left: 3px solid #ea580c; background: #fff7ed; }
+    tr.status-error:hover { background: #ffedd5; }
+    tr.status-dead { border-left: 3px solid #dc2626; background: #fef2f2; }
+    tr.status-dead:hover { background: #fee2e2; }
 
     .badge {
       display: inline-block;
@@ -142,6 +148,8 @@
     .badge-maybe { background: #fef9c3; color: #854d0e; }
     .badge-skip { background: #f3f4f6; color: #6b7280; }
     .badge-pending { background: #dbeafe; color: #1e40af; }
+    .badge-error { background: #ffedd5; color: #9a3412; }
+    .badge-dead { background: #fee2e2; color: #991b1b; }
 
     .score {
       display: inline-block;
@@ -246,6 +254,16 @@
       color: #92400e;
       margin-bottom: 0.8rem;
     }
+    .error-banner {
+      background: #fee2e2;
+      border: 1px solid #fca5a5;
+      border-radius: 6px;
+      padding: 0.5rem 0.8rem;
+      font-size: 0.82rem;
+      color: #991b1b;
+      margin-bottom: 0.8rem;
+    }
+    .error-banner p { color: #b91c1c; margin: 0.3rem 0 0; }
 
     /* ── Detail meta ─────────────────────────────── */
     .detail-meta {

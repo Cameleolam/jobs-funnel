@@ -17,6 +17,14 @@
   <input type="hidden" name="sort" value="crawled_at">
   <input type="hidden" name="order" value="desc">
 
+  <label>View</label>
+  <select name="view">
+    <option value="">Jobs</option>
+    <option value="error">Errors (retrying)</option>
+    <option value="dead">Dead letters</option>
+    <option value="failed">All failed</option>
+  </select>
+
   <label>Decision</label>
   <select name="decision">
     <option value="">All</option>

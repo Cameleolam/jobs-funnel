@@ -44,7 +44,8 @@ ROW_COLS = (
     "cv_variant, reasoning, status, crawled_at, analyzed_at, "
     "salary_min, salary_max, salary_currency, remote, likely_english, "
     "tags, priority_notes, notes, user_status, "
-    "posted_at, employment_type, seniority_level, start_date"
+    "posted_at, employment_type, seniority_level, start_date, "
+    "error, error_code, retry_count"
 )
 
 
@@ -150,26 +151,41 @@ def get_stats():
         f"SELECT COUNT(*) as cnt FROM {TABLE} WHERE user_status = 'dismissed'"
     )
     stats["dismissed"] = dismissed["cnt"] if dismissed else 0
+    error = fetch_one(
+        f"SELECT COUNT(*) as cnt FROM {TABLE} WHERE status = 'error'"
+    )
+    stats["error"] = error["cnt"] if error else 0
+    dead = fetch_one(
+        f"SELECT COUNT(*) as cnt FROM {TABLE} WHERE status = 'dead'"
+    )
+    stats["dead"] = dead["cnt"] if dead else 0
     return stats
 
 
 # ── Query builder ────────────────────────────────────────────────────
-def build_job_filter(decision="", applied="", min_score=0, max_score=10, search=""):
-    conditions = ["status IN ('analyzed', 'pending')"]
+def build_job_filter(decision="", applied="", min_score=0, max_score=10, search="", view=""):
     params: list = []
-    if decision:
-        conditions.append("decision = %s")
-        params.append(decision)
-    if applied == "applied":
-        conditions.append("user_status = 'applied'")
-    elif applied == "dismissed":
-        conditions.append("user_status = 'dismissed'")
-    elif applied == "pending":
-        conditions.append("user_status IS NULL")
-    conditions.append("COALESCE(fit_score, 0) >= %s")
-    params.append(min_score)
-    conditions.append("COALESCE(fit_score, 0) <= %s")
-    params.append(max_score)
+    if view == "error":
+        conditions = ["status = 'error'"]
+    elif view == "dead":
+        conditions = ["status = 'dead'"]
+    elif view == "failed":
+        conditions = ["status IN ('error', 'dead')"]
+    else:
+        conditions = ["status IN ('analyzed', 'pending')"]
+        if decision:
+            conditions.append("decision = %s")
+            params.append(decision)
+        if applied == "applied":
+            conditions.append("user_status = 'applied'")
+        elif applied == "dismissed":
+            conditions.append("user_status = 'dismissed'")
+        elif applied == "pending":
+            conditions.append("user_status IS NULL")
+        conditions.append("COALESCE(fit_score, 0) >= %s")
+        params.append(min_score)
+        conditions.append("COALESCE(fit_score, 0) <= %s")
+        params.append(max_score)
     if search:
         conditions.append("(title ILIKE %s OR company ILIKE %s)")
         params.extend([f"%{search}%", f"%{search}%"])
@@ -190,6 +206,7 @@ async def list_jobs(
     min_score: int = Query(0, alias="min_score"),
     max_score: int = Query(10, alias="max_score"),
     search: str = Query("", alias="search"),
+    view: str = Query("", alias="view"),
     sort: str = Query("crawled_at", alias="sort"),
     order: str = Query("desc", alias="order"),
     limit: int = Query(50, alias="limit"),
@@ -202,7 +219,7 @@ async def list_jobs(
     sort_col = sort if sort in allowed_sorts else "crawled_at"
     sort_dir = "ASC" if order.lower() == "asc" else "DESC"
 
-    where, params = build_job_filter(decision, applied, min_score, max_score, search)
+    where, params = build_job_filter(decision, applied, min_score, max_score, search, view)
     query = (
         f"SELECT {ROW_COLS} FROM {TABLE} WHERE {where} "
         f"ORDER BY {sort_col} {sort_dir} LIMIT %s OFFSET %s"
@@ -225,6 +242,7 @@ async def export_excel(
     min_score: int = Query(0),
     max_score: int = Query(10),
     search: str = Query(""),
+    view: str = Query(""),
     sort: str = Query("crawled_at"),
     order: str = Query("desc"),
 ):
@@ -235,7 +253,7 @@ async def export_excel(
     sort_col = sort if sort in allowed_sorts else "crawled_at"
     sort_dir = "ASC" if order.lower() == "asc" else "DESC"
 
-    where, params = build_job_filter(decision, applied, min_score, max_score, search)
+    where, params = build_job_filter(decision, applied, min_score, max_score, search, view)
     query = (
         f"SELECT {ROW_COLS} FROM {TABLE} WHERE {where} "
         f"ORDER BY {sort_col} {sort_dir}"
@@ -380,6 +398,17 @@ async def rescore_job(request: Request, job_id: int, description: str = Form(...
         f"analyzed_at = NULL, error = NULL, retry_count = 0, "
         f"sheet_synced = FALSE, sheet_synced_at = NULL WHERE id = %s",
         (description, job_id),
+    )
+    job = fetch_one(f"SELECT {ROW_COLS} FROM {TABLE} WHERE id = %s", (job_id,))
+    return render(request, "partials/job_row_single.html", {"job": job})
+
+
+@app.post("/jobs/{job_id}/retry", response_class=HTMLResponse)
+async def retry_job(request: Request, job_id: int):
+    execute(
+        f"UPDATE {TABLE} SET status = 'pending', retry_count = 0, "
+        f"error = NULL, error_code = NULL WHERE id = %s",
+        (job_id,),
     )
     job = fetch_one(f"SELECT {ROW_COLS} FROM {TABLE} WHERE id = %s", (job_id,))
     return render(request, "partials/job_row_single.html", {"job": job})

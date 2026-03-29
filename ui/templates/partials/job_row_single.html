@@ -4,7 +4,11 @@
 {% set needs_action = score_val >= 6 and us == "" and job.status == "analyzed" %}
 {% set has_flag = job.priority_notes and ("manual check" in (job.priority_notes|lower) or "flag" in (job.priority_notes|lower) or "fetch full" in (job.priority_notes|lower) or "fetch the" in (job.priority_notes|lower)) %}
 
-{% if job.status != "analyzed" %}
+{% if job.status == "dead" %}
+  {% set row_class = "status-dead" %}
+{% elif job.status == "error" %}
+  {% set row_class = "status-error" %}
+{% elif job.status != "analyzed" %}
   {% set row_class = "status-pending" %}
 {% elif us == "applied" %}
   {% set row_class = "applied-done" %}
@@ -20,8 +24,19 @@
   {% set row_class = "decision-SKIP" %}
 {% endif %}
 
-{% set badge_class = "badge-" ~ (job.decision or "skip")|lower if job.status == "analyzed" else "badge-pending" %}
-{% set badge_text = job.decision if job.status == "analyzed" else "PENDING" %}
+{% if job.status == "dead" %}
+  {% set badge_class = "badge-dead" %}
+  {% set badge_text = "DEAD" %}
+{% elif job.status == "error" %}
+  {% set badge_class = "badge-error" %}
+  {% set badge_text = "ERROR" %}
+{% elif job.status == "analyzed" %}
+  {% set badge_class = "badge-" ~ (job.decision or "skip")|lower %}
+  {% set badge_text = job.decision %}
+{% else %}
+  {% set badge_class = "badge-pending" %}
+  {% set badge_text = "PENDING" %}
+{% endif %}
 
 <tr class="job-row {{ row_class }}"
     hx-get="/jobs/{{ job.id }}"
@@ -43,8 +58,15 @@
     {% if job.likely_english %}<span class="icon-badge icon-en" title="Likely English">EN</span>{% endif %}
     {% if has_flag %}<span class="icon-badge icon-flag" title="{{ job.priority_notes[:80] }}">!</span>{% endif %}
     {% if job.notes %}<span class="icon-badge icon-note" title="{{ job.notes[:80] }}">N</span>{% endif %}
+    {% if job.error_code %}<span class="icon-badge icon-flag" title="{{ (job.error or '')[:80] }}">{{ job.error_code }}</span>{% endif %}
   </td>
   <td class="status-cell" onclick="event.stopPropagation()">
+    {% if job.status in ('dead', 'error') %}
+    <button class="btn btn-sm btn-warn"
+            hx-post="/jobs/{{ job.id }}/retry"
+            hx-target="#row-{{ job.id }}"
+            hx-swap="outerHTML settle:0.1s">Retry</button>
+    {% else %}
     <select class="status-select status-{{ us or 'none' }}"
             hx-patch="/jobs/{{ job.id }}/status"
             hx-target="#row-{{ job.id }}"
@@ -54,6 +76,7 @@
       <option value="applied" {{ 'selected' if us == 'applied' else '' }}>Applied</option>
       <option value="dismissed" {{ 'selected' if us == 'dismissed' else '' }}>Nope</option>
     </select>
+    {% endif %}
   </td>
 </tr>
 <tr class="detail-row"><td colspan="10" class="detail-cell" id="detail-{{ job.id }}"></td></tr>

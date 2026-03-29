@@ -5,6 +5,21 @@
 
   {% set has_flag = job.priority_notes and ("manual check" in (job.priority_notes|lower) or "flag" in (job.priority_notes|lower) or "fetch full" in (job.priority_notes|lower) or "fetch the" in (job.priority_notes|lower)) %}
 
+  {% if job.status in ('dead', 'error') %}
+  <div class="error-banner">
+    <strong>{{ 'Dead letter' if job.status == 'dead' else 'Error' }}
+      ({{ job.error_code or 'UNKNOWN' }}, retries: {{ job.retry_count }})</strong>
+    <p>{{ job.error or 'No error message recorded.' }}</p>
+    <form hx-post="/jobs/{{ job.id }}/retry"
+          hx-target="#row-{{ job.id }}"
+          hx-swap="outerHTML settle:0.1s"
+          style="margin-top:0.5rem;">
+      <button type="submit" class="btn btn-warn">Reset &amp; Retry</button>
+      <span class="text-muted" style="margin-left:0.5rem;">Resets to pending with retry_count=0</span>
+    </form>
+  </div>
+  {% endif %}
+
   {% if has_flag %}
   <div class="flag-banner">
     <strong>Flagged for review:</strong> {{ job.priority_notes }}
