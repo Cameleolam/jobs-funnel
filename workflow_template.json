@@ -37,13 +37,24 @@
     },
     {
       "parameters": {
+        "jsCode": "{{file:scripts/n8n/preflight.js}}"
+      },
+      "id": "preflight",
+      "name": "Pre-Flight Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 400],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
         "jsCode": "{{file:scripts/n8n/an-fetch.js}}"
       },
       "id": "an-fetch",
       "name": "AN: Fetch & Filter",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [300, 200]
+      "position": [450, 200]
     },
     {
       "parameters": {
@@ -53,7 +64,7 @@
       "name": "AA: Fetch Jobs",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [300, 500]
+      "position": [450, 500]
     },
     {
       "parameters": {
@@ -279,11 +290,15 @@
   "connections": {
     "Run Full Pipeline": {
       "main": [[
-        { "node": "AN: Fetch & Filter", "type": "main", "index": 0 },
-        { "node": "AA: Fetch Jobs", "type": "main", "index": 0 }
+        { "node": "Pre-Flight Check", "type": "main", "index": 0 }
       ]]
     },
     "Cron Schedule": {
+      "main": [[
+        { "node": "Pre-Flight Check", "type": "main", "index": 0 }
+      ]]
+    },
+    "Pre-Flight Check": {
       "main": [[
         { "node": "AN: Fetch & Filter", "type": "main", "index": 0 },
         { "node": "AA: Fetch Jobs", "type": "main", "index": 0 }
