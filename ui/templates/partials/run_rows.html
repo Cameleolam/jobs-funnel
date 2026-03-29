@@ -26,6 +26,8 @@
       <span class="badge badge-partial">partial</span>
     {% elif run.status == 'failed' %}
       <span class="badge badge-failed">failed</span>
+    {% elif run.status == 'interrupted' %}
+      <span class="badge badge-stale">interrupted</span>
     {% else %}
       <span class="badge">{{ run.status }}</span>
     {% endif %}
