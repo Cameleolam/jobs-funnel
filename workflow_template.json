@@ -19,7 +19,7 @@
       "name": "Cron Schedule",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [0, 500]
+      "position": [0, 450]
     },
     {
       "parameters": {
@@ -43,7 +43,7 @@
       "name": "Pre-Flight Check",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [200, 400],
+      "position": [300, 350],
       "executeOnce": true
     },
     {
@@ -54,7 +54,7 @@
       "name": "AN: Fetch & Filter",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [450, 200]
+      "position": [1100, 150]
     },
     {
       "parameters": {
@@ -64,7 +64,7 @@
       "name": "AA: Fetch Jobs",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [450, 500]
+      "position": [1100, 550]
     },
     {
       "parameters": {
@@ -75,7 +75,7 @@
       "name": "Merge Sources",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
-      "position": [600, 300]
+      "position": [1400, 350]
     },
     {
       "parameters": {
@@ -85,7 +85,7 @@
       "name": "Dedup Merge",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [800, 300]
+      "position": [1600, 350]
     },
     {
       "parameters": {
@@ -104,7 +104,7 @@
       "name": "Has Results?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1050, 300]
+      "position": [1850, 350]
     },
     {
       "parameters": {
@@ -116,7 +116,7 @@
       "name": "Dedup: Get Seen URLs",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [1300, 300],
+      "position": [2100, 350],
       "credentials": {
         "postgres": {
           "id": "CONFIGURE_ME",
@@ -134,7 +134,7 @@
       "name": "Dedup: Filter New",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1550, 300]
+      "position": [2350, 350]
     },
     {
       "parameters": {
@@ -153,7 +153,7 @@
       "name": "Has New?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1800, 300]
+      "position": [2600, 350]
     },
     {
       "parameters": {
@@ -163,7 +163,7 @@
       "name": "Prep Insert",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2050, 300]
+      "position": [2850, 350]
     },
     {
       "parameters": {
@@ -175,7 +175,7 @@
       "name": "DB: Insert Jobs",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [2300, 300],
+      "position": [3100, 350],
       "credentials": {
         "postgres": {
           "id": "CONFIGURE_ME",
@@ -191,7 +191,7 @@
       "name": "Start Analyze",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2550, 300],
+      "position": [3350, 350],
       "executeOnce": true
     },
     {
@@ -204,7 +204,7 @@
       "name": "DB: Fetch Pending",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [2600, 600],
+      "position": [3400, 650],
       "credentials": {
         "postgres": {
           "id": "CONFIGURE_ME",
@@ -222,7 +222,7 @@
       "name": "Has Pending?",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2850, 600]
+      "position": [3650, 650]
     },
     {
       "parameters": {
@@ -241,7 +241,7 @@
       "name": "Analyze Done?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [3050, 600]
+      "position": [3850, 650]
     },
     {
       "parameters": {
@@ -251,7 +251,7 @@
       "name": "Batch Items",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3250, 600]
+      "position": [4050, 650]
     },
     {
       "parameters": {
@@ -261,7 +261,7 @@
       "name": "Filter: Claude",
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
-      "position": [3600, 600],
+      "position": [4400, 650],
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 30000
@@ -274,7 +274,7 @@
       "name": "Parse + Prep Update",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3850, 600]
+      "position": [4650, 650]
     },
     {
       "parameters": {
@@ -286,7 +286,7 @@
       "name": "DB: Update Jobs",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [4100, 600],
+      "position": [4900, 650],
       "credentials": {
         "postgres": {
           "id": "CONFIGURE_ME",
@@ -302,7 +302,7 @@
       "name": "Check More Pending",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [4350, 600],
+      "position": [5150, 650],
       "executeOnce": true
     },
     {
@@ -313,7 +313,7 @@
       "name": "Run Start",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [250, 300],
+      "position": [550, 350],
       "executeOnce": true
     },
     {
@@ -326,7 +326,7 @@
       "name": "DB: Run Start",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [400, 400],
+      "position": [800, 350],
       "credentials": {
         "postgres": {
           "id": "CONFIGURE_ME",
@@ -343,7 +343,7 @@
       "name": "Run Start (Analyze)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [200, 800],
+      "position": [300, 850],
       "executeOnce": true
     },
     {
@@ -356,7 +356,7 @@
       "name": "DB: Run Start (Analyze)",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [400, 800],
+      "position": [550, 850],
       "credentials": {
         "postgres": {
           "id": "CONFIGURE_ME",
@@ -373,7 +373,7 @@
       "name": "Run End",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3300, 900],
+      "position": [4100, 950],
       "executeOnce": true
     },
     {
@@ -386,7 +386,7 @@
       "name": "DB: Run End",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [3550, 900],
+      "position": [4350, 950],
       "credentials": {
         "postgres": {
           "id": "CONFIGURE_ME",
