@@ -51,7 +51,10 @@ CREATE TABLE IF NOT EXISTS jobs (
     posted_at       TIMESTAMPTZ,      -- when the job was posted (from API)
     employment_type TEXT,              -- full-time/part-time/contract/freelance/minijob
     seniority_level TEXT,              -- junior/mid/senior/lead
-    start_date      TEXT               -- extracted start date (e.g. "sofort", "01.05.2026")
+    start_date      TEXT,              -- extracted start date (e.g. "sofort", "01.05.2026")
+
+    possible_duplicate_of  INTEGER REFERENCES jobs(id),
+    duplicate_confirmed    BOOLEAN            -- null=unreviewed, true=confirmed dup, false=not a dup
 );
 
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);

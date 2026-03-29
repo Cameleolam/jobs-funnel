@@ -45,7 +45,8 @@ ROW_COLS = (
     "salary_min, salary_max, salary_currency, remote, likely_english, "
     "tags, priority_notes, notes, user_status, "
     "posted_at, employment_type, seniority_level, start_date, "
-    "error, error_code, retry_count"
+    "error, error_code, retry_count, "
+    "possible_duplicate_of, duplicate_confirmed"
 )
 
 
@@ -181,6 +182,8 @@ def build_job_filter(decision="", applied="", min_score=0, max_score=10, search=
         conditions = ["status = 'dead'"]
     elif view == "failed":
         conditions = ["status IN ('error', 'dead')"]
+    elif view == "duplicates":
+        conditions = ["possible_duplicate_of IS NOT NULL AND duplicate_confirmed IS NULL"]
     else:
         conditions = ["status IN ('analyzed', 'pending')"]
         if decision:
@@ -419,6 +422,18 @@ async def retry_job(request: Request, job_id: int):
         f"UPDATE {TABLE} SET status = 'pending', retry_count = 0, "
         f"error = NULL, error_code = NULL WHERE id = %s",
         (job_id,),
+    )
+    job = fetch_one(f"SELECT {ROW_COLS} FROM {TABLE} WHERE id = %s", (job_id,))
+    return render(request, "partials/job_row_single.html", {"job": job})
+
+
+@app.patch("/jobs/{job_id}/duplicate", response_class=HTMLResponse)
+async def confirm_duplicate(request: Request, job_id: int, confirmed: str = Form(...)):
+    if confirmed not in ("true", "false"):
+        return HTMLResponse("Invalid value", status_code=400)
+    execute(
+        f"UPDATE {TABLE} SET duplicate_confirmed = %s WHERE id = %s",
+        (confirmed == "true", job_id),
     )
     job = fetch_one(f"SELECT {ROW_COLS} FROM {TABLE} WHERE id = %s", (job_id,))
     return render(request, "partials/job_row_single.html", {"job": job})

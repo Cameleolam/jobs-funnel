@@ -302,8 +302,79 @@
       "name": "Check More Pending",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [5150, 650],
+      "position": [6400, 650],
       "executeOnce": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, title, company, location FROM {{ $env.JOBS_FUNNEL_TABLE }} WHERE status = 'analyzed' AND crawled_at > NOW() - INTERVAL '30 days' ORDER BY crawled_at DESC LIMIT 200",
+        "options": {}
+      },
+      "id": "dedup-fetch-recent",
+      "name": "Dedup: Fetch Recent",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [5150, 450],
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_ME",
+          "name": "Postgres - Jobs Funnel"
+        }
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prep semantic duplicate detection: collect newly analyzed jobs + existing jobs,\n// write a temp file for dedup_semantic.py to process.\nconst fs = require('fs');\nconst table = $env.JOBS_FUNNEL_TABLE;\nconst projectDir = ($env.JOBS_FUNNEL_PROJECT_DIR || '.').replace(/\\\\/g, '/');\nconst tmpDir = projectDir + '/temp';\n\n// Collect newly analyzed job IDs from the batch originals (via Parse + Prep Update)\n// We reference the Batch Items node which has _batchOriginals with id/title/company/location\nconst batchItems = $('Batch Items').all();\nconst parseResults = $('Parse + Prep Update').all();\n\nconst newJobs = [];\nfor (let b = 0; b < batchItems.length; b++) {\n  const originals = (batchItems[b].json._batchOriginals) || [];\n  const updateQuery = (parseResults[b] && parseResults[b].json._updateQuery) || '';\n  for (let i = 0; i < originals.length; i++) {\n    // Only include successfully analyzed jobs (query contains status = 'analyzed')\n    if (updateQuery.includes(\"status = 'analyzed'\")) {\n      newJobs.push({\n        id: originals[i].id,\n        title: originals[i].title || '',\n        company: originals[i].company || '',\n        location: originals[i].location || '',\n      });\n    }\n  }\n}\n\nif (newJobs.length === 0) {\n  return [{ json: { _dedupSkipped: true, _dedupQuery: '' } }];\n}\n\n// Get existing jobs from the preceding Postgres fetch node\nconst existingRows = $('Dedup: Fetch Recent').all();\nconst existingJobs = existingRows\n  .filter(r => r.json.id != null)\n  .map(r => ({\n    id: r.json.id,\n    title: r.json.title || '',\n    company: r.json.company || '',\n    location: r.json.location || '',\n  }));\n\nif (existingJobs.length === 0) {\n  return [{ json: { _dedupSkipped: true, _dedupQuery: '' } }];\n}\n\n// Filter out existing jobs that are in the new batch (no self-comparison)\nconst newIds = new Set(newJobs.map(j => j.id));\nconst filteredExisting = existingJobs.filter(j => !newIds.has(j.id));\n\nif (filteredExisting.length === 0) {\n  return [{ json: { _dedupSkipped: true, _dedupQuery: '' } }];\n}\n\n// Write temp file for dedup_semantic.py\nfs.mkdirSync(tmpDir, { recursive: true });\nconst tmpPath = tmpDir + '/n8n_dedup_' + Date.now() + '.json';\nfs.writeFileSync(tmpPath, JSON.stringify({\n  new_jobs: newJobs,\n  existing_jobs: filteredExisting,\n}), 'utf-8');\n\nreturn [{ json: { _dedupTmpPath: tmpPath } }];"
+      },
+      "id": "dedup-semantic",
+      "name": "Dedup: Semantic Prep",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [5400, 450],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "command": "=python \"{{ $env.JOBS_FUNNEL_PROJECT_DIR }}/scripts/dedup_semantic.py\" \"{{ $json._dedupTmpPath }}\""
+      },
+      "id": "dedup-claude",
+      "name": "Dedup: Claude",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [5650, 450],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse dedup_semantic.py output and build UPDATE queries\nconst table = $env.JOBS_FUNNEL_TABLE;\nconst stdout = $input.first().json.stdout || '[]';\ntry {\n  const pairs = JSON.parse(stdout);\n  if (!Array.isArray(pairs) || pairs.length === 0) {\n    return [{ json: { _dedupQuery: '' } }];\n  }\n  return pairs.map(p => ({\n    json: {\n      _dedupQuery: `UPDATE ${table} SET possible_duplicate_of = ${Number(p.existing_id)} WHERE id = ${Number(p.new_id)} AND possible_duplicate_of IS NULL`\n    }\n  }));\n} catch (e) {\n  return [{ json: { _dedupQuery: '' } }];\n}"
+      },
+      "id": "dedup-semantic-parse",
+      "name": "Dedup: Parse Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [5900, 450]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json._dedupQuery }}",
+        "options": {}
+      },
+      "id": "dedup-update",
+      "name": "Dedup: Update Duplicates",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [6150, 450],
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_ME",
+          "name": "Postgres - Jobs Funnel"
+        }
+      },
+      "continueOnFail": true
     },
     {
       "parameters": {
@@ -526,6 +597,31 @@
       ]]
     },
     "DB: Update Jobs": {
+      "main": [[
+        { "node": "Dedup: Fetch Recent", "type": "main", "index": 0 }
+      ]]
+    },
+    "Dedup: Fetch Recent": {
+      "main": [[
+        { "node": "Dedup: Semantic Prep", "type": "main", "index": 0 }
+      ]]
+    },
+    "Dedup: Semantic Prep": {
+      "main": [[
+        { "node": "Dedup: Claude", "type": "main", "index": 0 }
+      ]]
+    },
+    "Dedup: Claude": {
+      "main": [[
+        { "node": "Dedup: Parse Results", "type": "main", "index": 0 }
+      ]]
+    },
+    "Dedup: Parse Results": {
+      "main": [[
+        { "node": "Dedup: Update Duplicates", "type": "main", "index": 0 }
+      ]]
+    },
+    "Dedup: Update Duplicates": {
       "main": [[
         { "node": "Check More Pending", "type": "main", "index": 0 }
       ]]

@@ -20,6 +20,32 @@
   </div>
   {% endif %}
 
+  {% if job.possible_duplicate_of %}
+  <div class="flag-banner">
+    <strong>Possible duplicate of
+      <a href="#" hx-get="/jobs/{{ job.possible_duplicate_of }}" hx-target="#detail-{{ job.id }}" hx-swap="innerHTML">
+        Job #{{ job.possible_duplicate_of }}
+      </a>
+    </strong>
+    {% if job.duplicate_confirmed is none %}
+    <div style="margin-top:0.5rem;">
+      <form hx-patch="/jobs/{{ job.id }}/duplicate" hx-target="#row-{{ job.id }}" hx-swap="outerHTML settle:0.1s" style="display:inline">
+        <input type="hidden" name="confirmed" value="true">
+        <button type="submit" class="btn btn-sm btn-warn">Confirm Duplicate</button>
+      </form>
+      <form hx-patch="/jobs/{{ job.id }}/duplicate" hx-target="#row-{{ job.id }}" hx-swap="outerHTML settle:0.1s" style="display:inline">
+        <input type="hidden" name="confirmed" value="false">
+        <button type="submit" class="btn btn-sm btn-skip">Not a Duplicate</button>
+      </form>
+    </div>
+    {% elif job.duplicate_confirmed %}
+    <span class="badge badge-dead">Confirmed duplicate</span>
+    {% else %}
+    <span class="badge badge-pass">Not a duplicate</span>
+    {% endif %}
+  </div>
+  {% endif %}
+
   {% if has_flag %}
   <div class="flag-banner">
     <strong>Flagged for review:</strong> {{ job.priority_notes }}
