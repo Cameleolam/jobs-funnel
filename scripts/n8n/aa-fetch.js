@@ -118,6 +118,40 @@ function extractDescription(html) {
   return text.length > 100 ? text : null;
 }
 
+function checkDescriptionQuality(desc) {
+  if (!desc || desc.length < 50) return 'empty';
+
+  const lower = desc.toLowerCase();
+  const len = desc.length;
+
+  // Junk patterns — cookie notices, login walls, error pages
+  const junkPatterns = [
+    'cookie', 'datenschutz', 'privacy policy', 'accept all',
+    'page not found', '404', 'access denied', 'forbidden',
+    'javascript is required', 'enable javascript',
+    'please log in', 'bitte melden sie sich an',
+    'captcha', 'robot'
+  ];
+  const junkHits = junkPatterns.filter(p => lower.includes(p)).length;
+  if (junkHits >= 2) return 'poor';
+
+  // Job-related keywords — a real posting should have several
+  const jobKeywords = [
+    'aufgaben', 'anforderungen', 'profil', 'qualifikation',
+    'responsibilities', 'requirements', 'experience', 'skills',
+    'benefits', 'salary', 'gehalt', 'team', 'position',
+    'bewerben', 'apply', 'stellenangebot', 'job', 'rolle',
+    'arbeiten', 'work', 'develop', 'engineer', 'manage'
+  ];
+  const jobHits = jobKeywords.filter(k => lower.includes(k)).length;
+
+  if (len < 200 && jobHits < 2) return 'poor';
+  if (len >= 200 && jobHits >= 2) return 'good';
+  if (len >= 500) return 'good';
+
+  return 'poor';
+}
+
 const FETCH_DELAY = config.aa_fetch_delay_ms || 300;
 const MAX_FETCHES = config.aa_max_fetches || 200;
 let fetchCount = 0;
@@ -134,7 +168,10 @@ for (let i = 0; i < jobs.length && fetchCount < MAX_FETCHES; i++) {
     try {
       const html = await this.helpers.httpRequest({ method: 'GET', url: extUrl, encoding: 'utf-8', timeout: config.aa_fetch_timeout_ms || 5000 });
       const desc = extractDescription(html);
-      if (desc) jobs[i]._fullDesc = desc.substring(0, config.description_max_chars || 5000);
+      if (desc) {
+        jobs[i]._fullDesc = desc.substring(0, config.description_max_chars || 5000);
+        jobs[i]._descriptionQuality = checkDescriptionQuality(jobs[i]._fullDesc);
+      }
       success = true;
     } catch (e) {
       if (attempt === 1) {
@@ -176,6 +213,7 @@ const mapped = jobs.map(j => {
     company: company,
     location: location,
     description: desc,
+    description_quality: j._descriptionQuality || (j._fullDesc ? 'unknown' : 'empty'),
     tags: [],
     remote: false,
     likely_english: false,

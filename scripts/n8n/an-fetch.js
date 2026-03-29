@@ -123,6 +123,7 @@ const mapped = allJobs.map(j => {
     company: j.company_name || '',
     location: j.location || '',
     description: desc,
+    description_quality: (desc.length > 100) ? 'good' : 'poor',
     tags: j.tags || [],
     remote: j.remote || false,
     likely_english: isLikelyEnglish(desc),

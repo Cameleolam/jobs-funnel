@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     company         TEXT NOT NULL DEFAULT '',
     location        TEXT NOT NULL DEFAULT '',
     description     TEXT NOT NULL DEFAULT '',
+    description_quality TEXT DEFAULT 'unknown',  -- good/poor/empty/unknown
     source          TEXT NOT NULL,
     external_id     TEXT DEFAULT '',
     tags            JSONB DEFAULT '[]',
