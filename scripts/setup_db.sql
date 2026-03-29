@@ -60,6 +60,25 @@ CREATE INDEX IF NOT EXISTS idx_jobs_decision ON jobs(decision);
 CREATE INDEX IF NOT EXISTS idx_jobs_error_code ON jobs(error_code) WHERE error_code IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_jobs_dead ON jobs(status) WHERE status = 'dead';
 
+CREATE TABLE IF NOT EXISTS pipeline_runs (
+    id              SERIAL PRIMARY KEY,
+    execution_id    TEXT,                              -- n8n $execution.id
+    started_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    finished_at     TIMESTAMPTZ,
+    trigger_type    TEXT NOT NULL DEFAULT 'manual',    -- manual/cron/webhook
+    profile         TEXT NOT NULL DEFAULT '',
+    jobs_crawled    INTEGER DEFAULT 0,
+    jobs_inserted   INTEGER DEFAULT 0,
+    jobs_analyzed   INTEGER DEFAULT 0,
+    jobs_errored    INTEGER DEFAULT 0,
+    duration_ms     INTEGER,
+    status          TEXT NOT NULL DEFAULT 'running',   -- running/success/partial/failed
+    notes           TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_pipeline_runs_started_at ON pipeline_runs(started_at);
+CREATE INDEX IF NOT EXISTS idx_pipeline_runs_status ON pipeline_runs(status);
+
 CREATE TABLE IF NOT EXISTS job_raw_data (
     id          SERIAL PRIMARY KEY,
     url         TEXT NOT NULL UNIQUE,

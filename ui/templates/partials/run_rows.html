@@ -1,0 +1,52 @@
+{% for run in runs %}
+<tr>
+  <td>
+    {% if run.started_at %}
+      {{ run.started_at.strftime('%Y-%m-%d %H:%M') }}
+    {% endif %}
+  </td>
+  <td>{{ run.duration_ms | format_duration }}</td>
+  <td><span class="badge badge-trigger">{{ run.trigger_type }}</span></td>
+  <td>{{ run.profile or '-' }}</td>
+  <td>{{ run.jobs_crawled }}</td>
+  <td>{{ run.jobs_inserted }}</td>
+  <td>{{ run.jobs_analyzed }}</td>
+  <td>{% if run.jobs_errored > 0 %}<strong style="color:#dc2626">{{ run.jobs_errored }}</strong>{% else %}{{ run.jobs_errored }}{% endif %}</td>
+  <td>
+    {% if run.status == 'running' %}
+      {% set age_minutes = ((now - run.started_at).total_seconds() / 60) | int %}
+      {% if age_minutes > 30 %}
+        <span class="badge badge-stale">stale ({{ age_minutes }}m)</span>
+      {% else %}
+        <span class="badge badge-running">running</span>
+      {% endif %}
+    {% elif run.status == 'success' %}
+      <span class="badge badge-success">success</span>
+    {% elif run.status == 'partial' %}
+      <span class="badge badge-partial">partial</span>
+    {% elif run.status == 'failed' %}
+      <span class="badge badge-failed">failed</span>
+    {% else %}
+      <span class="badge">{{ run.status }}</span>
+    {% endif %}
+  </td>
+</tr>
+{% endfor %}
+
+{% if runs|length == 0 %}
+<tr><td colspan="9" style="text-align:center; padding:2rem; color:#999;">No pipeline runs recorded yet.</td></tr>
+{% endif %}
+
+{% if total > offset + limit %}
+{% set remaining = total - offset - limit %}
+<tr id="load-more-runs">
+  <td colspan="9" style="text-align:center; padding:0.8rem;">
+    <button class="btn btn-primary btn-sm"
+            hx-get="/runs/list?offset={{ offset + limit }}&limit={{ limit }}"
+            hx-target="#load-more-runs"
+            hx-swap="outerHTML">
+      Load more ({{ remaining }} remaining)
+    </button>
+  </td>
+</tr>
+{% endif %}

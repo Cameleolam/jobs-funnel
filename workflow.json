@@ -185,7 +185,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Emit a single item to trigger the analyze phase\nreturn [{ json: { _trigger: 'crawl_complete' } }];"
+        "jsCode": "// Emit a single item to trigger the analyze phase, carrying crawl counts\nlet crawled = 0, inserted = 0;\ntry { crawled = $('Dedup Merge').all().length; } catch(e) {}\ntry { inserted = $('Dedup: Filter New').all().filter(i => !i.json._empty).length; } catch(e) {}\nreturn [{ json: { _trigger: 'crawl_complete', _crawled: crawled, _inserted: inserted } }];"
       },
       "id": "goto-analyze",
       "name": "Start Analyze",
@@ -216,7 +216,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Check if there are pending jobs\nconst items = $input.all().filter(i => i.json.id != null);\nif (items.length === 0) return [];\nreturn items;"
+        "jsCode": "// Check if there are pending jobs — output flag when done\nconst items = $input.all().filter(i => i.json.id != null);\nif (items.length === 0) return [{ json: { _done: true } }];\nreturn items;"
       },
       "id": "has-pending",
       "name": "Has Pending?",
@@ -226,13 +226,32 @@
     },
     {
       "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "leftValue": "={{ $json._done }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true" }
+            }
+          ]
+        }
+      },
+      "id": "analyze-done",
+      "name": "Analyze Done?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [3050, 600]
+    },
+    {
+      "parameters": {
         "jsCode": "// Batch all pending jobs into groups of N, write each to a temp file\nconst fs = require('fs');\nconst config = JSON.parse(fs.readFileSync(\n  ($env.JOBS_FUNNEL_PROJECT_DIR || '.').replace(/\\\\/g, '/') + '/config.json', 'utf-8'\n));\nconst BATCH_SIZE = config.batch_size || 8;\nconst all = $input.all();\nconst tmpDir = ($env.JOBS_FUNNEL_PROJECT_DIR || '.').replace(/\\\\/g, '/') + '/temp';\n\n// Ensure temp dir exists (let it throw if it can't create)\nfs.mkdirSync(tmpDir, { recursive: true });\n// Clean old batch files (non-critical, silent on failure)\ntry {\n  const oldFiles = fs.readdirSync(tmpDir).filter(f => f.startsWith('n8n_batch_'));\n  for (const f of oldFiles) { try { fs.unlinkSync(tmpDir + '/' + f); } catch (e) {} }\n} catch (e) {}\n\nconst batches = [];\nfor (let i = 0; i < all.length; i += BATCH_SIZE) {\n  const chunk = all.slice(i, i + BATCH_SIZE);\n  const batchJobs = chunk.map(item => ({\n    title: item.json.title || '',\n    company: item.json.company || '',\n    location: item.json.location || '',\n    description: (item.json.description || '').substring(0, 3000),\n    tags: item.json.tags || [],\n    url: item.json.url || '',\n    remote: item.json.remote || false,\n    source: item.json.source || '',\n    salary_min: item.json.salary_min || null,\n    salary_max: item.json.salary_max || null,\n    salary_currency: item.json.salary_currency || null,\n    start_date: item.json.start_date || null,\n    _likely_english: item.json.likely_english || false\n  }));\n  const tmpPath = tmpDir + '/n8n_batch_' + Date.now() + '_' + i + '.json';\n  fs.writeFileSync(tmpPath, JSON.stringify(batchJobs), 'utf-8');\n  const originals = chunk.map(item => ({\n    id: item.json.id,\n    url: item.json.url,\n    title: item.json.title,\n    company: item.json.company,\n    location: item.json.location,\n    source: item.json.source\n  }));\n  batches.push({ json: { _tmpPath: tmpPath, _batchOriginals: originals, _batchSize: chunk.length } });\n}\nreturn batches;"
       },
       "id": "batch-items",
       "name": "Batch Items",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3100, 600]
+      "position": [3250, 600]
     },
     {
       "parameters": {
@@ -285,6 +304,95 @@
       "typeVersion": 2,
       "position": [4350, 600],
       "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Insert a pipeline_runs row at the start of a pipeline execution.\n// Detects trigger type and returns an INSERT ... RETURNING query.\nconst profile = ($env.JOBS_FUNNEL_PROFILE || '').replace(/'/g, \"''\");\nconst executionId = $execution.id;\n\nlet triggerType = 'manual';\ntry { if ($('Cron Schedule').isExecuted) triggerType = 'cron'; } catch (e) { /* not triggered */ }\ntry { if ($('Run Analyze Only').isExecuted) triggerType = 'webhook'; } catch (e) { /* not triggered */ }\n\nconst query = `INSERT INTO pipeline_runs (execution_id, trigger_type, profile, status)\n  VALUES ('${executionId}', '${triggerType}', '${profile}', 'running')\n  RETURNING id, started_at`;\n\nreturn [{ json: { _runStartQuery: query } }];"
+      },
+      "id": "run-start",
+      "name": "Run Start",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json._runStartQuery }}",
+        "options": {}
+      },
+      "id": "db-run-start",
+      "name": "DB: Run Start",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [400, 400],
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_ME",
+          "name": "Postgres - Jobs Funnel"
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Insert a pipeline_runs row at the start of a pipeline execution.\n// Detects trigger type and returns an INSERT ... RETURNING query.\nconst profile = ($env.JOBS_FUNNEL_PROFILE || '').replace(/'/g, \"''\");\nconst executionId = $execution.id;\n\nlet triggerType = 'manual';\ntry { if ($('Cron Schedule').isExecuted) triggerType = 'cron'; } catch (e) { /* not triggered */ }\ntry { if ($('Run Analyze Only').isExecuted) triggerType = 'webhook'; } catch (e) { /* not triggered */ }\n\nconst query = `INSERT INTO pipeline_runs (execution_id, trigger_type, profile, status)\n  VALUES ('${executionId}', '${triggerType}', '${profile}', 'running')\n  RETURNING id, started_at`;\n\nreturn [{ json: { _runStartQuery: query } }];"
+      },
+      "id": "run-start-analyze",
+      "name": "Run Start (Analyze)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [200, 800],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json._runStartQuery }}",
+        "options": {}
+      },
+      "id": "db-run-start-analyze",
+      "name": "DB: Run Start (Analyze)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [400, 800],
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_ME",
+          "name": "Postgres - Jobs Funnel"
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Finalize the pipeline_runs row with stats and duration.\n// Reads run_id from whichever DB: Run Start node executed.\nconst table = ($env.JOBS_FUNNEL_TABLE || 'jobs').replace(/'/g, \"''\");\n\nlet runId = null;\nlet startedAt = null;\ntry {\n  const row = $('DB: Run Start').first().json;\n  runId = row.id;\n  startedAt = row.started_at;\n} catch (e) { /* full pipeline path not taken */ }\nif (!runId) {\n  try {\n    const row = $('DB: Run Start (Analyze)').first().json;\n    runId = row.id;\n    startedAt = row.started_at;\n  } catch (e) { /* neither path?? */ }\n}\n\nif (!runId) {\n  // No run was started — skip gracefully\n  return [{ json: { _runEndQuery: 'SELECT 1' } }];\n}\n\nconst durationMs = Date.now() - new Date(startedAt).getTime();\n\n// Crawl stats from the Start Analyze node (0 for webhook/analyze-only path)\nlet crawled = 0;\nlet inserted = 0;\ntry {\n  const sa = $('Start Analyze').first().json;\n  crawled = sa._crawled || 0;\n  inserted = sa._inserted || 0;\n} catch (e) { /* analyze-only path — no crawl */ }\n\n// Escape the started_at timestamp for SQL\nconst safeStarted = new Date(startedAt).toISOString();\n\nconst query = `\n  WITH stats AS (\n    SELECT\n      COUNT(*) FILTER (WHERE analyzed_at >= '${safeStarted}') AS analyzed,\n      COUNT(*) FILTER (WHERE error_code IS NOT NULL AND (analyzed_at >= '${safeStarted}' OR (status IN ('error','dead') AND crawled_at >= '${safeStarted}'))) AS errored\n    FROM ${table}\n  )\n  UPDATE pipeline_runs SET\n    finished_at = NOW(),\n    jobs_crawled = ${crawled},\n    jobs_inserted = ${inserted},\n    jobs_analyzed = stats.analyzed,\n    jobs_errored = stats.errored,\n    duration_ms = ${durationMs},\n    status = CASE WHEN stats.errored > 0 THEN 'partial' ELSE 'success' END\n  FROM stats\n  WHERE pipeline_runs.id = ${runId}`;\n\nreturn [{ json: { _runEndQuery: query } }];"
+      },
+      "id": "run-end",
+      "name": "Run End",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3300, 900],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json._runEndQuery }}",
+        "options": {}
+      },
+      "id": "db-run-end",
+      "name": "DB: Run End",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [3550, 900],
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_ME",
+          "name": "Postgres - Jobs Funnel"
+        }
+      }
     }
   ],
   "connections": {
@@ -299,6 +407,16 @@
       ]]
     },
     "Pre-Flight Check": {
+      "main": [[
+        { "node": "Run Start", "type": "main", "index": 0 }
+      ]]
+    },
+    "Run Start": {
+      "main": [[
+        { "node": "DB: Run Start", "type": "main", "index": 0 }
+      ]]
+    },
+    "DB: Run Start": {
       "main": [[
         { "node": "AN: Fetch & Filter", "type": "main", "index": 0 },
         { "node": "AA: Fetch Jobs", "type": "main", "index": 0 }
@@ -327,7 +445,7 @@
     "Has Results?": {
       "main": [
         [{ "node": "Dedup: Get Seen URLs", "type": "main", "index": 0 }],
-        []
+        [{ "node": "Run End", "type": "main", "index": 0 }]
       ]
     },
     "Dedup: Get Seen URLs": {
@@ -343,7 +461,7 @@
     "Has New?": {
       "main": [
         [{ "node": "Prep Insert", "type": "main", "index": 0 }],
-        []
+        [{ "node": "Run End", "type": "main", "index": 0 }]
       ]
     },
     "Prep Insert": {
@@ -363,6 +481,16 @@
     },
     "Run Analyze Only": {
       "main": [[
+        { "node": "Run Start (Analyze)", "type": "main", "index": 0 }
+      ]]
+    },
+    "Run Start (Analyze)": {
+      "main": [[
+        { "node": "DB: Run Start (Analyze)", "type": "main", "index": 0 }
+      ]]
+    },
+    "DB: Run Start (Analyze)": {
+      "main": [[
         { "node": "DB: Fetch Pending", "type": "main", "index": 0 }
       ]]
     },
@@ -372,9 +500,14 @@
       ]]
     },
     "Has Pending?": {
+      "main": [[
+        { "node": "Analyze Done?", "type": "main", "index": 0 }
+      ]]
+    },
+    "Analyze Done?": {
       "main": [
-        [{ "node": "Batch Items", "type": "main", "index": 0 }],
-        []
+        [{ "node": "Run End", "type": "main", "index": 0 }],
+        [{ "node": "Batch Items", "type": "main", "index": 0 }]
       ]
     },
     "Batch Items": {
@@ -400,6 +533,11 @@
     "Check More Pending": {
       "main": [[
         { "node": "DB: Fetch Pending", "type": "main", "index": 0 }
+      ]]
+    },
+    "Run End": {
+      "main": [[
+        { "node": "DB: Run End", "type": "main", "index": 0 }
       ]]
     }
   },

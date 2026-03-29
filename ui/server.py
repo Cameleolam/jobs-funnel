@@ -85,9 +85,19 @@ def has_flag(notes):
     return any(kw in lower for kw in ("manual check", "flag", "fetch full", "fetch the"))
 
 
+def format_duration(ms):
+    if ms is None:
+        return "..."
+    s = ms // 1000
+    if s < 60:
+        return f"{s}s"
+    return f"{s // 60}m {s % 60}s"
+
+
 templates.env.filters["html_to_text"] = html_to_text
 templates.env.filters["format_salary"] = format_salary
 templates.env.filters["has_flag"] = has_flag
+templates.env.filters["format_duration"] = format_duration
 
 
 def render(request: Request, name: str, ctx: dict | None = None):
@@ -417,3 +427,25 @@ async def retry_job(request: Request, job_id: int):
 @app.get("/stats", response_class=HTMLResponse)
 async def stats(request: Request):
     return render(request, "partials/stats.html", {"stats": get_stats()})
+
+
+# ── Pipeline Runs ────────────────────────────────────────────────────
+@app.get("/runs", response_class=HTMLResponse)
+async def runs_page(request: Request):
+    return render(request, "runs.html")
+
+
+@app.get("/runs/list", response_class=HTMLResponse)
+async def runs_list(
+    request: Request,
+    limit: int = Query(50, alias="limit"),
+    offset: int = Query(0, alias="offset"),
+):
+    runs = fetch_all(
+        "SELECT * FROM pipeline_runs ORDER BY started_at DESC LIMIT %s OFFSET %s",
+        (limit, offset),
+    )
+    total = fetch_one("SELECT COUNT(*) as cnt FROM pipeline_runs")["cnt"]
+    return render(request, "partials/run_rows.html", {
+        "runs": runs, "total": total, "limit": limit, "offset": offset,
+    })

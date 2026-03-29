@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2 style="margin-bottom:1rem; font-size:1.2rem;">Pipeline Runs</h2>
+
+<table class="runs-table">
+  <thead>
+    <tr>
+      <th>Started</th>
+      <th>Duration</th>
+      <th>Trigger</th>
+      <th>Profile</th>
+      <th>Crawled</th>
+      <th>Inserted</th>
+      <th>Analyzed</th>
+      <th>Errored</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+  <tbody id="runs-table-body"
+         hx-get="/runs/list"
+         hx-trigger="load, every 30s"
+         hx-swap="innerHTML"
+         hx-indicator="#runs-spinner">
+  </tbody>
+</table>
+<span class="htmx-indicator" id="runs-spinner"><span class="spinner"></span></span>
+
+{% endblock %}
