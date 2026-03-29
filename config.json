@@ -10,5 +10,7 @@
   "dedup_cap": 80,
   "description_max_chars": 5000,
   "api_max_retries": 2,
-  "api_retry_delay_ms": 1000
+  "api_retry_delay_ms": 1000,
+  "circuit_breaker_threshold": 0.8,
+  "circuit_breaker_min_requests": 5
 }

@@ -41,14 +41,26 @@ const allJobs = [];
 const seen = new Set();
 const errors = [];
 var lastPage = 0;
+const CB_THRESHOLD = config.circuit_breaker_threshold || 0.8;
+const CB_MIN = config.circuit_breaker_min_requests || 5;
+let totalRequests = 0;
+let failedRequests = 0;
+let circuitBroken = false;
 
 for (let page = 1; page <= MAX_PAGES; page++) {
   if (page > 1) await new Promise(r => setTimeout(r, DELAY_MS));
+  if (totalRequests >= CB_MIN && failedRequests / totalRequests >= CB_THRESHOLD) {
+    circuitBroken = true;
+    break;
+  }
   lastPage = page;
   let body;
   try {
     body = await fetchWithRetry.call(this, { method: 'GET', url: `https://www.arbeitnow.com/api/job-board-api?page=${page}`, json: true });
+    totalRequests++;
   } catch (e) {
+    totalRequests++;
+    failedRequests++;
     errors.push({ page, error: e.message || String(e) });
     continue; // Try next page instead of breaking
   }
@@ -110,6 +122,8 @@ const _crawlMeta = {
   total_results: allJobs.length,
   fetch_errors: errors.length,
   errors: errors.slice(0, 10),
+  circuit_broken: circuitBroken,
+  circuit_breaker_stats: { total: totalRequests, failed: failedRequests },
 };
 
 const mapped = allJobs.map(j => {

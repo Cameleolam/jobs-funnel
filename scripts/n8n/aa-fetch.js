@@ -34,17 +34,29 @@ const seenIds = new Set();
 const jobs = [];
 const errors = [];
 const MAX_PAGES = config.aa_max_pages || 3;
+const CB_THRESHOLD = config.circuit_breaker_threshold || 0.8;
+const CB_MIN = config.circuit_breaker_min_requests || 5;
+let searchTotal = 0;
+let searchFailed = 0;
+let circuitBroken = false;
 
 for (const loc of locations) {
   const locParams = `wo=${encodeURIComponent(loc.location)}&umkreis=${loc.radius_km || 200}&veroeffentlichtseit=30&pav=false&zeitarbeit=false&size=100`;
   for (let i = 0; i < searches.length; i++) {
     for (let page = 1; page <= MAX_PAGES; page++) {
+      if (searchTotal >= CB_MIN && searchFailed / searchTotal >= CB_THRESHOLD) {
+        circuitBroken = true;
+        break;
+      }
       const url = `${BASE}?was=${encodeURIComponent(searches[i])}&${locParams}&page=${page}`;
       let body;
       try {
         const raw = await fetchWithRetry.call(this, { method: 'GET', url, headers: HEADERS });
         body = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        searchTotal++;
       } catch (e) {
+        searchTotal++;
+        searchFailed++;
         errors.push({ location: loc.location, search: searches[i], page, error: e.message || String(e) });
         continue;
       }
@@ -57,7 +69,9 @@ for (const loc of locations) {
       const maxPage = body.maxErgebnisse ? Math.ceil(body.maxErgebnisse / 100) : 1;
       if (page >= maxPage) break;
     }
+    if (circuitBroken) break;
   }
+  if (circuitBroken) break;
 }
 
 // Fail visibly if ALL requests errored (not just "no jobs found")
@@ -154,12 +168,18 @@ function checkDescriptionQuality(desc) {
 
 const FETCH_DELAY = config.aa_fetch_delay_ms || 300;
 const MAX_FETCHES = config.aa_max_fetches || 200;
+const DESC_CB_MIN = 10;
 let fetchCount = 0;
 let descFailCount = 0;
+let descCircuitBroken = false;
 const descFailUrls = [];
 for (let i = 0; i < jobs.length && fetchCount < MAX_FETCHES; i++) {
   const extUrl = jobs[i].externeUrl;
   if (!extUrl) continue;
+  if (fetchCount >= DESC_CB_MIN && descFailCount / fetchCount >= CB_THRESHOLD) {
+    descCircuitBroken = true;
+    break;
+  }
   if (fetchCount > 0) await new Promise(r => setTimeout(r, FETCH_DELAY));
   fetchCount++;
   let success = false;
@@ -194,6 +214,11 @@ const _crawlMeta = {
   descriptions_attempted: fetchCount,
   descriptions_failed: descFailCount,
   descriptions_failed_urls: descFailUrls.slice(0, 10),
+  circuit_broken: circuitBroken || descCircuitBroken,
+  circuit_breaker_stats: {
+    search: { total: searchTotal, failed: searchFailed },
+    descriptions: { total: fetchCount, failed: descFailCount },
+  },
 };
 
 const mapped = jobs.map(j => {
