@@ -227,7 +227,7 @@
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true },
+          "options": { "caseSensitive": true, "typeValidation": "loose" },
           "conditions": [
             {
               "leftValue": "={{ $json._done }}",
