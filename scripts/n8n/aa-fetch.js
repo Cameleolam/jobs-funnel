@@ -76,6 +76,48 @@ function decodeEntities(text) {
     .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
 }
 
+function extractDescription(html) {
+  const str = String(html);
+
+  // Try JSON-LD first (structured data, cleanest source)
+  const jsonLdMatch = str.match(/<script[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
+  if (jsonLdMatch) {
+    for (const block of jsonLdMatch) {
+      try {
+        const content = block.replace(/<\/?script[^>]*>/gi, '');
+        const data = JSON.parse(content);
+        // Could be a single object or array
+        const items = Array.isArray(data) ? data : [data];
+        for (const item of items) {
+          if (item['@type'] === 'JobPosting' && item.description) {
+            // Description may be HTML, strip it
+            let desc = item.description.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+            desc = decodeEntities(desc);
+            // Also grab benefits/qualifications if available
+            const extras = [item.qualifications, item.responsibilities, item.jobBenefits]
+              .filter(Boolean).map(s => String(s).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+            if (extras.length) desc += ' ' + extras.join(' ');
+            if (desc.length > 100) return desc;
+          }
+        }
+      } catch (e) { /* invalid JSON-LD, try next block */ }
+    }
+  }
+
+  // Fallback: strip script/style blocks, then strip tags
+  let text = str
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<nav[\s\S]*?<\/nav>/gi, ' ')
+    .replace(/<header[\s\S]*?<\/header>/gi, ' ')
+    .replace(/<footer[\s\S]*?<\/footer>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  text = decodeEntities(text);
+  return text.length > 100 ? text : null;
+}
+
 const FETCH_DELAY = config.aa_fetch_delay_ms || 300;
 const MAX_FETCHES = config.aa_max_fetches || 200;
 let fetchCount = 0;
@@ -91,9 +133,8 @@ for (let i = 0; i < jobs.length && fetchCount < MAX_FETCHES; i++) {
   for (let attempt = 0; attempt <= 1 && !success; attempt++) {
     try {
       const html = await this.helpers.httpRequest({ method: 'GET', url: extUrl, encoding: 'utf-8', timeout: config.aa_fetch_timeout_ms || 5000 });
-      let text = String(html).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-      text = decodeEntities(text);
-      if (text.length > 100) jobs[i]._fullDesc = text.substring(0, config.description_max_chars || 5000);
+      const desc = extractDescription(html);
+      if (desc) jobs[i]._fullDesc = desc.substring(0, config.description_max_chars || 5000);
       success = true;
     } catch (e) {
       if (attempt === 1) {
