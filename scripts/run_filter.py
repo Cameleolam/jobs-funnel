@@ -59,6 +59,7 @@ def main():
                     "soft_gaps": [], "strong_matches": [],
                     "reasoning": f"filter.py failed: {err_msg}",
                     "priority_notes": None,
+                    "error_code": "API_ERROR",
                 }]))
         except subprocess.TimeoutExpired:
             print(json.dumps([{
@@ -67,6 +68,7 @@ def main():
                 "soft_gaps": [], "strong_matches": [],
                 "reasoning": "filter.py timed out after 300 seconds",
                 "priority_notes": None,
+                "error_code": "TIMEOUT",
             }]))
         finally:
             # Clean up the batch temp file
@@ -111,6 +113,7 @@ def main():
                 "soft_gaps": [], "strong_matches": [],
                 "reasoning": f"filter.py failed: {err_msg}",
                 "priority_notes": None,
+                "error_code": "API_ERROR",
             }))
     finally:
         try:

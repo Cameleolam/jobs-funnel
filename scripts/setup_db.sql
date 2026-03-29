@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS jobs (
 
     status          TEXT NOT NULL DEFAULT 'pending',
     error           TEXT,
+    error_code      TEXT,                -- TIMEOUT/PARSE_FAIL/API_ERROR/EMPTY_DESCRIPTION/BATCH_PADDING/NO_RESULT
 
     fit_score       INTEGER,
     decision        TEXT,
@@ -56,6 +57,7 @@ CREATE TABLE IF NOT EXISTS jobs (
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_sheet_synced ON jobs(sheet_synced) WHERE sheet_synced = FALSE;
 CREATE INDEX IF NOT EXISTS idx_jobs_decision ON jobs(decision);
+CREATE INDEX IF NOT EXISTS idx_jobs_error_code ON jobs(error_code) WHERE error_code IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS job_raw_data (
     id          SERIAL PRIMARY KEY,

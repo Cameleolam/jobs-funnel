@@ -83,12 +83,13 @@ def main():
         print(json.dumps({"error": "claude command not found. Is Claude Code installed?"}))
         sys.exit(1)
     except subprocess.TimeoutExpired:
-        print(json.dumps({"error": "Claude timed out after 300 seconds"}))
+        print(json.dumps({"error": "Claude timed out after 300 seconds", "error_code": "TIMEOUT"}))
         sys.exit(1)
 
     if result.returncode != 0:
         print(json.dumps({
             "error": "claude -p returned non-zero",
+            "error_code": "API_ERROR",
             "stderr": result.stderr[:500] if result.stderr else "",
         }))
         sys.exit(1)
@@ -143,6 +144,7 @@ def main():
             "strong_matches": [],
             "reasoning": f"Parse error: {result_text[:200]}",
             "priority_notes": None,
+            "error_code": "PARSE_FAIL",
         }
         if is_batch:
             print(json.dumps([fallback] * len(parsed_input), indent=2))
@@ -165,6 +167,7 @@ def main():
                 "strong_matches": [],
                 "reasoning": f"Missing from batch response (job {len(assessment)+1} of {len(parsed_input)})",
                 "priority_notes": "BATCH_PADDING",
+                "error_code": "BATCH_PADDING",
             })
 
     print(json.dumps(assessment, indent=2))

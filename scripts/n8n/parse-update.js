@@ -19,6 +19,18 @@ function jsonbLiteral(value) {
   return tag + json + tag + '::jsonb';
 }
 
+// Derive error_code: prefer explicit field from filter.py, else classify from content
+function classifyErrorCode(assessment) {
+  if (assessment.error_code) return assessment.error_code;
+  if ((assessment.priority_notes || '').includes('BATCH_PADDING')) return 'BATCH_PADDING';
+  const reasoning = (assessment.reasoning || '').toLowerCase();
+  if (reasoning.includes('timed out')) return 'TIMEOUT';
+  const blockers = (assessment.hard_blockers || []).join(' ').toLowerCase();
+  if (blockers.includes('parse error') || blockers.includes('claude response parse')) return 'PARSE_FAIL';
+  if (blockers.includes('filter error')) return 'API_ERROR';
+  return 'API_ERROR';
+}
+
 const results = [];
 for (let b = 0; b < $input.all().length; b++) {
   const item = $input.all()[b];
@@ -32,7 +44,7 @@ for (let b = 0; b < $input.all().length; b++) {
   } catch (e) {
     for (const orig of originals) {
       results.push({ json: {
-        _updateQuery: `UPDATE ${table} SET status = 'error', error = ${sqlStr('Failed to parse Claude response: ' + e.message)}, retry_count = retry_count + 1 WHERE id = ${orig.id}`
+        _updateQuery: `UPDATE ${table} SET status = 'error', error = ${sqlStr('Failed to parse Claude response: ' + e.message)}, error_code = 'PARSE_FAIL', retry_count = retry_count + 1 WHERE id = ${orig.id}`
       }});
     }
     continue;
@@ -44,7 +56,7 @@ for (let b = 0; b < $input.all().length; b++) {
 
     if (!assessment) {
       results.push({ json: {
-        _updateQuery: `UPDATE ${table} SET status = 'error', error = 'No result returned for this job in batch response', retry_count = retry_count + 1 WHERE id = ${orig.id}`
+        _updateQuery: `UPDATE ${table} SET status = 'error', error = 'No result returned for this job in batch response', error_code = 'NO_RESULT', retry_count = retry_count + 1 WHERE id = ${orig.id}`
       }});
       continue;
     }
@@ -62,8 +74,9 @@ for (let b = 0; b < $input.all().length; b++) {
     ));
 
     if (isErrorFallback) {
+      const errCode = classifyErrorCode(assessment);
       results.push({ json: {
-        _updateQuery: `UPDATE ${table} SET status = 'error', error = ${sqlStr(assessment.reasoning || 'Fallback SKIP from failed Claude call')}, retry_count = retry_count + 1 WHERE id = ${orig.id}`
+        _updateQuery: `UPDATE ${table} SET status = 'error', error = ${sqlStr(assessment.reasoning || 'Fallback SKIP from failed Claude call')}, error_code = '${errCode}', retry_count = retry_count + 1 WHERE id = ${orig.id}`
       }});
       continue;
     }
@@ -85,7 +98,7 @@ for (let b = 0; b < $input.all().length; b++) {
       : '';
 
     results.push({ json: {
-      _updateQuery: `UPDATE ${table} SET status = 'analyzed', analyzed_at = NOW(), error = NULL, retry_count = 0, fit_score = ${score}, decision = '${decision}', cv_variant = '${cvVariant}', hard_blockers = ${jsonbLiteral(assessment.hard_blockers)}, soft_gaps = ${jsonbLiteral(assessment.soft_gaps)}, strong_matches = ${jsonbLiteral(assessment.strong_matches)}, reasoning = ${sqlStr(assessment.reasoning || '')}, priority_notes = ${sqlStr(assessment.priority_notes || null)}, employment_type = ${sqlStr(empType)}, seniority_level = ${sqlStr(senLevel)}, start_date = COALESCE(start_date, ${sqlStr(startDate)})${salaryClause} WHERE id = ${orig.id}`
+      _updateQuery: `UPDATE ${table} SET status = 'analyzed', analyzed_at = NOW(), error = NULL, error_code = NULL, retry_count = 0, fit_score = ${score}, decision = '${decision}', cv_variant = '${cvVariant}', hard_blockers = ${jsonbLiteral(assessment.hard_blockers)}, soft_gaps = ${jsonbLiteral(assessment.soft_gaps)}, strong_matches = ${jsonbLiteral(assessment.strong_matches)}, reasoning = ${sqlStr(assessment.reasoning || '')}, priority_notes = ${sqlStr(assessment.priority_notes || null)}, employment_type = ${sqlStr(empType)}, seniority_level = ${sqlStr(senLevel)}, start_date = COALESCE(start_date, ${sqlStr(startDate)})${salaryClause} WHERE id = ${orig.id}`
     }});
   }
 }
