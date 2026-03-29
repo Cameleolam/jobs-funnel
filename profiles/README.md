@@ -63,6 +63,27 @@ profiles/
 
 Change `JOBS_FUNNEL_PROFILE`, `JOBS_FUNNEL_TABLE`, and `JOBS_FUNNEL_SHEET_ID` in your `.env` file, then restart n8n.
 
+## Validating a profile
+
+Run the validation script to check your profile for common issues:
+
+```bash
+python scripts/validate_profile.py profiles/myprofile/
+```
+
+This checks:
+- `search.json` exists with all required keys and correct types
+- `filter_prompt.md` exists and is non-empty
+- `cvs/` directory has at least one HTML file
+- CV variant names match expected set (software, data, fullstack, systems)
+- `generate_prompt.md` exists (optional, warns if missing)
+
+Use `--strict` to treat warnings as errors:
+
+```bash
+python scripts/validate_profile.py profiles/myprofile/ --strict
+```
+
 ## Notes
 
 - Profiles are gitignored (they contain personal data like CVs and contact info)
