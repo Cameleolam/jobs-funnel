@@ -93,9 +93,9 @@
           "options": { "caseSensitive": true },
           "conditions": [
             {
-              "leftValue": "={{ $json._empty }}",
-              "rightValue": true,
-              "operator": { "type": "boolean", "operation": "notTrue" }
+              "leftValue": "={{ $json.url }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "isNotEmpty" }
             }
           ]
         }
@@ -142,9 +142,9 @@
           "options": { "caseSensitive": true },
           "conditions": [
             {
-              "leftValue": "={{ $json._empty }}",
-              "rightValue": true,
-              "operator": { "type": "boolean", "operation": "notTrue" }
+              "leftValue": "={{ $json.url }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "isNotEmpty" }
             }
           ]
         }

@@ -93,9 +93,9 @@
           "options": { "caseSensitive": true },
           "conditions": [
             {
-              "leftValue": "={{ $json._empty }}",
-              "rightValue": true,
-              "operator": { "type": "boolean", "operation": "notTrue" }
+              "leftValue": "={{ $json.url }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "isNotEmpty" }
             }
           ]
         }
@@ -142,9 +142,9 @@
           "options": { "caseSensitive": true },
           "conditions": [
             {
-              "leftValue": "={{ $json._empty }}",
-              "rightValue": true,
-              "operator": { "type": "boolean", "operation": "notTrue" }
+              "leftValue": "={{ $json.url }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "isNotEmpty" }
             }
           ]
         }
@@ -157,7 +157,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Build safe INSERT query for each job\nconst table = $env.JOBS_FUNNEL_TABLE;\n// Proper SQL escaping: handles quotes, backslashes, null bytes\nfunction sqlStr(s) {\n  if (s === null || s === undefined) return 'NULL';\n  return \"'\" + String(s).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"''\").replace(/\\0/g, '') + \"'\";\n}\n\n// Dollar-quoted JSONB literal: avoids double-encoding from sqlStr + ::jsonb cast\nfunction jsonbLiteral(value) {\n  const arr = Array.isArray(value) ? value : [];\n  const json = JSON.stringify(arr);\n  let tag = '$jb$';\n  if (json.includes(tag)) tag = '$jb2$';\n  return tag + json + tag + '::jsonb';\n}\n\nreturn $input.all().map(item => {\n  const j = item.json;\n  const postedAt = j.posted_at ? sqlStr(j.posted_at) : 'NULL';\n  const descQuality = j.description_quality || 'unknown';\n  const query = `INSERT INTO ${table} (url, title, company, location, description, description_quality, source, external_id, tags, remote, likely_english, salary_min, salary_max, salary_currency, start_date, posted_at) VALUES (${sqlStr(j.url)}, ${sqlStr(j.title)}, ${sqlStr(j.company)}, ${sqlStr(j.location)}, ${sqlStr((j.description || '').substring(0, 10000))}, ${sqlStr(descQuality)}, ${sqlStr(j.source)}, ${sqlStr(j.external_id)}, ${jsonbLiteral(j.tags)}, ${j.remote || false}, ${j.likely_english || false}, ${j.salary_min || 'NULL'}, ${j.salary_max || 'NULL'}, ${sqlStr(j.salary_currency || null)}, ${sqlStr(j.start_date || null)}, ${postedAt}) ON CONFLICT (url) DO NOTHING`;\n  let combinedQuery = query;\n  if (j._rawApiData) {\n    const rawJson = JSON.stringify(j._rawApiData);\n    let tag = '$rd$';\n    if (rawJson.includes(tag)) tag = '$rd2$';\n    combinedQuery += `; INSERT INTO job_raw_data (url, raw_json, source) VALUES (${sqlStr(j.url)}, ${tag}${rawJson}${tag}::jsonb, ${sqlStr(j.source)}) ON CONFLICT (url) DO NOTHING`;\n  }\n  return { json: { _insertQuery: combinedQuery } };\n});"
+        "jsCode": "// Build safe INSERT query for each job\nconst table = $env.JOBS_FUNNEL_TABLE;\n// Proper SQL escaping: handles quotes, backslashes, null bytes\nfunction sqlStr(s) {\n  if (s === null || s === undefined) return 'NULL';\n  return \"'\" + String(s).replace(/\\\\/g, '\\\\\\\\').replace(/'/g, \"''\").replace(/\\0/g, '') + \"'\";\n}\n\n// Dollar-quoted JSONB literal: avoids double-encoding from sqlStr + ::jsonb cast\nfunction jsonbLiteral(value) {\n  const arr = Array.isArray(value) ? value : [];\n  const json = JSON.stringify(arr);\n  let tag = '$jb$';\n  if (json.includes(tag)) tag = '$jb2$';\n  return tag + json + tag + '::jsonb';\n}\n\nconst items = $input.all().filter(item => item.json.url && !item.json._empty);\nif (items.length === 0) return [{ json: { _insertQuery: 'SELECT 1' } }];\nreturn items.map(item => {\n  const j = item.json;\n  const postedAt = j.posted_at ? sqlStr(j.posted_at) : 'NULL';\n  const descQuality = j.description_quality || 'unknown';\n  const query = `INSERT INTO ${table} (url, title, company, location, description, description_quality, source, external_id, tags, remote, likely_english, salary_min, salary_max, salary_currency, start_date, posted_at) VALUES (${sqlStr(j.url)}, ${sqlStr(j.title)}, ${sqlStr(j.company)}, ${sqlStr(j.location)}, ${sqlStr((j.description || '').substring(0, 10000))}, ${sqlStr(descQuality)}, ${sqlStr(j.source)}, ${sqlStr(j.external_id)}, ${jsonbLiteral(j.tags)}, ${j.remote || false}, ${j.likely_english || false}, ${j.salary_min || 'NULL'}, ${j.salary_max || 'NULL'}, ${sqlStr(j.salary_currency || null)}, ${sqlStr(j.start_date || null)}, ${postedAt}) ON CONFLICT (url) DO NOTHING`;\n  let combinedQuery = query;\n  if (j._rawApiData) {\n    const rawJson = JSON.stringify(j._rawApiData);\n    let tag = '$rd$';\n    if (rawJson.includes(tag)) tag = '$rd2$';\n    combinedQuery += `; INSERT INTO job_raw_data (url, raw_json, source) VALUES (${sqlStr(j.url)}, ${tag}${rawJson}${tag}::jsonb, ${sqlStr(j.source)}) ON CONFLICT (url) DO NOTHING`;\n  }\n  return { json: { _insertQuery: combinedQuery } };\n});"
       },
       "id": "prep-insert",
       "name": "Prep Insert",

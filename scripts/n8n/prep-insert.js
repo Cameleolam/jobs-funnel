@@ -15,7 +15,9 @@ function jsonbLiteral(value) {
   return tag + json + tag + '::jsonb';
 }
 
-return $input.all().map(item => {
+const items = $input.all().filter(item => item.json.url && !item.json._empty);
+if (items.length === 0) return [{ json: { _insertQuery: 'SELECT 1' } }];
+return items.map(item => {
   const j = item.json;
   const postedAt = j.posted_at ? sqlStr(j.posted_at) : 'NULL';
   const descQuality = j.description_quality || 'unknown';
