@@ -21,5 +21,5 @@ for (const item of all) {
   }
 }
 
-if (unique.length === 0) return [];
+if (unique.length === 0) return [{ json: { _empty: true } }];
 return unique.map(j => ({ json: j }));

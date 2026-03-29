@@ -79,7 +79,7 @@ if (jobs.length === 0 && errors.length > 0) {
   throw new Error(`AA: all ${errors.length} requests failed after retries. First error: ${errors[0].error}`);
 }
 
-if (jobs.length === 0) return [];
+if (jobs.length === 0) return [{ json: { _empty: true } }];
 
 // Fetch full descriptions from employer pages (externeUrl)
 function decodeEntities(text) {

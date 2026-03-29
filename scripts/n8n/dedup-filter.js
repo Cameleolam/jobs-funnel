@@ -8,5 +8,5 @@ const jobs = $('Has Results?').all().filter(item => {
   return url && !seenUrls.has(url);
 });
 
-if (jobs.length === 0) return [];
+if (jobs.length === 0) return [{ json: { _empty: true } }];
 return jobs;

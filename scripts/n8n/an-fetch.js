@@ -98,7 +98,7 @@ if (allJobs.length === 0 && errors.length > 0) {
   throw new Error(`AN: all ${errors.length} page requests failed after retries. First error: ${errors[0].error}`);
 }
 
-if (allJobs.length === 0) return [];
+if (allJobs.length === 0) return [{ json: { _empty: true } }];
 
 function parseSalary(job) {
   let min = job.salary_min || null;
