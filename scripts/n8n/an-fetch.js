@@ -126,6 +126,7 @@ const mapped = allJobs.map(j => {
     tags: j.tags || [],
     remote: j.remote || false,
     likely_english: isLikelyEnglish(desc),
+    _rawApiData: j,
     salary_min: sal.salary_min,
     salary_max: sal.salary_max,
     salary_currency: sal.salary_currency,

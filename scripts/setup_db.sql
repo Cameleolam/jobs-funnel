@@ -55,3 +55,11 @@ CREATE TABLE IF NOT EXISTS jobs (
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_sheet_synced ON jobs(sheet_synced) WHERE sheet_synced = FALSE;
 CREATE INDEX IF NOT EXISTS idx_jobs_decision ON jobs(decision);
+
+CREATE TABLE IF NOT EXISTS job_raw_data (
+    id          SERIAL PRIMARY KEY,
+    url         TEXT NOT NULL UNIQUE,
+    raw_json    JSONB NOT NULL,
+    fetched_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    source      TEXT NOT NULL
+);

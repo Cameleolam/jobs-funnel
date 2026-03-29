@@ -179,6 +179,7 @@ const mapped = jobs.map(j => {
     tags: [],
     remote: false,
     likely_english: false,
+    _rawApiData: j,
     start_date: j.eintrittsdatum || null,
     posted_at: null
   }};
