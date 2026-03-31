@@ -2,53 +2,45 @@
 
 ## What is this
 
-Funnel crawls German job boards, scores each posting against your profile,
-auto-selects the right CV variant, generates tailored CVs and cover letters,
-and logs everything to Google Sheets + Drive.
+Funnel crawls German job boards, scores each posting against your candidate profile,
+auto-selects the right CV variant, and logs everything to Google Sheets + PostgreSQL.
 
-Jobs go in wide. Tailored applications come out narrow.
+Jobs go in wide. Scored, filtered candidates come out narrow.
 
 ## Architecture
 
 ```
-Your laptop (Windows + Git Bash)
+Your laptop (Windows)
 │
 ├── n8n (native via npx, runs on localhost:5678)
-│   ├── Manual trigger (click Execute)
-│   ├── Bookmarklet webhook
-│   └── Workflow nodes call Python wrapper scripts
+│   ├── Manual trigger / Cron (every 10 min)
+│   └── "Analyze Only" webhook (re-process pending jobs, skip crawl)
 │
-├── ~/jobs_funnel/
-│   ├── scripts/
-│   │   ├── filter.py     → claude -p with filter prompt
-│   │   ├── generate.py   → claude -p with generate prompt + base CV
-│   │   └── parse.py      → claude -p to extract data from HTML
-│   ├── cvs/
-│   │   ├── backend.html   (CV_SOFTWAREENG)
-│   │   ├── data.html      (CV_DATAENG)
-│   │   ├── fullstack.html (CV_FS)
-│   │   └── systems.html   (CV_SYSTENG)
-│   ├── prompts/
-│   │   ├── filter_prompt.md
-│   │   └── generate_prompt.md
-│   ├── output/             ← local copies of generated files
-│   └── workflow.json
+├── D:\projects\jobs_funnel\
+│   ├── scripts/          Python wrappers + build tooling
+│   ├── profiles/         Per-candidate search terms, prompts, CVs
+│   ├── workflow_template.json + scripts/n8n/*.js  ← edit these
+│   └── workflow.json     ← built output, import into n8n
 │
 ├── Claude Code (Max subscription, authenticated)
 │   └── called via claude -p from Python scripts
 │
-└── Google Cloud (remote)
-    ├── Google Sheets → Tracker spreadsheet
-    └── Google Drive  → Generated CV/CL files
+├── PostgreSQL (local)
+│   └── jobs, pipeline_runs, job_raw_data tables
+│
+└── Google Sheets (remote)
+    └── Tracker spreadsheet
 ```
+
+See `docs/architecture.md` for the full pipeline flow.
 
 ## Prerequisites
 
 1. **Python 3.9+**: `python --version`
 2. **Node.js 18+**: `node -v`
-3. **Claude Code**: installed and authenticated
-   - Test: `echo "Say OK" | claude -p --output-format text`
-4. **Google account** for Sheets/Drive
+3. **PostgreSQL**: running locally with a `jobs_funnel` database
+4. **Claude Code**: installed and authenticated (`claude --version`)
+5. **Google account** for Sheets
 
 ## Step 1: Install n8n
 
@@ -56,149 +48,129 @@ Your laptop (Windows + Git Bash)
 npm install -g n8n
 ```
 
-## Step 2: Set up the folder
+## Step 2: Set up environment variables
 
-Copy the `funnel/` directory to your home folder:
-
-```bash
-cp -r funnel ~/jobs_funnel
-```
-
-Or clone it if you've put it in a git repo.
-
-The structure should be:
-```
-~/jobs_funnel/
-  scripts/filter.py
-  scripts/generate.py
-  scripts/parse.py
-  cvs/backend.html
-  cvs/data.html
-  cvs/fullstack.html
-  cvs/systems.html
-  prompts/filter_prompt.md
-  prompts/generate_prompt.md
-  output/
-  workflow.json
-```
-
-## Step 3: Test the scripts
-
-Open Git Bash or any terminal:
+Copy `.env.template` to `.env` and fill in the values:
 
 ```bash
-echo '{"title":"Python Backend Developer","company":"ExampleCo","location":"Hamburg","description":"We need a Python dev with Flask experience. 2-4 years. English working language."}' | python ~/jobs_funnel/scripts/filter.py
+cp .env.template .env
 ```
 
-You should get back JSON with a fit_score, decision, and cv_variant.
+Key variables:
+- `JOBS_FUNNEL_PROJECT_DIR` — absolute path to this directory
+- `JOBS_FUNNEL_PROFILE` — profile name (e.g., `profile1`)
+- `JOBS_FUNNEL_TABLE` — Postgres table name (e.g., `jobs`)
+- `JOBS_FUNNEL_SHEET_ID` — Google Sheet ID from the URL
+- `JOBS_FUNNEL_PG_*` — Postgres connection details
 
-If `claude` isn't found, find the full path (`where claude` on Windows)
-and update the subprocess call in the scripts.
+## Step 3: Set up the database
 
-## Step 4: Google Sheet
+```bash
+psql -U postgres -d jobs_funnel -f scripts/setup_db.sql
+```
+
+This creates the `jobs`, `pipeline_runs`, and `job_raw_data` tables.
+
+## Step 4: Validate your profile
+
+```bash
+python scripts/validate_profile.py profiles/profile1/
+```
+
+Checks that `search.json`, `filter_prompt.md`, and at least one CV variant exist.
+See `profiles/README.md` to create a new profile.
+
+## Step 5: Test the filter script
+
+```bash
+echo '{"title":"Python Backend Developer","company":"ExampleCo","location":"Hamburg","description":"We need a Python dev with Flask. 2-4 years. English working language."}' | python scripts/filter.py
+```
+
+You should get back JSON with `fit_score`, `decision`, and `cv_variant`.
+
+## Step 6: Google Sheet
 
 1. Create a new Google Sheet
 2. Rename the first tab to **Tracker**
-3. Row 1 headers:
+3. Copy the Sheet ID from the URL and add to `.env` as `JOBS_FUNNEL_SHEET_ID`
 
-```
-Date | Source | Company | Role | Location | Score | Decision | CV Variant | Blockers | Strong Matches | Reasoning | Status | Drive Link | Job URL | Notes
-```
+## Step 7: Google OAuth for n8n
 
-4. Copy the Sheet ID from the URL:
-   `https://docs.google.com/spreadsheets/d/THIS_IS_THE_ID/edit`
-
-## Step 5: Google Drive folder
-
-1. Create a folder "Job Applications" in Drive
-2. Copy the folder ID from the URL
-
-## Step 6: Google OAuth for n8n
-
-1. Go to console.cloud.google.com
+1. Go to [console.cloud.google.com](https://console.cloud.google.com)
 2. Create a project (e.g., "Funnel")
-3. Enable: Google Sheets API, Google Drive API
-4. Credentials > Create > OAuth 2.0 Client ID > Web application
+3. Enable: Google Sheets API
+4. Credentials → Create → OAuth 2.0 Client ID → Web application
 5. Add redirect URI: `http://localhost:5678/rest/oauth2-credential/callback`
 6. Save Client ID and Client Secret
 
-## Step 7: Start n8n and import
+## Step 8: Start n8n and import
 
+```bash
+start.bat
+```
+
+Or manually:
 ```bash
 n8n start
 ```
 
 Open http://localhost:5678
 
-1. Settings > Credentials:
-   - Add "Google Sheets OAuth2" (Client ID + Secret from step 6)
-   - Add "Google Drive OAuth2" (same Client ID + Secret)
-   - Complete OAuth flow for both
-2. Workflows > Import from File > select `workflow.json`
-3. Open the imported workflow
-
-## Step 8: Replace placeholders
-
-Find and replace in the workflow:
-
-| Find | Replace with |
-|---|---|
-| `YOUR_SHEET_ID` | Your Google Sheet ID (3 nodes) |
-| `YOUR_DRIVE_FOLDER_ID` | Your Drive folder ID (1 node) |
-
-Assign Google credentials to these nodes:
-- Dedup: Check Sheet → Google Sheets
-- Sheet: Log SKIP/MAYBE → Google Sheets
-- Sheet: Log PASS → Google Sheets
-- Drive: Create Folder → Google Drive
-- Drive: Upload Files → Google Drive
+1. Settings → Credentials:
+   - Add "Postgres - Jobs Funnel" with your `JOBS_FUNNEL_PG_*` values
+   - Add "Google Sheets OAuth2" (Client ID + Secret from step 7)
+   - Complete OAuth flow
+2. Workflows → Import from File → select `workflow.json`
+3. Open the workflow, update credential references
 
 ## Step 9: Run it
 
-Click "Execute Workflow" in n8n. It will:
-1. Query Arbeitsagentur + Arbeitnow APIs
-2. Filter each job via claude -p
-3. Generate tailored CV + cover letter for PASS jobs
-4. Upload to Drive, log to Sheet
+Click "Execute Workflow" (or trigger cron). The pipeline will:
 
-## Bookmarklet
+1. Validate environment (preflight)
+2. Crawl Arbeitsagentur + Arbeitnow APIs
+3. Deduplicate against Postgres, insert new jobs
+4. Score each job via `claude -p` (batches of 8)
+5. Run semantic duplicate detection
+6. Sync results to Google Sheet
+7. Log run stats to `pipeline_runs`
 
-Save as a browser bookmark:
+## Review UI
 
+```bash
+pip install -r ui/requirements.txt
+python -m uvicorn ui.server:app --port 8080 --reload
 ```
+
+Open http://localhost:8080 to browse scored jobs, make decisions, and export to Excel.
+
+## Bookmarklet (manual job submission)
+
+```javascript
 javascript:void(fetch('http://localhost:5678/webhook/new-job',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:location.href,title:document.title,notes:prompt('Notes?')||''})}).then(r=>r.ok?alert('Sent to Funnel!'):alert('Failed: '+r.status)))
 ```
 
-Click it on any job posting page to send it through the pipeline.
+Click it on any job posting page to send it through the pipeline manually.
+
+## Editing the workflow
+
+Never edit `workflow.json` directly. Edit the template and JS files, then rebuild:
+
+```bash
+# Edit workflow_template.json and/or scripts/n8n/*.js, then:
+python scripts/build_workflow.py
+# Re-import workflow.json into n8n
+```
 
 ## Troubleshooting
 
-### claude not found in subprocess
-Find the full path: `where claude` (cmd) or `which claude` (Git Bash).
-Update the scripts: change `"claude"` to the full path, e.g.,
-`"C:/Users/you/AppData/Roaming/npm/claude.cmd"`
-
-### n8n Execute Command fails on Windows
-n8n uses cmd.exe by default on Windows. If `python` isn't in your PATH for cmd,
-use the full path to python in the workflow Execute Command nodes.
-
-### Google OAuth redirect fails
-Make sure the redirect URI is exactly:
-`http://localhost:5678/rest/oauth2-credential/callback`
-(http, not https)
-
-### Rate limits on claude -p
-Your Max sub has usage limits. If processing many jobs in one batch,
-the Wait node between filter calls helps. If you still hit limits,
-reduce the number of search queries or run in smaller batches.
+See `docs/troubleshooting.md` for common issues (hanging Claude calls, dead letter jobs,
+circuit breaker, preflight failures, Sheet sync, DB maintenance).
 
 ## Migration to VPS
 
-When ready:
-1. Copy `~/jobs_funnel/` to VPS
-2. Set up Docker + n8n + Caddy (see VPS setup files)
-3. Replace the 3 Execute Command nodes with HTTP Request nodes
-   calling the Anthropic API directly
-4. Add API key as credential
-5. Update Google OAuth redirect URI to your domain
-6. Everything else (Sheet, Drive, prompts, CVs) stays identical
+See `docs/design-decisions.md` → Swap points. Summary:
+
+1. n8n + Postgres + Caddy in Docker on VPS
+2. Swap `claude -p` Execute Command nodes to HTTP Request nodes (Anthropic API)
+3. Google Sheets re-auth OAuth, everything else identical
