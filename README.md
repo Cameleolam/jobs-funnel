@@ -145,6 +145,7 @@ Tunable pipeline constants. JS nodes read these at runtime.
 
 | Key | Default | Purpose |
 |-----|---------|---------|
+| `model` | `claude-sonnet-4-6` | Claude model for scoring and dedup. Alternatives: `claude-haiku-4-5-20251001` (faster/cheaper), `claude-opus-4-6` (best quality) |
 | `aa_max_pages` | 3 | Max pagination pages per AA search |
 | `aa_max_fetches` | 200 | Max AA description fetches per run |
 | `aa_fetch_delay_ms` | 300 | Delay between AA description fetches |

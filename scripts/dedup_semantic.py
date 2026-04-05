@@ -22,6 +22,8 @@ import sys
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+PIPELINE_DIR = SCRIPT_DIR.parent
+CONFIG = json.loads((PIPELINE_DIR / "config.json").read_text(encoding="utf-8"))
 
 PROMPT = """\
 You are a duplicate job posting detector. Compare NEW jobs against EXISTING jobs.
@@ -86,6 +88,7 @@ def main():
     try:
         cmd = [
             "claude", "-p",
+            "--model", CONFIG.get("model", "claude-sonnet-4-6"),
             "--output-format", "json",
             "--max-turns", "1",
         ]

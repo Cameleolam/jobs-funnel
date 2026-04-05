@@ -1,4 +1,5 @@
 {
+  "model": "claude-sonnet-4-6",
   "aa_max_pages": 3,
   "aa_max_fetches": 200,
   "aa_fetch_delay_ms": 300,

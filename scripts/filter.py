@@ -20,6 +20,7 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PIPELINE_DIR = SCRIPT_DIR.parent
+CONFIG = json.loads((PIPELINE_DIR / "config.json").read_text(encoding="utf-8"))
 PROFILE = os.environ["JOBS_FUNNEL_PROFILE"]
 PROMPT_FILE = PIPELINE_DIR / "profiles" / PROFILE / "filter_prompt.md"
 
@@ -67,7 +68,7 @@ def main():
         result = subprocess.run(
             [
                 "claude", "-p",
-                "--model", "claude-sonnet-4-6",
+                "--model", CONFIG.get("model", "claude-sonnet-4-6"),
                 "--output-format", "json",
                 "--append-system-prompt", system_prompt,
                 "--max-turns", "3",
