@@ -1,5 +1,5 @@
 {
-  "name": "Job Crawl + Analyze v2",
+  "name": "Job Crawl + Analyze",
   "nodes": [
     {
       "parameters": {},
@@ -643,6 +643,6 @@
     "timezone": "Europe/Berlin"
   },
   "tags": [
-    { "name": "job-search-v2" }
+    { "name": "job-search" }
   ]
 }
