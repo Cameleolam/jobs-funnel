@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Wrapper: decode base64 generate input, write temp file, run generate.py.
+"""NOTE: Not part of the active pipeline. Kept for future use.
+
+Wrapper: decode base64 generate input, write temp file, run generate.py.
 
 Usage:
     python run_generate.py <project_dir> <base64_data>

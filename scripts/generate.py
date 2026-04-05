@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Generate tailored CV + cover letter using Claude Code headless mode.
+"""NOTE: Not part of the active pipeline. Kept for future use.
+
+Generate tailored CV + cover letter using Claude Code headless mode.
 
 Usage:
     echo '{"cv_variant":"backend","job":"...","assessment":"..."}' | python generate.py

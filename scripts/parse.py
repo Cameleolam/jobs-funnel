@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Parse a job posting HTML page using Claude Code headless mode.
+"""NOTE: Not part of the active pipeline. Kept for future use.
+
+Parse a job posting HTML page using Claude Code headless mode.
 
 Usage:
     cat page.html | python parse.py

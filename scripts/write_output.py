@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Write generated CV/cover letter files to local output directory.
+"""NOTE: Not part of the active pipeline. Kept for future use.
+
+Write generated CV/cover letter files to local output directory.
 
 Usage:
     python write_output.py <json_file_path>

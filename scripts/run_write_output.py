@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Wrapper: decode base64 input, write temp file, run write_output.py.
+"""NOTE: Not part of the active pipeline. Kept for future use.
+
+Wrapper: decode base64 input, write temp file, run write_output.py.
 
 Usage:
     python run_write_output.py <project_dir> <base64_data>

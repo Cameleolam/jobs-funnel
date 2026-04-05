@@ -139,6 +139,41 @@ javascript:void(fetch('http://localhost:5678/webhook/new-job',{method:'POST',hea
 
 Click it on any job posting page to send it through the pipeline manually.
 
+## Configuration (config.json)
+
+Tunable pipeline constants. JS nodes read these at runtime.
+
+| Key | Default | Purpose |
+|-----|---------|---------|
+| `aa_max_pages` | 3 | Max pagination pages per AA search |
+| `aa_max_fetches` | 200 | Max AA description fetches per run |
+| `aa_fetch_delay_ms` | 300 | Delay between AA description fetches |
+| `aa_fetch_timeout_ms` | 5000 | Timeout per AA description fetch |
+| `an_max_pages` | 10 | Max Arbeitnow pagination pages |
+| `an_delay_ms` | 5000 | Delay between AN page fetches |
+| `an_days_back` | 30 | Only include jobs posted within N days |
+| `batch_size` | 8 | Jobs per Claude filter batch |
+| `dedup_cap` | 80 | Max pending jobs fetched per analyze iteration |
+| `description_max_chars` | 5000 | Truncate descriptions beyond this length |
+| `api_max_retries` | 2 | Max retry attempts per API request |
+| `api_retry_delay_ms` | 1000 | Base delay between retries (exponential backoff) |
+| `circuit_breaker_threshold` | 0.8 | Error rate threshold to trip circuit breaker |
+| `circuit_breaker_min_requests` | 5 | Min requests before circuit breaker can trip |
+
+## Scripts interface
+
+The core scripts follow the same pattern: JSON in (file arg or stdin), JSON out (stdout), errors as JSON with `"error"` field + non-zero exit code.
+
+```bash
+# Filter (direct)
+python scripts/filter.py job.json
+echo '{"title":"..."}' | python scripts/filter.py
+
+# Filter (via wrapper, used by n8n)
+python scripts/run_filter.py <project_dir> <base64_data>
+python scripts/run_filter.py <project_dir> --file <json_file_path>
+```
+
 ## Editing the workflow
 
 Never edit `workflow.json` directly. Edit the template and JS files, then rebuild:
