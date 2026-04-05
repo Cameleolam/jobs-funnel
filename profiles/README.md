@@ -18,10 +18,11 @@ profiles/
 
 ## Creating a new profile
 
-1. Copy an existing profile directory:
+1. Run the setup script:
    ```bash
-   cp -r profiles/profile1 profiles/myprofile
+   python scripts/setup_profile.py myprofile
    ```
+   This copies the template from `templates/profile/` into `profiles/myprofile/`.
 
 2. Edit `search.json` - set your search terms and location:
    - `aa_searches`: Job title queries for Arbeitsagentur API (server-side search)
@@ -32,23 +33,22 @@ profiles/
    - `an_location_keywords`: Location keywords to match
    - `an_negative_keywords`: Job titles to auto-skip (e.g., "manager", "consultant")
 
-3. Edit `filter_prompt.md` - this is the full candidate profile that Claude uses to score jobs. Include:
+3. Edit `filter_prompt.md` - this is the full candidate profile that Claude uses to score jobs. The template includes a fictional example; replace it with your own profile. The prompt structure is fully customizable - adapt it to your background or refine it with AI. Key sections to fill in:
    - Target roles, location preference, visa status
    - Core tech stack and experience level
    - Honest gaps (what you DON'T know)
    - Hard blockers (language requirements, seniority, etc.)
    - Scoring rubric with examples
-   - CV variant selection rules
+   - CV variant selection rules (match the names of your HTML files in cvs/)
 
 4. Edit `generate_prompt.md` - your work history for CV/cover letter tailoring (optional, only needed if using the generate workflow).
 
-5. Replace CV HTML files in `cvs/` with your own variants.
+5. (Optional) Create a `cvs/` directory with your CV variants as HTML files. CV generation is not part of the active workflow, but the variant names are used as labels during scoring.
 
 6. Set up your `.env`:
    ```
    JOBS_FUNNEL_PROFILE=myprofile
    JOBS_FUNNEL_TABLE=jobs_myprofile
-   JOBS_FUNNEL_SHEET_ID=<your Google Sheet ID>
    ```
 
 7. Create your database table:
@@ -57,11 +57,9 @@ profiles/
    psql -U postgres -d jobs_funnel -f scripts/setup_db.sql
    ```
 
-8. Create a "Tracker" and "Metrics" tab in your Google Sheet with the expected column headers.
-
 ## Switching profiles
 
-Change `JOBS_FUNNEL_PROFILE`, `JOBS_FUNNEL_TABLE`, and `JOBS_FUNNEL_SHEET_ID` in your `.env` file, then restart n8n.
+Change `JOBS_FUNNEL_PROFILE` and `JOBS_FUNNEL_TABLE` in your `.env` file, then restart n8n.
 
 ## Validating a profile
 
@@ -74,8 +72,7 @@ python scripts/validate_profile.py profiles/myprofile/
 This checks:
 - `search.json` exists with all required keys and correct types
 - `filter_prompt.md` exists and is non-empty
-- `cvs/` directory has at least one HTML file
-- CV variant names match expected set (software, data, fullstack, systems)
+- `cvs/` directory (optional, warns if missing)
 - `generate_prompt.md` exists (optional, warns if missing)
 
 Use `--strict` to treat warnings as errors:
@@ -88,4 +85,4 @@ python scripts/validate_profile.py profiles/myprofile/ --strict
 
 - Profiles are gitignored (they contain personal data like CVs and contact info)
 - The pipeline code is profile-agnostic - it reads everything from the active profile directory
-- Each profile should use its own database table and Google Sheet to avoid mixing data
+- Each profile should use its own database table to avoid mixing data

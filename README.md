@@ -3,7 +3,7 @@
 ## What is this
 
 Funnel crawls German job boards, scores each posting against your candidate profile,
-auto-selects the right CV variant, and logs everything to Google Sheets + PostgreSQL.
+auto-selects the right CV variant, and logs everything to PostgreSQL.
 
 Jobs go in wide. Scored, filtered candidates come out narrow.
 
@@ -16,8 +16,9 @@ Your laptop (Windows)
 │   ├── Manual trigger / Cron (every 10 min)
 │   └── "Analyze Only" webhook (re-process pending jobs, skip crawl)
 │
-├── D:\projects\jobs_funnel\
+├── jobs_funnel/
 │   ├── scripts/          Python wrappers + build tooling
+│   ├── templates/        Example profile (copy via setup script)
 │   ├── profiles/         Per-candidate search terms, prompts, CVs
 │   ├── workflow_template.json + scripts/n8n/*.js  ← edit these
 │   └── workflow.json     ← built output, import into n8n
@@ -25,14 +26,9 @@ Your laptop (Windows)
 ├── Claude Code (Max subscription, authenticated)
 │   └── called via claude -p from Python scripts
 │
-├── PostgreSQL (local)
-│   └── jobs, pipeline_runs, job_raw_data tables
-│
-└── Google Sheets (remote)
-    └── Tracker spreadsheet
+└── PostgreSQL (local)
+    └── jobs, pipeline_runs, job_raw_data tables
 ```
-
-See `docs/architecture.md` for the full pipeline flow.
 
 ## Prerequisites
 
@@ -40,7 +36,6 @@ See `docs/architecture.md` for the full pipeline flow.
 2. **Node.js 18+**: `node -v`
 3. **PostgreSQL**: running locally with a `jobs_funnel` database
 4. **Claude Code**: installed and authenticated (`claude --version`)
-5. **Google account** for Sheets
 
 ## Step 1: Install n8n
 
@@ -58,9 +53,8 @@ cp .env.template .env
 
 Key variables:
 - `JOBS_FUNNEL_PROJECT_DIR` — absolute path to this directory
-- `JOBS_FUNNEL_PROFILE` — profile name (e.g., `profile1`)
+- `JOBS_FUNNEL_PROFILE` — profile name (whatever you named it in setup)
 - `JOBS_FUNNEL_TABLE` — Postgres table name (e.g., `jobs`)
-- `JOBS_FUNNEL_SHEET_ID` — Google Sheet ID from the URL
 - `JOBS_FUNNEL_PG_*` — Postgres connection details
 
 ## Step 3: Set up the database
@@ -71,14 +65,16 @@ psql -U postgres -d jobs_funnel -f scripts/setup_db.sql
 
 This creates the `jobs`, `pipeline_runs`, and `job_raw_data` tables.
 
-## Step 4: Validate your profile
+## Step 4: Create and validate your profile
 
 ```bash
-python scripts/validate_profile.py profiles/profile1/
+python scripts/setup_profile.py myprofile
+# Edit the files it creates, then validate:
+python scripts/validate_profile.py profiles/myprofile/
 ```
 
-Checks that `search.json`, `filter_prompt.md`, and at least one CV variant exist.
-See `profiles/README.md` to create a new profile.
+Checks that `search.json` and `filter_prompt.md` exist.
+See `profiles/README.md` for the full guide and `templates/profile/` for the example files.
 
 ## Step 5: Test the filter script
 
@@ -88,22 +84,7 @@ echo '{"title":"Python Backend Developer","company":"ExampleCo","location":"Hamb
 
 You should get back JSON with `fit_score`, `decision`, and `cv_variant`.
 
-## Step 6: Google Sheet
-
-1. Create a new Google Sheet
-2. Rename the first tab to **Tracker**
-3. Copy the Sheet ID from the URL and add to `.env` as `JOBS_FUNNEL_SHEET_ID`
-
-## Step 7: Google OAuth for n8n
-
-1. Go to [console.cloud.google.com](https://console.cloud.google.com)
-2. Create a project (e.g., "Funnel")
-3. Enable: Google Sheets API
-4. Credentials → Create → OAuth 2.0 Client ID → Web application
-5. Add redirect URI: `http://localhost:5678/rest/oauth2-credential/callback`
-6. Save Client ID and Client Secret
-
-## Step 8: Start n8n and import
+## Step 6: Start n8n and import
 
 ```bash
 start.bat
@@ -118,12 +99,10 @@ Open http://localhost:5678
 
 1. Settings → Credentials:
    - Add "Postgres - Jobs Funnel" with your `JOBS_FUNNEL_PG_*` values
-   - Add "Google Sheets OAuth2" (Client ID + Secret from step 7)
-   - Complete OAuth flow
 2. Workflows → Import from File → select `workflow.json`
 3. Open the workflow, update credential references
 
-## Step 9: Run it
+## Step 7: Run it
 
 Click "Execute Workflow" (or trigger cron). The pipeline will:
 
@@ -132,8 +111,7 @@ Click "Execute Workflow" (or trigger cron). The pipeline will:
 3. Deduplicate against Postgres, insert new jobs
 4. Score each job via `claude -p` (batches of 8)
 5. Run semantic duplicate detection
-6. Sync results to Google Sheet
-7. Log run stats to `pipeline_runs`
+6. Log run stats to `pipeline_runs`
 
 ## Review UI
 
@@ -164,13 +142,11 @@ python scripts/build_workflow.py
 
 ## Troubleshooting
 
-See `docs/troubleshooting.md` for common issues (hanging Claude calls, dead letter jobs,
-circuit breaker, preflight failures, Sheet sync, DB maintenance).
+Common issues:
+- **Claude calls hanging**: check `claude --version` works, try `claude -p "hello"` to verify auth
+- **Preflight failures**: read the error — usually a missing env var or profile file
+- **Dead letter jobs**: jobs that fail 3x get `status='dead'`. Fix the issue, then reset: `UPDATE jobs SET status='pending', error_count=0 WHERE status='dead';`
 
-## Migration to VPS
+## License
 
-See `docs/design-decisions.md` → Swap points. Summary:
-
-1. n8n + Postgres + Caddy in Docker on VPS
-2. Swap `claude -p` Execute Command nodes to HTTP Request nodes (Anthropic API)
-3. Google Sheets re-auth OAuth, everything else identical
+MIT — see [LICENSE](LICENSE).
