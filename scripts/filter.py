@@ -138,7 +138,7 @@ def main():
         fallback = {
             "fit_score": 0,
             "decision": "SKIP",
-            "cv_variant": "software",
+            "cv_variant": "default",
             "hard_blockers": ["Claude response parse error"],
             "soft_gaps": [],
             "strong_matches": [],
@@ -161,7 +161,7 @@ def main():
             assessment.append({
                 "fit_score": 0,
                 "decision": "SKIP",
-                "cv_variant": "software",
+                "cv_variant": "default",
                 "hard_blockers": ["Batch evaluation incomplete"],
                 "soft_gaps": [],
                 "strong_matches": [],

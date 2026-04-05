@@ -1,7 +1,16 @@
 // Unbatch: match each Claude response to its batch, then build UPDATE SQL
 const table = $env.JOBS_FUNNEL_TABLE;
 const batchItems = $('Batch Items').all();
-const VALID_VARIANTS = ['software', 'data', 'fullstack', 'systems'];
+// Discover valid CV variants from profile's cvs/ directory (if it exists)
+const fs = require('fs');
+const profileDir = ($env.JOBS_FUNNEL_PROJECT_DIR || '').replace(/\\/g, '/') + '/profiles/' + ($env.JOBS_FUNNEL_PROFILE || '');
+const cvsDir = profileDir + '/cvs';
+let VALID_VARIANTS = null;
+try {
+  VALID_VARIANTS = fs.readdirSync(cvsDir).filter(f => f.endsWith('.html')).map(f => f.replace(/\.html$/, ''));
+} catch (e) {
+  // No cvs/ directory — accept any cv_variant from Claude
+}
 const ERROR_KEYWORDS = ['parse error', 'incomplete', 'timed out', 'filter error', 'claude response parse'];
 
 // Proper SQL escaping: handles quotes, backslashes, null bytes
@@ -85,7 +94,9 @@ for (let b = 0; b < $input.all().length; b++) {
     }
 
     // Validate cv_variant
-    const cvVariant = VALID_VARIANTS.includes(assessment.cv_variant) ? assessment.cv_variant : 'software';
+    const cvVariant = VALID_VARIANTS
+      ? (VALID_VARIANTS.includes(assessment.cv_variant) ? assessment.cv_variant : (VALID_VARIANTS[0] || 'default'))
+      : (assessment.cv_variant || 'default');
 
     // Extracted fields (best-effort, may be null)
     const empType = assessment.employment_type || null;

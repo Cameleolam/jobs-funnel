@@ -1,6 +1,7 @@
 // Pre-flight validation: check env vars, profile files, config.json
 const fs = require('fs');
 const errors = [];
+const warnings = [];
 
 const projectDir = ($env.JOBS_FUNNEL_PROJECT_DIR || '').replace(/\\/g, '/');
 const profile = $env.JOBS_FUNNEL_PROFILE || '';
@@ -21,10 +22,10 @@ if (projectDir && profile) {
     if (!fs.existsSync(profileDir + '/filter_prompt.md')) errors.push('Missing: filter_prompt.md');
     const cvsDir = profileDir + '/cvs';
     if (!fs.existsSync(cvsDir)) {
-      errors.push('Missing: cvs/ directory');
+      warnings.push('cvs/ directory not found (optional, needed only for CV generation)');
     } else {
       const cvFiles = fs.readdirSync(cvsDir).filter(f => f.endsWith('.html'));
-      if (cvFiles.length === 0) errors.push('No .html files in cvs/ directory');
+      if (cvFiles.length === 0) warnings.push('cvs/ directory exists but has no .html files');
     }
   }
 }
@@ -46,4 +47,4 @@ if (errors.length > 0) {
   throw new Error('Pre-flight check failed:\n- ' + errors.join('\n- '));
 }
 
-return [{ json: { _preflight: 'ok', profile, table } }];
+return [{ json: { _preflight: 'ok', profile, table, warnings } }];

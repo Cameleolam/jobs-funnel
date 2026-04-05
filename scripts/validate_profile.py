@@ -12,8 +12,6 @@ import json
 import sys
 from pathlib import Path
 
-EXPECTED_CV_VARIANTS = {"software", "data", "fullstack", "systems"}
-
 REQUIRED_SEARCH_KEYS = {
     "aa_searches": list,
     "an_title_keywords": list,
@@ -99,17 +97,14 @@ def validate_cvs(profile_dir):
     cvs_dir = profile_dir / "cvs"
 
     if not cvs_dir.exists():
-        return ["cvs/ directory not found"], []
+        return [], ["cvs/ directory not found (optional, needed only for CV generation)"]
 
     html_files = list(cvs_dir.glob("*.html"))
     if not html_files:
-        return ["cvs/ directory has no .html files"], []
+        return ["cvs/ directory exists but has no .html files"], []
 
-    for f in html_files:
-        if f.stem not in EXPECTED_CV_VARIANTS:
-            warnings.append(
-                f"cvs/: unexpected variant '{f.stem}' (expected: {', '.join(sorted(EXPECTED_CV_VARIANTS))})"
-            )
+    variants = sorted(f.stem for f in html_files)
+    print(f"  Found CV variants: {', '.join(variants)}")
 
     return errors, warnings
 
