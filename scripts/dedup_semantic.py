@@ -62,6 +62,7 @@ def main():
 
     try:
         data = json.loads(input_path.read_text(encoding="utf-8"))
+        input_path.unlink(missing_ok=True)
         new_jobs = data.get("new_jobs", [])
         existing_jobs = data.get("existing_jobs", [])
     except (json.JSONDecodeError, KeyError):
