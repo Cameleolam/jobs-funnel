@@ -1,8 +1,8 @@
-# Funnel - Setup Guide
+# Jobs funnel - Setup Guide
 
 ## What is this
 
-Funnel crawls German job boards, scores each posting against your candidate profile,
+Jobs funnel crawls German job boards, scores each posting against your candidate profile,
 auto-selects the right CV variant, and logs everything to PostgreSQL.
 
 Jobs go in wide. Scored, filtered candidates come out narrow.
@@ -134,7 +134,7 @@ Open http://localhost:8080 to browse scored jobs, make decisions, and export to 
 ## Bookmarklet (manual job submission)
 
 ```javascript
-javascript:void(fetch('http://localhost:5678/webhook/new-job',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:location.href,title:document.title,notes:prompt('Notes?')||''})}).then(r=>r.ok?alert('Sent to Funnel!'):alert('Failed: '+r.status)))
+javascript:void(fetch('http://localhost:5678/webhook/new-job',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:location.href,title:document.title,notes:prompt('Notes?')||''})}).then(r=>r.ok?alert('Sent to Jobs funnel!'):alert('Failed: '+r.status)))
 ```
 
 Click it on any job posting page to send it through the pipeline manually.
