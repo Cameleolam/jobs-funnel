@@ -43,7 +43,16 @@ Your laptop (Windows)
 npm install -g n8n
 ```
 
-## Step 2: Set up environment variables
+## Step 2: Set up the Python environment
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate   # Windows
+# or: source .venv/bin/activate  # Linux/macOS
+pip install -e .
+```
+
+## Step 3: Set up environment variables
 
 Copy `.env.template` to `.env` and fill in the values:
 
@@ -57,7 +66,7 @@ Key variables:
 - `JOBS_FUNNEL_TABLE` — Postgres table name (e.g., `jobs`)
 - `JOBS_FUNNEL_PG_*` — Postgres connection details
 
-## Step 3: Set up the database
+## Step 4: Set up the database
 
 ```bash
 psql -U postgres -d jobs_funnel -f scripts/setup_db.sql
@@ -65,7 +74,7 @@ psql -U postgres -d jobs_funnel -f scripts/setup_db.sql
 
 This creates the `jobs`, `pipeline_runs`, and `job_raw_data` tables.
 
-## Step 4: Create and validate your profile
+## Step 5: Create and validate your profile
 
 ```bash
 python scripts/setup_profile.py myprofile
@@ -76,7 +85,7 @@ python scripts/validate_profile.py profiles/myprofile/
 Checks that `search.json` and `filter_prompt.md` exist.
 See `profiles/README.md` for the full guide and `templates/profile/` for the example files.
 
-## Step 5: Test the filter script
+## Step 6: Test the filter script
 
 ```bash
 echo '{"title":"Python Backend Developer","company":"ExampleCo","location":"Hamburg","description":"We need a Python dev with Flask. 2-4 years. English working language."}' | python scripts/filter.py
@@ -84,7 +93,7 @@ echo '{"title":"Python Backend Developer","company":"ExampleCo","location":"Hamb
 
 You should get back JSON with `fit_score`, `decision`, and `cv_variant`.
 
-## Step 6: Start n8n and import
+## Step 7: Start n8n and import
 
 ```bash
 start.bat
@@ -102,7 +111,7 @@ Open http://localhost:5678
 2. Workflows → Import from File → select `workflow.json`
 3. Open the workflow, update credential references
 
-## Step 7: Run it
+## Step 8: Run it
 
 Click "Execute Workflow" (or trigger cron). The pipeline will:
 
@@ -116,7 +125,7 @@ Click "Execute Workflow" (or trigger cron). The pipeline will:
 ## Review UI
 
 ```bash
-pip install -r ui/requirements.txt
+# With the venv activated (see Step 2):
 python -m uvicorn ui.server:app --port 8080 --reload
 ```
 

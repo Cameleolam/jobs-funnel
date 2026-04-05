@@ -1,0 +1,16 @@
+[tool.setuptools]
+packages = []
+
+[project]
+name = "jobs-funnel"
+version = "0.1.0"
+requires-python = ">=3.9"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "psycopg2-binary",
+    "python-dotenv",
+    "jinja2",
+    "python-multipart",
+    "openpyxl",
+]
