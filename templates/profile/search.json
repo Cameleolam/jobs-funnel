@@ -1,0 +1,35 @@
+{
+  "aa_searches": [
+    "Frontend Developer", "Frontend Engineer",
+    "React Developer", "React Engineer",
+    "Web Developer", "Web Engineer",
+    "JavaScript Developer", "TypeScript Developer",
+    "UI Developer", "UI Engineer",
+    "Webentwickler", "Frontend Entwickler"
+  ],
+  "aa_locations": [
+    { "location": "München", "radius_km": 50 },
+    { "location": "Stuttgart", "radius_km": 50 }
+  ],
+  "an_title_keywords": [
+    "frontend", "front-end", "front end", "react", "vue", "angular",
+    "javascript", "typescript", "web developer", "ui developer",
+    "webentwickler", "ui engineer"
+  ],
+  "an_tag_keywords": [
+    "react", "vue", "angular", "javascript", "typescript", "css",
+    "html", "frontend", "tailwind", "next.js", "nuxt", "node",
+    "graphql", "figma", "storybook", "web"
+  ],
+  "an_location_keywords": [
+    "munich", "münchen", "stuttgart", "germany", "remote",
+    "deutschland", "augsburg", "ulm", "europe", "dach"
+  ],
+  "an_negative_keywords": [
+    "manager", "consultant", "sap", "abap", "salesforce",
+    "product owner", "scrum master", "project manager",
+    "werkstudent", "working student", "intern", "praktikant", "trainee",
+    "senior director", "vp ", "vice president", "head of", "chief",
+    "embedded", "cobol"
+  ]
+}
