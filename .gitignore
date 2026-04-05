@@ -29,3 +29,6 @@ __pycache__/
 
 # Temp files
 *.tmp
+
+# IDE
+.vscode
