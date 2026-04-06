@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${JOBS_FUNNEL_PG_USER:-postgres}
+      POSTGRES_PASSWORD: ${JOBS_FUNNEL_PG_PASSWORD}
+      POSTGRES_DB: ${JOBS_FUNNEL_PG_DATABASE:-jobs_funnel}
+    ports:
+      - "${JOBS_FUNNEL_PG_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
