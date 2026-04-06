@@ -34,7 +34,7 @@ Your laptop (Windows)
 
 1. **Python 3.9+**: `python --version`
 2. **Node.js 18+**: `node -v`
-3. **PostgreSQL**: running locally with a `jobs_funnel` database
+3. **Docker**: `docker --version` (for PostgreSQL)
 4. **Claude Code**: installed and authenticated (`claude --version`)
 
 ## Step 1: Install n8n
@@ -66,10 +66,16 @@ Key variables:
 - `JOBS_FUNNEL_TABLE` — Postgres table name (e.g., `jobs`)
 - `JOBS_FUNNEL_PG_*` — Postgres connection details
 
-## Step 4: Set up the database
+## Step 4: Start PostgreSQL
 
 ```bash
-psql -U postgres -d jobs_funnel -f scripts/setup_db.sql
+docker compose up -d
+```
+
+Then create the schema:
+
+```bash
+psql -h localhost -U postgres -d jobs_funnel -f scripts/setup_db.sql
 ```
 
 This creates the `jobs`, `pipeline_runs`, and `job_raw_data` tables.
