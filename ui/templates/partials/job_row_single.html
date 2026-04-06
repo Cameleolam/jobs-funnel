@@ -1,7 +1,6 @@
 {% set score_val = job.fit_score or 0 %}
-{% set score_class = "score-high" if score_val >= 7 else ("score-mid" if score_val >= 5 else "score-low") %}
+{% set score_class = "score-high" if score_val >= 7 else ("score-mid" if score_val > 5 else "score-low") %}
 {% set us = job.user_status or "" %}
-{% set needs_action = score_val >= 6 and us == "" and job.status == "analyzed" %}
 {% set has_flag = job.priority_notes and ("manual check" in (job.priority_notes|lower) or "flag" in (job.priority_notes|lower) or "fetch full" in (job.priority_notes|lower) or "fetch the" in (job.priority_notes|lower)) %}
 
 {% if job.status == "dead" %}
@@ -10,11 +9,15 @@
   {% set row_class = "status-error" %}
 {% elif job.status != "analyzed" %}
   {% set row_class = "status-pending" %}
-{% elif us == "applied" %}
-  {% set row_class = "applied-done" %}
+{% elif us == "rejected" %}
+  {% set row_class = "status-rejected" %}
 {% elif us == "dismissed" %}
-  {% set row_class = "dismissed-done" %}
-{% elif needs_action %}
+  {% set row_class = "status-dismissed" %}
+{% elif us in ("applied", "in_process", "offer") %}
+  {% set row_class = "status-active" %}
+{% elif us == "interested" %}
+  {% set row_class = "status-interested" %}
+{% elif score_val > 5 and us == "" %}
   {% set row_class = "needs-action" %}
 {% elif (job.decision or "SKIP") == "PASS" %}
   {% set row_class = "decision-PASS" %}
@@ -38,6 +41,8 @@
   {% set badge_text = "PENDING" %}
 {% endif %}
 
+{% set reasoning_preview = (job.reasoning or "")[:120] %}
+
 <tr class="job-row {{ row_class }}"
     hx-get="/jobs/{{ job.id }}"
     hx-target="#detail-{{ job.id }}"
@@ -49,9 +54,8 @@
   <td>{{ job.title }}</td>
   <td>{{ job.location }}</td>
   <td class="text-muted">{{ job|format_salary }}</td>
-  <td><span class="score {{ score_class }}">{{ job.fit_score if job.fit_score is not none else '?' }}</span></td>
+  <td><span class="score {{ score_class }}" {% if reasoning_preview %}title="{{ reasoning_preview }}"{% endif %}>{{ job.fit_score if job.fit_score is not none else '?' }}</span></td>
   <td><span class="badge {{ badge_class }}">{{ badge_text }}</span></td>
-  <td class="text-muted">{{ job.cv_variant or '' }}</td>
   <td class="info-icons">
     {% if job.posted_at and (now - job.posted_at).total_seconds() < 172800 %}<span class="icon-badge icon-new" title="Posted {{ job.posted_at.strftime('%Y-%m-%d') }}">NEW</span>{% endif %}
     {% if job.remote %}<span class="icon-badge icon-remote" title="Remote">R</span>{% endif %}
@@ -74,10 +78,14 @@
             hx-swap="outerHTML settle:0.1s"
             name="user_status">
       <option value="" {{ 'selected' if us == '' else '' }}>-</option>
+      <option value="interested" {{ 'selected' if us == 'interested' else '' }}>Interested</option>
       <option value="applied" {{ 'selected' if us == 'applied' else '' }}>Applied</option>
+      <option value="in_process" {{ 'selected' if us == 'in_process' else '' }}>In Process</option>
+      <option value="offer" {{ 'selected' if us == 'offer' else '' }}>Offer</option>
+      <option value="rejected" {{ 'selected' if us == 'rejected' else '' }}>Rejected</option>
       <option value="dismissed" {{ 'selected' if us == 'dismissed' else '' }}>Nope</option>
     </select>
     {% endif %}
   </td>
 </tr>
-<tr class="detail-row"><td colspan="10" class="detail-cell" id="detail-{{ job.id }}"></td></tr>
+<tr class="detail-row"><td colspan="9" class="detail-cell" id="detail-{{ job.id }}"></td></tr>

@@ -125,12 +125,16 @@
     tr.decision-MAYBE { border-left: 3px solid #ca8a04; }
     tr.decision-SKIP { border-left: 3px solid #d1d5db; }
     tr.status-pending { border-left: 3px solid #2563eb; }
-    tr.needs-action { border-left: 3px solid #ef4444; background: #fef2f2; }
-    tr.needs-action:hover { background: #fee2e2; }
-    tr.applied-done { border-left: 3px solid #16a34a; background: #f0fdf4; }
-    tr.applied-done:hover { background: #dcfce7; }
-    tr.dismissed-done { border-left: 3px solid #9ca3af; background: #f9fafb; opacity: 0.6; }
-    tr.dismissed-done:hover { opacity: 0.8; }
+    tr.needs-action { border-left: 3px solid #f97316; background: #fff7ed; }
+    tr.needs-action:hover { background: #ffedd5; }
+    tr.status-interested { border-left: 3px solid #eab308; background: #fefce8; }
+    tr.status-interested:hover { background: #fef9c3; }
+    tr.status-active { border-left: 3px solid #16a34a; background: #f0fdf4; }
+    tr.status-active:hover { background: #dcfce7; }
+    tr.status-rejected { border-left: 3px solid #9ca3af; background: #f9fafb; opacity: 0.6; }
+    tr.status-rejected:hover { opacity: 0.8; }
+    tr.status-dismissed { border-left: 3px solid #9ca3af; background: #f9fafb; opacity: 0.6; }
+    tr.status-dismissed:hover { opacity: 0.8; }
     tr.status-error { border-left: 3px solid #ea580c; background: #fff7ed; }
     tr.status-error:hover { background: #ffedd5; }
     tr.status-dead { border-left: 3px solid #dc2626; background: #fef2f2; }
@@ -219,7 +223,11 @@
       cursor: pointer;
       background: #fff;
     }
+    .status-select.status-interested { background: #fef9c3; color: #854d0e; border-color: #eab308; }
     .status-select.status-applied { background: #dcfce7; color: #166534; border-color: #16a34a; }
+    .status-select.status-in_process { background: #dcfce7; color: #166534; border-color: #16a34a; }
+    .status-select.status-offer { background: #dcfce7; color: #166534; border-color: #16a34a; }
+    .status-select.status-rejected { background: #f3f4f6; color: #6b7280; border-color: #9ca3af; }
     .status-select.status-dismissed { background: #f3f4f6; color: #6b7280; border-color: #9ca3af; }
     .status-select.status-none { background: #fff; }
 

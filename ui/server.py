@@ -154,12 +154,16 @@ def get_stats():
         f"SELECT COUNT(*) as cnt FROM {TABLE} WHERE status = 'pending'"
     )
     stats["pending"] = pending["cnt"] if pending else 0
+    interested = fetch_one(
+        f"SELECT COUNT(*) as cnt FROM {TABLE} WHERE user_status = 'interested'"
+    )
+    stats["interested"] = interested["cnt"] if interested else 0
     applied = fetch_one(
-        f"SELECT COUNT(*) as cnt FROM {TABLE} WHERE user_status = 'applied'"
+        f"SELECT COUNT(*) as cnt FROM {TABLE} WHERE user_status IN ('applied', 'in_process', 'offer')"
     )
     stats["applied"] = applied["cnt"] if applied else 0
     dismissed = fetch_one(
-        f"SELECT COUNT(*) as cnt FROM {TABLE} WHERE user_status = 'dismissed'"
+        f"SELECT COUNT(*) as cnt FROM {TABLE} WHERE user_status IN ('dismissed', 'rejected')"
     )
     stats["dismissed"] = dismissed["cnt"] if dismissed else 0
     error = fetch_one(
@@ -189,12 +193,20 @@ def build_job_filter(decision="", applied="", min_score=0, max_score=10, search=
         if decision:
             conditions.append("decision = %s")
             params.append(decision)
-        if applied == "applied":
+        if applied == "pending":
+            conditions.append("user_status IS NULL")
+        elif applied == "interested":
+            conditions.append("user_status = 'interested'")
+        elif applied == "applied":
             conditions.append("user_status = 'applied'")
+        elif applied == "in_process":
+            conditions.append("user_status = 'in_process'")
+        elif applied == "offer":
+            conditions.append("user_status = 'offer'")
+        elif applied == "rejected":
+            conditions.append("user_status = 'rejected'")
         elif applied == "dismissed":
             conditions.append("user_status = 'dismissed'")
-        elif applied == "pending":
-            conditions.append("user_status IS NULL")
         conditions.append("COALESCE(fit_score, 0) >= %s")
         params.append(min_score)
         conditions.append("COALESCE(fit_score, 0) <= %s")
@@ -220,16 +232,16 @@ async def list_jobs(
     max_score: int = Query(10, alias="max_score"),
     search: str = Query("", alias="search"),
     view: str = Query("", alias="view"),
-    sort: str = Query("crawled_at", alias="sort"),
+    sort: str = Query("fit_score", alias="sort"),
     order: str = Query("desc", alias="order"),
     limit: int = Query(50, alias="limit"),
     offset: int = Query(0, alias="offset"),
 ):
     allowed_sorts = {
         "crawled_at", "fit_score", "company", "title", "location",
-        "decision", "applied", "analyzed_at",
+        "decision", "user_status", "analyzed_at",
     }
-    sort_col = sort if sort in allowed_sorts else "crawled_at"
+    sort_col = sort if sort in allowed_sorts else "fit_score"
     sort_dir = "ASC" if order.lower() == "asc" else "DESC"
 
     where, params = build_job_filter(decision, applied, min_score, max_score, search, view)
@@ -256,14 +268,14 @@ async def export_excel(
     max_score: int = Query(10),
     search: str = Query(""),
     view: str = Query(""),
-    sort: str = Query("crawled_at"),
+    sort: str = Query("fit_score"),
     order: str = Query("desc"),
 ):
     allowed_sorts = {
         "crawled_at", "fit_score", "company", "title", "location",
-        "decision", "applied", "analyzed_at",
+        "decision", "user_status", "analyzed_at",
     }
-    sort_col = sort if sort in allowed_sorts else "crawled_at"
+    sort_col = sort if sort in allowed_sorts else "fit_score"
     sort_dir = "ASC" if order.lower() == "asc" else "DESC"
 
     where, params = build_job_filter(decision, applied, min_score, max_score, search, view)
@@ -279,7 +291,7 @@ async def export_excel(
 
     headers = [
         "Date", "Fetched At", "Posted", "Source", "Company", "Role", "Location", "Salary",
-        "Score", "Decision", "CV Variant", "Seniority", "Employment", "Start Date",
+        "Score", "Decision", "Seniority", "Employment", "Start Date",
         "Blockers", "Strong Matches", "Reasoning", "Status", "Job URL",
         "Notes", "My Notes", "_dbId",
     ]
@@ -288,9 +300,10 @@ async def export_excel(
         cell = ws.cell(row=1, column=col, value=h)
         cell.font = header_font
 
-    fill_applied = PatternFill(start_color="DCFCE7", end_color="DCFCE7", fill_type="solid")
-    fill_action = PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid")
-    fill_dismissed = PatternFill(start_color="F3F4F6", end_color="F3F4F6", fill_type="solid")
+    fill_active = PatternFill(start_color="DCFCE7", end_color="DCFCE7", fill_type="solid")
+    fill_interested = PatternFill(start_color="FEF9C3", end_color="FEF9C3", fill_type="solid")
+    fill_action = PatternFill(start_color="FFF7ED", end_color="FFF7ED", fill_type="solid")
+    fill_gray = PatternFill(start_color="F3F4F6", end_color="F3F4F6", fill_type="solid")
 
     for row_idx, j in enumerate(jobs, 2):
         score = j["fit_score"] or 0
@@ -312,7 +325,6 @@ async def export_excel(
             salary,
             score,
             j.get("decision", ""),
-            j.get("cv_variant", ""),
             j.get("seniority_level", "") or "",
             j.get("employment_type", "") or "",
             j.get("start_date", "") or "",
@@ -329,11 +341,13 @@ async def export_excel(
             ws.cell(row=row_idx, column=col, value=val)
 
         # Row coloring
-        if us == "applied":
-            fill = fill_applied
-        elif us == "dismissed":
-            fill = fill_dismissed
-        elif score >= 6 and not us:
+        if us in ("applied", "in_process", "offer"):
+            fill = fill_active
+        elif us == "interested":
+            fill = fill_interested
+        elif us in ("rejected", "dismissed"):
+            fill = fill_gray
+        elif score >= 5 and not us:
             fill = fill_action
         else:
             fill = None
@@ -363,7 +377,7 @@ async def export_excel(
 async def job_detail(request: Request, job_id: int):
     job = fetch_one(f"SELECT * FROM {TABLE} WHERE id = %s", (job_id,))
     if not job:
-        return HTMLResponse("<tr><td colspan='11'>Job not found</td></tr>", status_code=404)
+        return HTMLResponse("<tr><td colspan='9'>Job not found</td></tr>", status_code=404)
     return render(request, "partials/job_detail.html", {"job": job})
 
 
@@ -381,12 +395,13 @@ async def update_job(request: Request, job_id: int, decision: str = Form(...)):
 
 @app.patch("/jobs/{job_id}/status", response_class=HTMLResponse)
 async def set_user_status(request: Request, job_id: int, user_status: str = Form(...)):
-    if user_status not in ("applied", "dismissed", ""):
+    valid = ("interested", "applied", "in_process", "offer", "rejected", "dismissed", "")
+    if user_status not in valid:
         return HTMLResponse("Invalid status", status_code=400)
     status_val = user_status if user_status else None
     execute(
         f"UPDATE {TABLE} SET user_status = %s, "
-        f"applied_at = CASE WHEN %s = 'applied' THEN NOW() ELSE NULL END, "
+        f"applied_at = CASE WHEN %s = 'applied' THEN NOW() ELSE applied_at END, "
         f"sheet_synced = FALSE WHERE id = %s",
         (status_val, status_val, job_id),
     )

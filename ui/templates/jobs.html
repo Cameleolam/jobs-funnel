@@ -14,7 +14,7 @@
       hx-include="[name]"
       hx-indicator="#filter-spinner">
 
-  <input type="hidden" name="sort" value="crawled_at">
+  <input type="hidden" name="sort" value="fit_score">
   <input type="hidden" name="order" value="desc">
 
   <label>View</label>
@@ -38,7 +38,11 @@
   <select name="applied">
     <option value="">All</option>
     <option value="pending">Not reviewed</option>
+    <option value="interested">Interested</option>
     <option value="applied">Applied</option>
+    <option value="in_process">In Process</option>
+    <option value="offer">Offer</option>
+    <option value="rejected">Rejected</option>
     <option value="dismissed">Dismissed</option>
   </select>
 
@@ -61,16 +65,15 @@
 <table class="jobs-table">
   <thead>
     <tr>
-      <th class="sortable" data-sort="crawled_at">Date <span class="sort-arrow">&#9660;</span></th>
+      <th class="sortable" data-sort="crawled_at">Date</th>
       <th class="sortable" data-sort="company">Company</th>
       <th class="sortable" data-sort="title">Role</th>
       <th class="sortable" data-sort="location">Location</th>
       <th>Salary</th>
-      <th class="sortable" data-sort="fit_score">Score</th>
+      <th class="sortable active" data-sort="fit_score">Score <span class="sort-arrow">&#9660;</span></th>
       <th class="sortable" data-sort="decision">Decision</th>
-      <th>CV</th>
       <th>Info</th>
-      <th>Status</th>
+      <th class="sortable" data-sort="user_status">Status</th>
     </tr>
   </thead>
   <tbody id="job-table-body"
