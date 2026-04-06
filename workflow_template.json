@@ -157,13 +157,23 @@
     },
     {
       "parameters": {
+        "jsCode": "{{file:scripts/n8n/aa-fetch-desc.js}}"
+      },
+      "id": "aa-fetch-desc",
+      "name": "AA: Fetch Descriptions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2725, 350]
+    },
+    {
+      "parameters": {
         "jsCode": "{{file:scripts/n8n/prep-insert.js}}"
       },
       "id": "prep-insert",
       "name": "Prep Insert",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2850, 350]
+      "position": [2950, 350]
     },
     {
       "parameters": {
@@ -531,9 +541,14 @@
     },
     "Has New?": {
       "main": [
-        [{ "node": "Prep Insert", "type": "main", "index": 0 }],
+        [{ "node": "AA: Fetch Descriptions", "type": "main", "index": 0 }],
         [{ "node": "Run End", "type": "main", "index": 0 }]
       ]
+    },
+    "AA: Fetch Descriptions": {
+      "main": [[
+        { "node": "Prep Insert", "type": "main", "index": 0 }
+      ]]
     },
     "Prep Insert": {
       "main": [[

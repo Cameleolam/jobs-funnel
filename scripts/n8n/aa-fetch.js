@@ -81,129 +81,6 @@ if (jobs.length === 0 && errors.length > 0) {
 
 if (jobs.length === 0) return [{ json: { _empty: true } }];
 
-// Fetch full descriptions from employer pages (externeUrl)
-function decodeEntities(text) {
-  return text
-    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'")
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
-}
-
-function extractDescription(html) {
-  const str = String(html);
-
-  // Try JSON-LD first (structured data, cleanest source)
-  const jsonLdMatch = str.match(/<script[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
-  if (jsonLdMatch) {
-    for (const block of jsonLdMatch) {
-      try {
-        const content = block.replace(/<\/?script[^>]*>/gi, '');
-        const data = JSON.parse(content);
-        // Could be a single object or array
-        const items = Array.isArray(data) ? data : [data];
-        for (const item of items) {
-          if (item['@type'] === 'JobPosting' && item.description) {
-            // Description may be HTML, strip it
-            let desc = item.description.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-            desc = decodeEntities(desc);
-            // Also grab benefits/qualifications if available
-            const extras = [item.qualifications, item.responsibilities, item.jobBenefits]
-              .filter(Boolean).map(s => String(s).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
-            if (extras.length) desc += ' ' + extras.join(' ');
-            if (desc.length > 100) return desc;
-          }
-        }
-      } catch (e) { /* invalid JSON-LD, try next block */ }
-    }
-  }
-
-  // Fallback: strip script/style blocks, then strip tags
-  let text = str
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<nav[\s\S]*?<\/nav>/gi, ' ')
-    .replace(/<header[\s\S]*?<\/header>/gi, ' ')
-    .replace(/<footer[\s\S]*?<\/footer>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  text = decodeEntities(text);
-  return text.length > 100 ? text : null;
-}
-
-function checkDescriptionQuality(desc) {
-  if (!desc || desc.length < 50) return 'empty';
-
-  const lower = desc.toLowerCase();
-  const len = desc.length;
-
-  // Junk patterns — cookie notices, login walls, error pages
-  const junkPatterns = [
-    'cookie', 'datenschutz', 'privacy policy', 'accept all',
-    'page not found', '404', 'access denied', 'forbidden',
-    'javascript is required', 'enable javascript',
-    'please log in', 'bitte melden sie sich an',
-    'captcha', 'robot'
-  ];
-  const junkHits = junkPatterns.filter(p => lower.includes(p)).length;
-  if (junkHits >= 2) return 'poor';
-
-  // Job-related keywords — a real posting should have several
-  const jobKeywords = [
-    'aufgaben', 'anforderungen', 'profil', 'qualifikation',
-    'responsibilities', 'requirements', 'experience', 'skills',
-    'benefits', 'salary', 'gehalt', 'team', 'position',
-    'bewerben', 'apply', 'stellenangebot', 'job', 'rolle',
-    'arbeiten', 'work', 'develop', 'engineer', 'manage'
-  ];
-  const jobHits = jobKeywords.filter(k => lower.includes(k)).length;
-
-  if (len < 200 && jobHits < 2) return 'poor';
-  if (len >= 200 && jobHits >= 2) return 'good';
-  if (len >= 500) return 'good';
-
-  return 'poor';
-}
-
-const FETCH_DELAY = config.aa_fetch_delay_ms || 300;
-const MAX_FETCHES = config.aa_max_fetches || 200;
-const DESC_CB_MIN = 10;
-let fetchCount = 0;
-let descFailCount = 0;
-let descCircuitBroken = false;
-const descFailUrls = [];
-for (let i = 0; i < jobs.length && fetchCount < MAX_FETCHES; i++) {
-  const extUrl = jobs[i].externeUrl;
-  if (!extUrl) continue;
-  if (fetchCount >= DESC_CB_MIN && descFailCount / fetchCount >= CB_THRESHOLD) {
-    descCircuitBroken = true;
-    break;
-  }
-  if (fetchCount > 0) await new Promise(r => setTimeout(r, FETCH_DELAY));
-  fetchCount++;
-  let success = false;
-  // 1 retry for descriptions (nice-to-have)
-  for (let attempt = 0; attempt <= 1 && !success; attempt++) {
-    try {
-      const html = await this.helpers.httpRequest({ method: 'GET', url: extUrl, encoding: 'utf-8', timeout: config.aa_fetch_timeout_ms || 5000 });
-      const desc = extractDescription(html);
-      if (desc) {
-        jobs[i]._fullDesc = desc.substring(0, config.description_max_chars || 5000);
-        jobs[i]._descriptionQuality = checkDescriptionQuality(jobs[i]._fullDesc);
-      }
-      success = true;
-    } catch (e) {
-      if (attempt === 1) {
-        descFailCount++;
-        descFailUrls.push(extUrl);
-      } else {
-        await new Promise(r => setTimeout(r, 500));
-      }
-    }
-  }
-}
-
 const _crawlMeta = {
   source: 'arbeitsagentur',
   locations: locations.map(l => l.location),
@@ -211,13 +88,9 @@ const _crawlMeta = {
   total_results: jobs.length,
   fetch_errors: errors.length,
   errors: errors.slice(0, 10),
-  descriptions_attempted: fetchCount,
-  descriptions_failed: descFailCount,
-  descriptions_failed_urls: descFailUrls.slice(0, 10),
-  circuit_broken: circuitBroken || descCircuitBroken,
+  circuit_broken: circuitBroken,
   circuit_breaker_stats: {
     search: { total: searchTotal, failed: searchFailed },
-    descriptions: { total: fetchCount, failed: descFailCount },
   },
 };
 
@@ -229,7 +102,6 @@ const mapped = jobs.map(j => {
   const refUrl = j.refnr ? `https://www.arbeitsagentur.de/jobsuche/suche?id=${j.refnr}` : '';
   const url = extUrl || refUrl;
   const fallbackDesc = `${j.titel || ''} bei ${company} in ${location}${region ? ' (' + region + ')' : ''}. Beruf: ${j.beruf || ''}. Eintrittsdatum: ${j.eintrittsdatum || 'k.A.'}`;
-  const desc = (j._fullDesc || fallbackDesc).substring(0, config.description_max_chars || 5000);
   return { json: {
     source: 'arbeitsagentur',
     external_id: j.refnr || '',
@@ -237,8 +109,8 @@ const mapped = jobs.map(j => {
     title: j.titel || '',
     company: company,
     location: location,
-    description: desc,
-    description_quality: j._descriptionQuality || (j._fullDesc ? 'unknown' : 'empty'),
+    description: fallbackDesc,
+    description_quality: 'empty',
     tags: [],
     remote: false,
     likely_english: false,
