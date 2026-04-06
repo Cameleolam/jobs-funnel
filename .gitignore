@@ -31,6 +31,7 @@ __pycache__/
 
 # Temp files
 *.tmp
+*.sql.dump
 
 # IDE
 .vscode
