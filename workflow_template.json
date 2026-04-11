@@ -109,7 +109,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT url FROM {{ $env.JOBS_FUNNEL_TABLE }}",
+        "query": "SELECT url, LOWER(TRIM(title)) AS title, LOWER(TRIM(company)) AS company FROM {{ $env.JOBS_FUNNEL_TABLE }}",
         "options": {}
       },
       "id": "dedup-get-urls",

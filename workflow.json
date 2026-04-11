@@ -109,7 +109,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT url FROM {{ $env.JOBS_FUNNEL_TABLE }}",
+        "query": "SELECT url, LOWER(TRIM(title)) AS title, LOWER(TRIM(company)) AS company FROM {{ $env.JOBS_FUNNEL_TABLE }}",
         "options": {}
       },
       "id": "dedup-get-urls",
@@ -128,7 +128,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Filter out URLs already in Postgres — insert all new jobs, analyze phase handles batching\n// Let this throw if upstream DB node failed — better than bypassing dedup\nconst seenRows = $('Dedup: Get Seen URLs').all();\nconst seenUrls = new Set(seenRows.map(r => r.json.url).filter(Boolean));\n\nconst jobs = $('Has Results?').all().filter(item => {\n  const url = item.json?.url;\n  return url && !seenUrls.has(url);\n});\n\nif (jobs.length === 0) return [{ json: { _empty: true } }];\nreturn jobs;"
+        "jsCode": "// Filter out jobs already in Postgres — by URL or by normalized company+title\n// Let this throw if upstream DB node failed — better than bypassing dedup\nconst seenRows = $('Dedup: Get Seen URLs').all();\nconst seenUrls = new Set(seenRows.map(r => r.json.url).filter(Boolean));\n\n// Build a set of normalized company|title keys from existing DB rows\nconst seenKeys = new Set();\nfor (const r of seenRows) {\n  const t = (r.json.title || '').toLowerCase().trim();\n  const c = (r.json.company || '').toLowerCase().trim();\n  if (t || c) seenKeys.add(c + '|' + t);\n}\n\nfunction normalizeKey(title, company) {\n  return (company || '').toLowerCase().trim() + '|' + (title || '').toLowerCase().trim();\n}\n\nconst jobs = $('Has Results?').all().filter(item => {\n  const url = item.json?.url;\n  if (!url || seenUrls.has(url)) return false;\n  const key = normalizeKey(item.json.title, item.json.company);\n  return !seenKeys.has(key);\n});\n\nif (jobs.length === 0) return [{ json: { _empty: true } }];\nreturn jobs;"
       },
       "id": "dedup-filter",
       "name": "Dedup: Filter New",
