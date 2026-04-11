@@ -22,7 +22,7 @@ for (let i = 0; i < all.length; i += BATCH_SIZE) {
     title: item.json.title || '',
     company: item.json.company || '',
     location: item.json.location || '',
-    description: (item.json.description || '').substring(0, 3000),
+    description: item.json.description || '',
     tags: item.json.tags || [],
     url: item.json.url || '',
     remote: item.json.remote || false,

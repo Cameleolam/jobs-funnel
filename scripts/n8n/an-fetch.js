@@ -127,7 +127,7 @@ const _crawlMeta = {
 };
 
 const mapped = allJobs.map(j => {
-  const desc = (j.description || '').substring(0, config.description_max_chars || 5000);
+  const desc = j.description || '';
   const sal = parseSalary(j);
   return { json: {
     source: 'arbeitnow',

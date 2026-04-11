@@ -113,7 +113,7 @@ for (const item of items) {
       const html = await this.helpers.httpRequest({ method: 'GET', url: extUrl, encoding: 'utf-8', timeout: FETCH_TIMEOUT });
       const desc = extractDescription(html);
       if (desc) {
-        j.description = desc.substring(0, DESC_MAX);
+        j.description = desc;
         j.description_quality = checkDescriptionQuality(j.description);
       }
       success = true;

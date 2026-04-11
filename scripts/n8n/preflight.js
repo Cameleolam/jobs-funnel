@@ -34,7 +34,7 @@ if (projectDir && profile) {
 if (projectDir) {
   try {
     const config = JSON.parse(fs.readFileSync(projectDir + '/config.json', 'utf-8'));
-    const required = ['batch_size', 'dedup_cap', 'description_max_chars'];
+    const required = ['batch_size', 'dedup_cap'];
     for (const key of required) {
       if (config[key] === undefined) errors.push(`config.json missing key: ${key}`);
     }
