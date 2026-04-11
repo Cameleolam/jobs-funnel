@@ -245,9 +245,11 @@ async def list_jobs(
     sort_dir = "ASC" if order.lower() == "asc" else "DESC"
 
     where, params = build_job_filter(decision, applied, min_score, max_score, search, view)
+    # Add id as tiebreaker so pagination is stable (avoids duplicates on Load More)
+    order_clause = f"{sort_col} {sort_dir}, id {sort_dir}"
     query = (
         f"SELECT {ROW_COLS} FROM {TABLE} WHERE {where} "
-        f"ORDER BY {sort_col} {sort_dir} LIMIT %s OFFSET %s"
+        f"ORDER BY {order_clause} LIMIT %s OFFSET %s"
     )
     params.extend([limit, offset])
     jobs = fetch_all(query, tuple(params))
@@ -279,9 +281,10 @@ async def export_excel(
     sort_dir = "ASC" if order.lower() == "asc" else "DESC"
 
     where, params = build_job_filter(decision, applied, min_score, max_score, search, view)
+    order_clause = f"{sort_col} {sort_dir}, id {sort_dir}"
     query = (
         f"SELECT {ROW_COLS} FROM {TABLE} WHERE {where} "
-        f"ORDER BY {sort_col} {sort_dir}"
+        f"ORDER BY {order_clause}"
     )
     jobs = fetch_all(query, tuple(params))
 
