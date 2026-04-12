@@ -226,7 +226,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Check if there are pending jobs — output flag when done\nconst items = $input.all().filter(i => i.json.id != null);\nif (items.length === 0) return [{ json: { _done: true } }];\nreturn items;"
+        "jsCode": "// Check if there are pending jobs — output flag when done\nconst items = $input.all().filter(i => i.json.id != null);\nif (items.length === 0) return [{ json: { _done: true } }];\nreturn items.map(i => ({ json: { ...i.json, _done: false } }));"
       },
       "id": "has-pending",
       "name": "Has Pending?",
@@ -526,7 +526,7 @@
     "Has Results?": {
       "main": [
         [{ "node": "Dedup: Get Seen URLs", "type": "main", "index": 0 }],
-        [{ "node": "Run End", "type": "main", "index": 0 }]
+        [{ "node": "DB: Fetch Pending", "type": "main", "index": 0 }]
       ]
     },
     "Dedup: Get Seen URLs": {
@@ -542,7 +542,7 @@
     "Has New?": {
       "main": [
         [{ "node": "AA: Fetch Descriptions", "type": "main", "index": 0 }],
-        [{ "node": "Run End", "type": "main", "index": 0 }]
+        [{ "node": "DB: Fetch Pending", "type": "main", "index": 0 }]
       ]
     },
     "AA: Fetch Descriptions": {
