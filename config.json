@@ -19,15 +19,5 @@
   "an_remote_max_pages": 5,
   "an_remote_delay_ms": 3000,
   "himalayas_max_pages": 3,
-  "himalayas_delay_ms": 2000,
-  "staffing_agency_patterns": [
-    "zeitarbeit", "personal", "personaldienst", "randstad", "hays",
-    "adecco", "manpower", "gi group", "dis ag", "orizon", "tempton",
-    "piening", "actief", "robert half"
-  ],
-  "geo_allowlist": [
-    "germany", "deutschland", "munich", "münchen", "berlin", "hamburg",
-    "frankfurt", "stuttgart", "köln", "cologne", "austria", "österreich",
-    "switzerland", "schweiz", "remote", "europe", "eu", "dach", "emea"
-  ]
+  "himalayas_delay_ms": 2000
 }

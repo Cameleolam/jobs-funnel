@@ -1,0 +1,47 @@
+[
+  {
+    "id": "arbeitsagentur",
+    "node_id": "aa-fetch",
+    "name": "AA: Fetch Jobs",
+    "file": "scripts/n8n/aa-fetch.js",
+    "countries": ["de"],
+    "remote_only": false,
+    "position": [1100, 550]
+  },
+  {
+    "id": "arbeitnow",
+    "node_id": "an-fetch",
+    "name": "AN: Fetch & Filter",
+    "file": "scripts/n8n/an-fetch.js",
+    "countries": ["de", "at", "ch"],
+    "remote_only": false,
+    "position": [1100, 150]
+  },
+  {
+    "id": "remotive",
+    "node_id": "remotive-fetch",
+    "name": "Remotive: Fetch & Filter",
+    "file": "scripts/n8n/remotive-fetch.js",
+    "countries": ["*"],
+    "remote_only": true,
+    "position": [1100, 50]
+  },
+  {
+    "id": "arbeitnow_remote",
+    "node_id": "an-remote-fetch",
+    "name": "AN Remote: Fetch & Filter",
+    "file": "scripts/n8n/an-remote-fetch.js",
+    "countries": ["*"],
+    "remote_only": true,
+    "position": [1100, 250]
+  },
+  {
+    "id": "himalayas",
+    "node_id": "himalayas-fetch",
+    "name": "Himalayas: Fetch & Filter",
+    "file": "scripts/n8n/himalayas-fetch.js",
+    "countries": ["*"],
+    "remote_only": true,
+    "position": [1100, 700]
+  }
+]

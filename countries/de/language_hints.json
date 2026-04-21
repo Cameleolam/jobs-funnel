@@ -1,0 +1,14 @@
+{
+  "languages": {
+    "en": {
+      "stopwords": ["the", "and", "you", "we", "team", "experience", "requirements", "about", "our", "will", "work", "join", "role", "position"],
+      "threshold": 3,
+      "sample_chars": 500
+    },
+    "de": {
+      "stopwords": ["und", "der", "die", "das", "wir", "sie", "für", "mit", "ist", "sind", "werden", "unser", "unsere", "ihre"],
+      "threshold": 3,
+      "sample_chars": 500
+    }
+  }
+}

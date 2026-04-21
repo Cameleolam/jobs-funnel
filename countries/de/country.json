@@ -1,0 +1,7 @@
+{
+  "code": "de",
+  "name": "Germany",
+  "default_language": "de",
+  "secondary_languages": ["en"],
+  "currency": "EUR"
+}

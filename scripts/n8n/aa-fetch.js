@@ -5,9 +5,15 @@ const config = JSON.parse(fs.readFileSync(projectDir + '/config.json', 'utf-8'))
 const profileDir = projectDir + '/profiles/' + ($env.JOBS_FUNNEL_PROFILE);
 const search = JSON.parse(fs.readFileSync(profileDir + '/search.json', 'utf-8'));
 
-const STAFFING_PATTERNS = config.staffing_agency_patterns || [];
-const GEO_ALLOWLIST = config.geo_allowlist || [];
-const ENGLISH_STOPWORDS = ['the','and','you','we','team','experience','requirements','about','our','will','work','join','role','position'];
+const countryCode = search.country || 'de';
+const packDir = projectDir + '/countries/' + countryCode;
+const staffingPack = JSON.parse(fs.readFileSync(packDir + '/staffing_patterns.json', 'utf-8'));
+const geoPack = JSON.parse(fs.readFileSync(packDir + '/geo_allowlist.json', 'utf-8'));
+const langPack = JSON.parse(fs.readFileSync(packDir + '/language_hints.json', 'utf-8'));
+const STAFFING_PATTERNS = staffingPack.patterns || [];
+const GEO_ALLOWLIST = geoPack.allowlist || [];
+const EN_HINTS = (langPack.languages && langPack.languages.en) || { stopwords: [], threshold: 3, sample_chars: 500 };
+
 function detectStaffingAgency(company) {
   if (!company) return false;
   const lower = String(company).toLowerCase();
@@ -21,8 +27,8 @@ function detectGeoMismatch(location, remote) {
 }
 function isLikelyEnglish(description) {
   if (!description) return false;
-  const sample = String(description).substring(0, 500).toLowerCase();
-  return ENGLISH_STOPWORDS.filter(w => sample.includes(w)).length >= 3;
+  const sample = String(description).substring(0, EN_HINTS.sample_chars).toLowerCase();
+  return EN_HINTS.stopwords.filter(w => sample.includes(w)).length >= EN_HINTS.threshold;
 }
 
 const BASE = 'https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobs';

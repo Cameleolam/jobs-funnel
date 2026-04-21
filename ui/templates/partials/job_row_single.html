@@ -61,7 +61,7 @@
     {% if job.remote %}<span class="icon-badge icon-remote" title="Remote">R</span>{% endif %}
     {% if job.likely_english %}<span class="icon-badge icon-en" title="Likely English">EN</span>{% endif %}
     {% if job.staffing_agency %}<span class="icon-badge icon-flag" title="Staffing agency">STAFF</span>{% endif %}
-    {% if job.geo_mismatch %}<span class="icon-badge icon-flag" title="Outside DACH/EU and not remote">GEO</span>{% endif %}
+    {% if job.geo_mismatch %}<span class="icon-badge icon-flag" title="Outside your country allowlist and not remote">GEO</span>{% endif %}
     {% if has_flag %}<span class="icon-badge icon-flag" title="{{ job.priority_notes[:80] }}">!</span>{% endif %}
     {% if job.notes %}<span class="icon-badge icon-note" title="{{ job.notes[:80] }}">N</span>{% endif %}
     {% if job.error_code %}<span class="icon-badge icon-flag" title="{{ (job.error or '')[:80] }}">{{ job.error_code }}</span>{% endif %}

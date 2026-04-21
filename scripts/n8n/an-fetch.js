@@ -11,8 +11,15 @@ const MAX_RETRIES = config.api_max_retries || 2;
 const RETRY_DELAY = config.api_retry_delay_ms || 1000;
 const cutoff = Date.now() - (config.an_days_back || 30) * 24 * 60 * 60 * 1000;
 
-const STAFFING_PATTERNS = config.staffing_agency_patterns || [];
-const GEO_ALLOWLIST = config.geo_allowlist || [];
+const countryCode = search.country || 'de';
+const packDir = projectDir + '/countries/' + countryCode;
+const staffingPack = JSON.parse(fs.readFileSync(packDir + '/staffing_patterns.json', 'utf-8'));
+const geoPack = JSON.parse(fs.readFileSync(packDir + '/geo_allowlist.json', 'utf-8'));
+const langPack = JSON.parse(fs.readFileSync(packDir + '/language_hints.json', 'utf-8'));
+const STAFFING_PATTERNS = staffingPack.patterns || [];
+const GEO_ALLOWLIST = geoPack.allowlist || [];
+const EN_HINTS = (langPack.languages && langPack.languages.en) || { stopwords: [], threshold: 3, sample_chars: 500 };
+
 function detectStaffingAgency(company) {
   if (!company) return false;
   const lower = String(company).toLowerCase();
@@ -23,6 +30,11 @@ function detectGeoMismatch(location, remote) {
   if (!location) return true;
   const lower = String(location).toLowerCase();
   return !GEO_ALLOWLIST.some(a => lower.includes(String(a).toLowerCase()));
+}
+function isLikelyEnglish(description) {
+  if (!description) return false;
+  const sample = String(description).substring(0, EN_HINTS.sample_chars).toLowerCase();
+  return EN_HINTS.stopwords.filter(w => sample.includes(w)).length >= EN_HINTS.threshold;
 }
 
 // Retry with exponential backoff; skip retries for 4xx (permanent errors)
@@ -43,13 +55,6 @@ const titleKw = search.an_title_keywords || [];
 const tagKw = search.an_tag_keywords || [];
 const locKw = search.an_location_keywords || [];
 const negKw = search.an_negative_keywords || [];
-const engWords = ['the','and','you','we','team','experience','requirements','about','our','will','work','join','role','position'];
-
-function isLikelyEnglish(desc) {
-  const sample = (desc || '').substring(0, 500).toLowerCase();
-  const hits = engWords.filter(w => sample.includes(w)).length;
-  return hits >= 3;
-}
 
 const allJobs = [];
 const seen = new Set();
