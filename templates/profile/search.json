@@ -1,4 +1,6 @@
 {
+  "country": "de",
+  "crawlers": ["arbeitnow", "arbeitsagentur", "remotive", "arbeitnow_remote", "himalayas"],
   "aa_searches": [
     "Frontend Developer", "Frontend Engineer",
     "React Developer", "React Engineer",
