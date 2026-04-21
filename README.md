@@ -2,8 +2,9 @@
 
 ## What is this
 
-Jobs funnel crawls German job boards, scores each posting against your candidate profile,
-auto-selects the right CV variant, and logs everything to PostgreSQL.
+Jobs funnel crawls European and remote job boards (default country pack: Germany),
+scores each posting against your candidate profile, auto-selects the right CV variant,
+and logs everything to PostgreSQL.
 
 Jobs go in wide. Scored, filtered candidates come out narrow.
 
@@ -29,6 +30,23 @@ Your laptop (Windows)
 └── PostgreSQL (local)
     └── jobs, pipeline_runs, job_raw_data tables
 ```
+
+## Country packs
+
+Country-specific knowledge (staffing-agency names, geo allowlist, language hints) lives in
+`countries/<code>/`. Profiles declare their country and which crawlers to run in `search.json`:
+
+```json
+{
+  "country": "de",
+  "crawlers": ["arbeitnow", "arbeitsagentur", "remotive", "arbeitnow_remote", "himalayas"]
+}
+```
+
+The reference pack is `countries/de/` (Germany). `countries/global/` is a remote-only stub.
+To add a new country, copy `countries/de/`, edit the four JSON files, and reference it from
+your profile. See `countries/README.md` for details. After changing the crawler list, rebuild:
+`python scripts/build_workflow.py`.
 
 ## Prerequisites
 
