@@ -11,6 +11,20 @@ const MAX_RETRIES = config.api_max_retries || 2;
 const RETRY_DELAY = config.api_retry_delay_ms || 1000;
 const cutoff = Date.now() - (config.an_days_back || 30) * 24 * 60 * 60 * 1000;
 
+const STAFFING_PATTERNS = config.staffing_agency_patterns || [];
+const GEO_ALLOWLIST = config.geo_allowlist || [];
+function detectStaffingAgency(company) {
+  if (!company) return false;
+  const lower = String(company).toLowerCase();
+  return STAFFING_PATTERNS.some(p => lower.includes(String(p).toLowerCase()));
+}
+function detectGeoMismatch(location, remote) {
+  if (remote) return false;
+  if (!location) return true;
+  const lower = String(location).toLowerCase();
+  return !GEO_ALLOWLIST.some(a => lower.includes(String(a).toLowerCase()));
+}
+
 // Retry with exponential backoff; skip retries for 4xx (permanent errors)
 async function fetchWithRetry(opts) {
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -141,6 +155,8 @@ const mapped = allJobs.map(j => {
     tags: j.tags || [],
     remote: j.remote || false,
     likely_english: isLikelyEnglish(desc),
+    staffing_agency: detectStaffingAgency(j.company_name || ''),
+    geo_mismatch: detectGeoMismatch(j.location || '', j.remote || false),
     _rawApiData: j,
     salary_min: sal.salary_min,
     salary_max: sal.salary_max,

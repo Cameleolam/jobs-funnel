@@ -114,9 +114,12 @@ UI/UX Engineer, Remote Germany, 3-5 years, React, Figma, accessibility focus, de
 Senior Full-Stack Engineer (Python/React), Munich, 6+ years, Django, PostgreSQL, React.
 -> Backend-heavy, seniority blocker. React is secondary to the backend requirements.
 
-## Score Bonuses (cumulative, round final score to nearest integer)
+## Score Bonuses / Penalties (cumulative, round final score to nearest integer)
 - Munich-based roles: +0.5
 - English-language workplace: +0.5
+- Role is remote-EU / remote-worldwide or explicitly English-working-language: +1
+- `_staffing_agency` is true: -2 (staffing-agency postings are lower quality on average; override only when the role itself is an unusually strong match)
+- `_geo_mismatch` is true AND role is not remote: -1 (candidate is based in Germany and can only relocate later)
 
 ## Decision Thresholds
 - **PASS** (score >= 7): Apply with tailored CV.
@@ -150,6 +153,8 @@ When in doubt, prefer "frontend" as the safest default.
 ## Input Fields
 The job JSON you receive may include these special fields:
 - `_likely_english` (bool): heuristic guess whether the posting is in English.
+- `_staffing_agency` (bool): heuristic guess that the posting is from a staffing agency / Zeitarbeit / Personaldienstleister.
+- `_geo_mismatch` (bool): heuristic guess that the role is on-site outside Germany/DACH/EU and not remote.
 
 ## Important Rules
 1. Do NOT inflate the score to be encouraging. A 6 is a 6.
@@ -157,6 +162,7 @@ The job JSON you receive may include these special fields:
 3. If the posting is in German, still evaluate it.
 4. Pay attention to what the role ACTUALLY needs vs. the wish list.
 5. Do not confuse "Frontend Engineer" (UI/components) with "Full-Stack Engineer" (may be backend-heavy).
+6. Do NOT auto-SKIP a job purely because its language is German. Score it, but record "requires C1 German" or similar as a hard blocker only when the posting explicitly demands it (see German Language Decision Matrix).
 
 ## Batch Evaluation
 You may receive multiple job postings in a single request, delimited by `--- JOB N ---` markers.

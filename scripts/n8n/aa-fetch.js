@@ -5,6 +5,26 @@ const config = JSON.parse(fs.readFileSync(projectDir + '/config.json', 'utf-8'))
 const profileDir = projectDir + '/profiles/' + ($env.JOBS_FUNNEL_PROFILE);
 const search = JSON.parse(fs.readFileSync(profileDir + '/search.json', 'utf-8'));
 
+const STAFFING_PATTERNS = config.staffing_agency_patterns || [];
+const GEO_ALLOWLIST = config.geo_allowlist || [];
+const ENGLISH_STOPWORDS = ['the','and','you','we','team','experience','requirements','about','our','will','work','join','role','position'];
+function detectStaffingAgency(company) {
+  if (!company) return false;
+  const lower = String(company).toLowerCase();
+  return STAFFING_PATTERNS.some(p => lower.includes(String(p).toLowerCase()));
+}
+function detectGeoMismatch(location, remote) {
+  if (remote) return false;
+  if (!location) return true;
+  const lower = String(location).toLowerCase();
+  return !GEO_ALLOWLIST.some(a => lower.includes(String(a).toLowerCase()));
+}
+function isLikelyEnglish(description) {
+  if (!description) return false;
+  const sample = String(description).substring(0, 500).toLowerCase();
+  return ENGLISH_STOPWORDS.filter(w => sample.includes(w)).length >= 3;
+}
+
 const BASE = 'https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobs';
 const HEADERS = { 'X-API-Key': 'jobboerse-jobsuche', 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' };
 const MAX_RETRIES = config.api_max_retries || 2;
@@ -113,7 +133,9 @@ const mapped = jobs.map(j => {
     description_quality: 'empty',
     tags: [],
     remote: false,
-    likely_english: false,
+    likely_english: isLikelyEnglish(fallbackDesc),
+    staffing_agency: detectStaffingAgency(company),
+    geo_mismatch: detectGeoMismatch(location, false),
     _rawApiData: j,
     start_date: j.eintrittsdatum || null,
     posted_at: null

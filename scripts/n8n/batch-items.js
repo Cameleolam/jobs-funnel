@@ -31,7 +31,9 @@ for (let i = 0; i < all.length; i += BATCH_SIZE) {
     salary_max: item.json.salary_max || null,
     salary_currency: item.json.salary_currency || null,
     start_date: item.json.start_date || null,
-    _likely_english: item.json.likely_english || false
+    _likely_english: item.json.likely_english || false,
+    _staffing_agency: item.json.staffing_agency || false,
+    _geo_mismatch: item.json.geo_mismatch || false
   }));
   const tmpPath = tmpDir + '/n8n_batch_' + Date.now() + '_' + i + '.json';
   fs.writeFileSync(tmpPath, JSON.stringify(batchJobs), 'utf-8');
