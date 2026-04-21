@@ -31,5 +31,45 @@
     "werkstudent", "working student", "intern", "praktikant", "trainee",
     "senior director", "vp ", "vice president", "head of", "chief",
     "embedded", "cobol"
+  ],
+  "remotive_title_keywords": [
+    "frontend", "front-end", "react", "javascript", "typescript",
+    "web developer", "ui developer", "ui engineer", "full stack", "full-stack"
+  ],
+  "remotive_tag_keywords": [
+    "react", "vue", "javascript", "typescript", "frontend", "tailwind", "next.js"
+  ],
+  "remotive_negative_keywords": [
+    "senior director", "vp ", "vice president", "head of", "chief",
+    "manager", "intern", "trainee"
+  ],
+  "an_remote_title_keywords": [
+    "frontend", "front-end", "react", "vue", "angular",
+    "javascript", "typescript", "web developer", "ui developer",
+    "webentwickler", "ui engineer", "full stack", "full-stack"
+  ],
+  "an_remote_tag_keywords": [
+    "react", "vue", "angular", "javascript", "typescript", "css",
+    "html", "frontend", "tailwind", "next.js", "nuxt", "node",
+    "graphql", "figma", "storybook", "web"
+  ],
+  "an_remote_negative_keywords": [
+    "manager", "consultant", "sap", "abap", "salesforce",
+    "product owner", "scrum master", "project manager",
+    "werkstudent", "working student", "intern", "praktikant", "trainee",
+    "senior director", "vp ", "vice president", "head of", "chief",
+    "embedded", "cobol"
+  ],
+  "himalayas_title_keywords": [
+    "frontend", "front-end", "react", "vue", "angular",
+    "javascript", "typescript", "web developer", "ui developer",
+    "full stack", "full-stack"
+  ],
+  "himalayas_tag_keywords": [
+    "react", "vue", "javascript", "typescript", "frontend", "tailwind", "next.js"
+  ],
+  "himalayas_negative_keywords": [
+    "senior director", "vp ", "vice president", "head of", "chief",
+    "manager", "intern", "trainee"
   ]
 }

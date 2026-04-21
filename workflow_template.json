@@ -68,7 +68,38 @@
     },
     {
       "parameters": {
+        "jsCode": "{{file:scripts/n8n/remotive-fetch.js}}"
+      },
+      "id": "remotive-fetch",
+      "name": "Remotive: Fetch & Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 50]
+    },
+    {
+      "parameters": {
+        "jsCode": "{{file:scripts/n8n/an-remote-fetch.js}}"
+      },
+      "id": "an-remote-fetch",
+      "name": "AN Remote: Fetch & Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 250]
+    },
+    {
+      "parameters": {
+        "jsCode": "{{file:scripts/n8n/himalayas-fetch.js}}"
+      },
+      "id": "himalayas-fetch",
+      "name": "Himalayas: Fetch & Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 700]
+    },
+    {
+      "parameters": {
         "mode": "append",
+        "numberInputs": 5,
         "options": {}
       },
       "id": "merge-sources",
@@ -500,7 +531,10 @@
     "DB: Run Start": {
       "main": [[
         { "node": "AN: Fetch & Filter", "type": "main", "index": 0 },
-        { "node": "AA: Fetch Jobs", "type": "main", "index": 0 }
+        { "node": "AA: Fetch Jobs", "type": "main", "index": 0 },
+        { "node": "Remotive: Fetch & Filter", "type": "main", "index": 0 },
+        { "node": "AN Remote: Fetch & Filter", "type": "main", "index": 0 },
+        { "node": "Himalayas: Fetch & Filter", "type": "main", "index": 0 }
       ]]
     },
     "AN: Fetch & Filter": {
@@ -511,6 +545,21 @@
     "AA: Fetch Jobs": {
       "main": [[
         { "node": "Merge Sources", "type": "main", "index": 1 }
+      ]]
+    },
+    "Remotive: Fetch & Filter": {
+      "main": [[
+        { "node": "Merge Sources", "type": "main", "index": 2 }
+      ]]
+    },
+    "AN Remote: Fetch & Filter": {
+      "main": [[
+        { "node": "Merge Sources", "type": "main", "index": 3 }
+      ]]
+    },
+    "Himalayas: Fetch & Filter": {
+      "main": [[
+        { "node": "Merge Sources", "type": "main", "index": 4 }
       ]]
     },
     "Merge Sources": {

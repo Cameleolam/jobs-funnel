@@ -14,6 +14,12 @@
   "api_retry_delay_ms": 1000,
   "circuit_breaker_threshold": 0.8,
   "circuit_breaker_min_requests": 5,
+  "remotive_max_pages": 3,
+  "remotive_delay_ms": 2000,
+  "an_remote_max_pages": 5,
+  "an_remote_delay_ms": 3000,
+  "himalayas_max_pages": 3,
+  "himalayas_delay_ms": 2000,
   "staffing_agency_patterns": [
     "zeitarbeit", "personal", "personaldienst", "randstad", "hays",
     "adecco", "manpower", "gi group", "dis ag", "orizon", "tempton",
