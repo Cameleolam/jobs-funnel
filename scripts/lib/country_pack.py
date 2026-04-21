@@ -12,15 +12,22 @@ from pathlib import Path
 
 
 @dataclass(frozen=True)
+class LanguageHint:
+    stopwords: tuple[str, ...]
+    threshold: int
+    sample_chars: int
+
+
+@dataclass(frozen=True)
 class CountryPack:
     code: str
     name: str
     default_language: str
-    secondary_languages: tuple
+    secondary_languages: tuple[str, ...]
     currency: str
-    staffing_patterns: tuple
-    geo_allowlist: tuple
-    language_hints: dict
+    staffing_patterns: tuple[str, ...]
+    geo_allowlist: tuple[str, ...]
+    language_hints: dict[str, LanguageHint]
 
 
 def _repo_root() -> Path:
@@ -41,6 +48,15 @@ def load_pack(code: str) -> CountryPack:
     geo = json.loads((pack_dir / "geo_allowlist.json").read_text(encoding="utf-8"))
     lang = json.loads((pack_dir / "language_hints.json").read_text(encoding="utf-8"))
 
+    hints = {
+        name: LanguageHint(
+            stopwords=tuple(h["stopwords"]),
+            threshold=int(h["threshold"]),
+            sample_chars=int(h["sample_chars"]),
+        )
+        for name, h in lang["languages"].items()
+    }
+
     return CountryPack(
         code=country["code"],
         name=country["name"],
@@ -49,5 +65,5 @@ def load_pack(code: str) -> CountryPack:
         currency=country["currency"],
         staffing_patterns=tuple(staffing["patterns"]),
         geo_allowlist=tuple(geo["allowlist"]),
-        language_hints=lang["languages"],
+        language_hints=hints,
     )

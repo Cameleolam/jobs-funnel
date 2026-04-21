@@ -1,7 +1,9 @@
 """Tests for scripts.lib.country_pack."""
+import dataclasses
+
 import pytest
 
-from scripts.lib.country_pack import CountryPack, load_pack
+from scripts.lib.country_pack import CountryPack, LanguageHint, load_pack
 
 
 def test_load_de_pack_has_expected_fields():
@@ -12,7 +14,7 @@ def test_load_de_pack_has_expected_fields():
     assert "randstad" in pack.staffing_patterns
     assert "germany" in pack.geo_allowlist
     assert "en" in pack.language_hints
-    assert pack.language_hints["en"]["threshold"] == 3
+    assert pack.language_hints["en"].threshold == 3
 
 
 def test_load_global_pack_has_empty_allowlist():
@@ -30,8 +32,8 @@ def test_load_pack_missing_raises():
 
 def test_country_pack_is_immutable_dataclass():
     pack = load_pack("de")
-    with pytest.raises(Exception):
-        pack.code = "xx"  # frozen dataclass
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        pack.code = "xx"
 
 
 def test_load_pack_detects_code_mismatch(tmp_path, monkeypatch):
@@ -52,3 +54,10 @@ def test_load_pack_detects_code_mismatch(tmp_path, monkeypatch):
 
     with pytest.raises(ValueError, match="Code mismatch"):
         cp_mod.load_pack("xx")
+
+
+def test_language_hint_is_frozen():
+    pack = load_pack("de")
+    hint = pack.language_hints["en"]
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        hint.threshold = 99
