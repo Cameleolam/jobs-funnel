@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="max-width:720px; margin:0 auto; background:#fff; padding:1.5rem; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,.08);">
+  <h2 style="margin-bottom:1rem;">Add Job Manually</h2>
+  <p class="text-muted" style="margin-bottom:1rem;">Paste the full job description for best scoring. The job will be scored on the next analyze run.</p>
+
+  {% if error %}
+  <div class="error-banner">{{ error }}</div>
+  {% endif %}
+
+  <form method="post" action="/jobs/new" style="display:flex; flex-direction:column; gap:0.75rem;">
+    <label>URL <span style="color:#dc2626">*</span>
+      <input type="url" name="url" required value="{{ form.url | default('') }}" style="width:100%; padding:0.4rem;">
+    </label>
+    <label>Title <span style="color:#dc2626">*</span>
+      <input type="text" name="title" required value="{{ form.title | default('') }}" style="width:100%; padding:0.4rem;">
+    </label>
+    <label>Company <span style="color:#dc2626">*</span>
+      <input type="text" name="company" required value="{{ form.company | default('') }}" style="width:100%; padding:0.4rem;">
+    </label>
+    <label>Location <span style="color:#dc2626">*</span>
+      <input type="text" name="location" required value="{{ form.location | default('') }}" placeholder='e.g., "Berlin", "Remote EU", "Munich / hybrid"' style="width:100%; padding:0.4rem;">
+    </label>
+    <label>Description <span style="color:#dc2626">*</span>
+      <textarea name="description" required rows="14" style="width:100%; padding:0.4rem; font-family:inherit; font-size:0.9rem;">{{ form.description | default('') }}</textarea>
+    </label>
+    <div style="display:flex; gap:1rem; flex-wrap:wrap; align-items:center;">
+      <label><input type="checkbox" name="remote" {% if form.remote %}checked{% endif %}> Remote</label>
+      <label>Salary min <input type="number" name="salary_min" value="{{ form.salary_min | default('') }}" style="width:100px; padding:0.3rem;"></label>
+      <label>Salary max <input type="number" name="salary_max" value="{{ form.salary_max | default('') }}" style="width:100px; padding:0.3rem;"></label>
+      <label>Currency
+        <select name="salary_currency" style="padding:0.3rem;">
+          <option value="EUR" {% if form.salary_currency == 'EUR' %}selected{% endif %}>EUR</option>
+          <option value="USD" {% if form.salary_currency == 'USD' %}selected{% endif %}>USD</option>
+          <option value="GBP" {% if form.salary_currency == 'GBP' %}selected{% endif %}>GBP</option>
+          <option value="CHF" {% if form.salary_currency == 'CHF' %}selected{% endif %}>CHF</option>
+        </select>
+      </label>
+    </div>
+    <label>Tags (comma-separated, optional)
+      <input type="text" name="tags" value="{{ form.tags | default('') }}" placeholder="react, typescript" style="width:100%; padding:0.4rem;">
+    </label>
+    <div style="display:flex; gap:0.5rem;">
+      <button type="submit" class="btn btn-primary">Add to pipeline</button>
+      <a href="/" class="btn btn-skip" style="text-decoration:none;">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -6,6 +6,7 @@ Start:
 """
 
 import io
+import json
 import os
 import re
 from contextlib import contextmanager
@@ -16,7 +17,7 @@ import psycopg2
 import psycopg2.extras
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
@@ -374,6 +375,73 @@ async def export_excel(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@app.get("/jobs/new", response_class=HTMLResponse)
+async def new_job_form(request: Request):
+    return render(request, "new_job.html", {"form": {}})
+
+
+@app.post("/jobs/new")
+async def create_manual_job(
+    request: Request,
+    url: str = Form(...),
+    title: str = Form(...),
+    company: str = Form(...),
+    location: str = Form(...),
+    description: str = Form(...),
+    remote: str = Form(""),
+    salary_min: str = Form(""),
+    salary_max: str = Form(""),
+    salary_currency: str = Form("EUR"),
+    tags: str = Form(""),
+):
+    url = url.strip()
+    title = title.strip()
+    company = company.strip()
+    location = location.strip()
+    description = description.strip()
+
+    if not (url and title and company and location and description):
+        form_values = {
+            "url": url, "title": title, "company": company,
+            "location": location, "description": description,
+            "remote": bool(remote), "salary_min": salary_min,
+            "salary_max": salary_max, "salary_currency": salary_currency,
+            "tags": tags,
+        }
+        return render(request, "new_job.html", {
+            "form": form_values,
+            "error": "All required fields must be filled.",
+        })
+
+    existing = fetch_one(f"SELECT id FROM {TABLE} WHERE url = %s", (url,))
+    if existing:
+        return RedirectResponse(
+            url=f"/?duplicate={existing['id']}",
+            status_code=303,
+        )
+
+    is_remote = bool(remote)
+    s_min = int(salary_min) if salary_min.strip().isdigit() else None
+    s_max = int(salary_max) if salary_max.strip().isdigit() else None
+    tags_list = [t.strip() for t in tags.split(",") if t.strip()]
+    tags_json = json.dumps(tags_list)
+
+    execute(
+        f"INSERT INTO {TABLE} "
+        f"(url, title, company, location, description, remote, source, "
+        f"external_id, description_quality, status, tags, likely_english, "
+        f"salary_min, salary_max, salary_currency, posted_at) "
+        f"VALUES (%s, %s, %s, %s, %s, %s, 'manual', NULL, 'good', 'pending', "
+        f"%s::jsonb, FALSE, %s, %s, %s, NOW())",
+        (url, title, company, location, description, is_remote,
+         tags_json, s_min, s_max, salary_currency or "EUR"),
+    )
+
+    new_row = fetch_one(f"SELECT id FROM {TABLE} WHERE url = %s", (url,))
+    new_id = new_row["id"] if new_row else 0
+    return RedirectResponse(url=f"/?new={new_id}", status_code=303)
 
 
 @app.get("/jobs/{job_id}", response_class=HTMLResponse)
