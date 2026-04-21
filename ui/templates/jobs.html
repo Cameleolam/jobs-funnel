@@ -54,6 +54,16 @@
   <label>Search</label>
   <input type="search" name="search" placeholder="Company or title...">
 
+  <label title="Hide staffing-agency postings">
+    <input type="checkbox" name="hide_staffing" value="true"> Hide staffing
+  </label>
+  <label title="Hide jobs outside Germany/DACH/EU that aren't remote">
+    <input type="checkbox" name="hide_geo" value="true"> Hide geo≠DE
+  </label>
+  <label title="Only show jobs in English">
+    <input type="checkbox" name="english_only" value="true"> English only
+  </label>
+
   <span class="htmx-indicator" id="filter-spinner"><span class="spinner"></span></span>
 
   <div class="ml-auto" style="display:flex; gap:0.4rem;">

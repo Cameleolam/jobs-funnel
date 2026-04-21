@@ -44,6 +44,7 @@ ROW_COLS = (
     "id, url, title, company, location, source, fit_score, decision, "
     "cv_variant, reasoning, status, crawled_at, analyzed_at, "
     "salary_min, salary_max, salary_currency, remote, likely_english, "
+    "staffing_agency, geo_mismatch, "
     "tags, priority_notes, notes, user_status, "
     "posted_at, employment_type, seniority_level, start_date, "
     "error, error_code, retry_count, "
@@ -179,7 +180,8 @@ def get_stats():
 
 
 # ── Query builder ────────────────────────────────────────────────────
-def build_job_filter(decision="", applied="", min_score=0, max_score=10, search="", view=""):
+def build_job_filter(decision="", applied="", min_score=0, max_score=10, search="", view="",
+                     hide_staffing=False, hide_geo=False, english_only=False):
     params: list = []
     if view == "error":
         conditions = ["status = 'error'"]
@@ -215,6 +217,12 @@ def build_job_filter(decision="", applied="", min_score=0, max_score=10, search=
     if search:
         conditions.append("(title ILIKE %s OR company ILIKE %s)")
         params.extend([f"%{search}%", f"%{search}%"])
+    if hide_staffing:
+        conditions.append("staffing_agency = FALSE")
+    if hide_geo:
+        conditions.append("geo_mismatch = FALSE")
+    if english_only:
+        conditions.append("likely_english = TRUE")
     return " AND ".join(conditions), params
 
 
@@ -233,6 +241,9 @@ async def list_jobs(
     max_score: int = Query(10, alias="max_score"),
     search: str = Query("", alias="search"),
     view: str = Query("", alias="view"),
+    hide_staffing: bool = Query(False, alias="hide_staffing"),
+    hide_geo: bool = Query(False, alias="hide_geo"),
+    english_only: bool = Query(False, alias="english_only"),
     sort: str = Query("fit_score", alias="sort"),
     order: str = Query("desc", alias="order"),
     limit: int = Query(50, alias="limit"),
@@ -245,7 +256,10 @@ async def list_jobs(
     sort_col = sort if sort in allowed_sorts else "fit_score"
     sort_dir = "ASC" if order.lower() == "asc" else "DESC"
 
-    where, params = build_job_filter(decision, applied, min_score, max_score, search, view)
+    where, params = build_job_filter(
+        decision, applied, min_score, max_score, search, view,
+        hide_staffing=hide_staffing, hide_geo=hide_geo, english_only=english_only,
+    )
     # Add id as tiebreaker so pagination is stable (avoids duplicates on Load More)
     order_clause = f"{sort_col} {sort_dir}, id {sort_dir}"
     query = (
@@ -271,6 +285,9 @@ async def export_excel(
     max_score: int = Query(10),
     search: str = Query(""),
     view: str = Query(""),
+    hide_staffing: bool = Query(False),
+    hide_geo: bool = Query(False),
+    english_only: bool = Query(False),
     sort: str = Query("fit_score"),
     order: str = Query("desc"),
 ):
@@ -281,7 +298,10 @@ async def export_excel(
     sort_col = sort if sort in allowed_sorts else "fit_score"
     sort_dir = "ASC" if order.lower() == "asc" else "DESC"
 
-    where, params = build_job_filter(decision, applied, min_score, max_score, search, view)
+    where, params = build_job_filter(
+        decision, applied, min_score, max_score, search, view,
+        hide_staffing=hide_staffing, hide_geo=hide_geo, english_only=english_only,
+    )
     order_clause = f"{sort_col} {sort_dir}, id {sort_dir}"
     query = (
         f"SELECT {ROW_COLS} FROM {TABLE} WHERE {where} "
