@@ -40,6 +40,22 @@
     <label>Tags (comma-separated, optional)
       <input type="text" name="tags" value="{{ form.tags | default('') }}" placeholder="react, typescript" style="width:100%; padding:0.4rem;">
     </label>
+    <fieldset style="border:1px solid #e5e7eb; border-radius:6px; padding:0.6rem 0.8rem;">
+      <legend style="font-size:0.85rem; padding:0 0.3rem; color:#374151;">Tracking</legend>
+      <label style="display:flex; gap:0.4rem; align-items:center; font-size:0.85rem;">
+        <input type="checkbox" name="already_applied" id="already-applied"
+               {% if form.already_applied %}checked{% endif %}
+               onchange="document.getElementById('applied-date-row').style.display = this.checked ? 'flex' : 'none'">
+        I've already applied to this externally (LinkedIn, recruiter, etc.)
+      </label>
+      <div id="applied-date-row"
+           style="display:{% if form.already_applied %}flex{% else %}none{% endif %}; gap:0.5rem; align-items:center; margin-top:0.4rem;">
+        <label style="font-size:0.85rem;">When did you apply?
+          <input type="date" name="applied_date"
+                 value="{{ form.applied_date | default('') }}">
+        </label>
+      </div>
+    </fieldset>
     <div style="display:flex; gap:0.5rem;">
       <button type="submit" class="btn btn-primary">Add to pipeline</button>
       <a href="/" class="btn btn-skip" style="text-decoration:none;">Cancel</a>

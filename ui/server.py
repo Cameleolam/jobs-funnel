@@ -422,6 +422,8 @@ async def create_manual_job(
     salary_max: str = Form(""),
     salary_currency: str = Form("EUR"),
     tags: str = Form(""),
+    already_applied: str = Form(""),
+    applied_date: str = Form(""),
 ):
     url = url.strip()
     title = title.strip()
@@ -436,6 +438,8 @@ async def create_manual_job(
             "remote": bool(remote), "salary_min": salary_min,
             "salary_max": salary_max, "salary_currency": salary_currency,
             "tags": tags,
+            "already_applied": bool(already_applied),
+            "applied_date": applied_date,
         }
         return render(request, "new_job.html", {
             "form": form_values,
@@ -468,6 +472,22 @@ async def create_manual_job(
 
     new_row = fetch_one(f"SELECT id FROM {TABLE} WHERE url = %s", (url,))
     new_id = new_row["id"] if new_row else 0
+
+    if already_applied and new_id:
+        applied_iso = (
+            f"{applied_date}T12:00:00+00:00"
+            if applied_date else
+            datetime.now().astimezone().isoformat()
+        )
+        execute(
+            f"UPDATE {TABLE} SET tracked_at = NOW() WHERE id = %s", (new_id,))
+        execute(
+            "INSERT INTO job_events (job_id, occurred_at, kind, label) "
+            "VALUES (%s, %s, 'application', 'Applied')",
+            (new_id, applied_iso),
+        )
+        return RedirectResponse(url=f"/tracking#job-{new_id}", status_code=303)
+
     return RedirectResponse(url=f"/?new={new_id}", status_code=303)
 
 
