@@ -19,6 +19,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Form, HTTPException, Query, Request
 from pydantic import BaseModel
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
@@ -39,6 +40,10 @@ TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 
 app = FastAPI(title="Jobs Funnel UI")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+STATIC_DIR.mkdir(exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # ── Row columns selected for list views ──────────────────────────────
 ROW_COLS = (
@@ -555,6 +560,11 @@ async def stats(request: Request):
 @app.get("/runs", response_class=HTMLResponse)
 async def runs_page(request: Request):
     return render(request, "runs.html")
+
+
+@app.get("/tracking", response_class=HTMLResponse)
+async def tracking_page(request: Request):
+    return render(request, "tracking.html")
 
 
 @app.get("/runs/list", response_class=HTMLResponse)
