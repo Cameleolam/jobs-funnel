@@ -7,3 +7,21 @@
   text-align: center;
   color: #666;
 }
+
+.tracking-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+.tracking-header h2 { margin: 0; font-size: 1.2rem; }
+.tracking-tabs button {
+  background: #fff;
+  border: 1px solid #ddd;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.tracking-tabs button:first-child { border-radius: 4px 0 0 4px; }
+.tracking-tabs button:last-child { border-radius: 0 4px 4px 0; border-left: none; }
+.tracking-tabs button.active { background: #2563eb; color: #fff; border-color: #2563eb; }

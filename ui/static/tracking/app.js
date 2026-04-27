@@ -1,3 +1,4 @@
-// Mounted by ui/templates/tracking.html. Replaced in Task 6.
-const root = document.getElementById('tracking-app');
-root.innerHTML = '<div class="tracking-empty">Tracking page coming online…</div>';
+import { createApp } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.prod.js';
+import { TrackingApp } from './components/TrackingApp.js';
+
+createApp(TrackingApp).mount('#tracking-app');
