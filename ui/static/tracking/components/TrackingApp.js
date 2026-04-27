@@ -1,12 +1,13 @@
-import { computed, onMounted } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.prod.js';
+import { computed, onMounted, ref } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.prod.js';
 import { store, fetchJobs, isJobClosed } from '../state.js';
 import { computeDomain } from '../timeline_math.js';
 import { TimeAxis } from './TimeAxis.js';
 import { TimelineRow } from './TimelineRow.js';
+import { EventModal } from './EventModal.js';
 
 export const TrackingApp = {
   name: 'TrackingApp',
-  components: { TimeAxis, TimelineRow },
+  components: { TimeAxis, TimelineRow, EventModal },
   setup() {
     onMounted(fetchJobs);
 
@@ -20,14 +21,31 @@ export const TrackingApp = {
       return computeDomain(allEvents, new Date());
     });
 
-    function onEventClick(_ev) {
-      // Wired up in Task 9 (modal).
+    const modalOpen = ref(false);
+    const modalJobId = ref(null);
+    const modalEvent = ref(null);
+
+    function onEventClick(ev) {
+      modalEvent.value = ev;
+      modalJobId.value = null;
+      modalOpen.value = true;
     }
-    function onAddEvent(_job) {
-      // Wired up in Task 9 (modal).
+    function onAddEvent(job) {
+      modalEvent.value = null;
+      modalJobId.value = job.id;
+      modalOpen.value = true;
+    }
+    function closeModal() {
+      modalOpen.value = false;
+      modalEvent.value = null;
+      modalJobId.value = null;
     }
 
-    return { store, visibleJobs, domain, onEventClick, onAddEvent };
+    return {
+      store, visibleJobs, domain,
+      modalOpen, modalJobId, modalEvent,
+      onEventClick, onAddEvent, closeModal,
+    };
   },
   template: `
     <div class="tracking-page">
@@ -59,6 +77,13 @@ export const TrackingApp = {
                      @event-click="onEventClick"
                      @add-event="onAddEvent" />
       </div>
+
+      <EventModal
+        :open="modalOpen"
+        :job-id="modalJobId"
+        :event="modalEvent"
+        @close="closeModal"
+        @saved="closeModal" />
     </div>
   `,
 };

@@ -111,3 +111,46 @@
   line-height: 1;
 }
 .add-event-btn:hover { background: #f3f4f6; color: #111; }
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal {
+  background: #fff;
+  border-radius: 8px;
+  padding: 1.25rem 1.5rem;
+  width: min(440px, 92vw);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  box-shadow: 0 8px 32px rgba(0,0,0,.2);
+}
+.modal h3 { margin: 0 0 0.3rem; font-size: 1.1rem; }
+.modal label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; }
+.modal input, .modal select, .modal textarea {
+  padding: 0.4rem 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font: inherit;
+}
+.modal .link-btn {
+  background: none;
+  border: none;
+  color: #2563eb;
+  cursor: pointer;
+  text-align: left;
+  padding: 0;
+  font-size: 0.8rem;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+}
