@@ -1,8 +1,12 @@
 import { computed, onMounted } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.prod.js';
 import { store, fetchJobs, isJobClosed } from '../state.js';
+import { computeDomain } from '../timeline_math.js';
+import { TimeAxis } from './TimeAxis.js';
+import { TimelineRow } from './TimelineRow.js';
 
 export const TrackingApp = {
   name: 'TrackingApp',
+  components: { TimeAxis, TimelineRow },
   setup() {
     onMounted(fetchJobs);
 
@@ -11,7 +15,19 @@ export const TrackingApp = {
       return store.jobs.filter((j) => isJobClosed(j) === closed);
     });
 
-    return { store, visibleJobs };
+    const domain = computed(() => {
+      const allEvents = visibleJobs.value.flatMap((j) => j.events);
+      return computeDomain(allEvents, new Date());
+    });
+
+    function onEventClick(_ev) {
+      // Wired up in Task 9 (modal).
+    }
+    function onAddEvent(_job) {
+      // Wired up in Task 9 (modal).
+    }
+
+    return { store, visibleJobs, domain, onEventClick, onAddEvent };
   },
   template: `
     <div class="tracking-page">
@@ -36,14 +52,12 @@ export const TrackingApp = {
           "already applied externally" checkbox.
         </p>
       </div>
-      <div v-else>
-        <p class="text-muted">{{ visibleJobs.length }} job(s) · timeline component lands in Task 8</p>
-        <ul>
-          <li v-for="j in visibleJobs" :key="j.id">
-            <strong>{{ j.company }}</strong> — {{ j.title }}
-            ({{ j.events.length }} event(s))
-          </li>
-        </ul>
+      <div v-else class="timeline-wrap">
+        <TimeAxis :domain="domain" />
+        <TimelineRow v-for="job in visibleJobs" :key="job.id"
+                     :job="job" :domain="domain"
+                     @event-click="onEventClick"
+                     @add-event="onAddEvent" />
       </div>
     </div>
   `,

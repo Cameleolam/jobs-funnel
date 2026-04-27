@@ -25,3 +25,89 @@
 .tracking-tabs button:first-child { border-radius: 4px 0 0 4px; }
 .tracking-tabs button:last-child { border-radius: 0 4px 4px 0; border-left: none; }
 .tracking-tabs button.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+
+.timeline-wrap {
+  background: #fff;
+  border-radius: 8px;
+  padding: 1rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,.08);
+}
+
+.time-axis { padding-left: 220px; padding-right: 40px; margin-bottom: 0.5rem; }
+.time-axis-track {
+  position: relative;
+  height: 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+.time-axis-tick {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  font-size: 0.7rem;
+  color: #6b7280;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.tick-line { display: inline-block; width: 1px; height: 6px; background: #d1d5db; }
+.tick-label { white-space: nowrap; }
+
+.timeline-row {
+  display: grid;
+  grid-template-columns: 220px 1fr 40px;
+  align-items: stretch;
+  border-bottom: 1px solid #f0f0f0;
+  min-height: 48px;
+}
+.timeline-row:last-child { border-bottom: none; }
+.timeline-row-label {
+  padding: 0.5rem 0.5rem 0.5rem 0;
+  font-size: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.timeline-row-label .role { color: #6b7280; font-size: 0.8rem; }
+.timeline-row-track {
+  position: relative;
+  border-left: 1px solid #e5e7eb;
+  margin: 4px 0;
+}
+
+.event-bucket {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+}
+.event-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.15);
+  cursor: pointer;
+  padding: 0;
+}
+.event-dot:hover { transform: scale(1.15); }
+
+.add-event-btn {
+  position: absolute;
+  right: -32px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px dashed #9ca3af;
+  background: #fff;
+  color: #6b7280;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+}
+.add-event-btn:hover { background: #f3f4f6; color: #111; }
