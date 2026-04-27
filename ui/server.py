@@ -625,3 +625,23 @@ async def api_tracking_jobs():
 
     result = sorted(by_id.values(), key=latest_event_ts, reverse=True)
     return result
+
+
+@app.post("/api/tracking/jobs/{job_id}/start")
+async def api_tracking_start(job_id: int):
+    job = fetch_one(f"SELECT id, tracked_at FROM {TABLE} WHERE id = %s", (job_id,))
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["tracked_at"] is None:
+        execute(f"UPDATE {TABLE} SET tracked_at = NOW() WHERE id = %s", (job_id,))
+        job = fetch_one(f"SELECT tracked_at FROM {TABLE} WHERE id = %s", (job_id,))
+    return {"tracked_at": job["tracked_at"].isoformat()}
+
+
+@app.post("/api/tracking/jobs/{job_id}/stop")
+async def api_tracking_stop(job_id: int):
+    job = fetch_one(f"SELECT id FROM {TABLE} WHERE id = %s", (job_id,))
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    execute(f"UPDATE {TABLE} SET tracked_at = NULL WHERE id = %s", (job_id,))
+    return {}
