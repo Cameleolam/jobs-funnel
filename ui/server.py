@@ -54,7 +54,8 @@ ROW_COLS = (
     "tags, priority_notes, notes, user_status, "
     "posted_at, employment_type, seniority_level, start_date, "
     "error, error_code, retry_count, "
-    "possible_duplicate_of, duplicate_confirmed"
+    "possible_duplicate_of, duplicate_confirmed, "
+    "tracked_at"
 )
 
 
@@ -547,6 +548,21 @@ async def confirm_duplicate(request: Request, job_id: int, confirmed: str = Form
         f"UPDATE {TABLE} SET duplicate_confirmed = %s WHERE id = %s",
         (confirmed == "true", job_id),
     )
+    job = fetch_one(f"SELECT {ROW_COLS} FROM {TABLE} WHERE id = %s", (job_id,))
+    return render(request, "partials/job_row_single.html", {"job": job})
+
+
+@app.post("/jobs/{job_id}/track", response_class=HTMLResponse)
+async def htmx_start_tracking(request: Request, job_id: int):
+    """HTMX target: start tracking and re-render the row.
+
+    Mirrors POST /api/tracking/jobs/{id}/start but returns the row partial.
+    """
+    job = fetch_one(f"SELECT id, tracked_at FROM {TABLE} WHERE id = %s", (job_id,))
+    if not job:
+        return HTMLResponse("Not found", status_code=404)
+    if job["tracked_at"] is None:
+        execute(f"UPDATE {TABLE} SET tracked_at = NOW() WHERE id = %s", (job_id,))
     job = fetch_one(f"SELECT {ROW_COLS} FROM {TABLE} WHERE id = %s", (job_id,))
     return render(request, "partials/job_row_single.html", {"job": job})
 

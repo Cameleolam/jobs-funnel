@@ -66,6 +66,20 @@
     {% if job.notes %}<span class="icon-badge icon-note" title="{{ job.notes[:80] }}">N</span>{% endif %}
     {% if job.error_code %}<span class="icon-badge icon-flag" title="{{ (job.error or '')[:80] }}">{{ job.error_code }}</span>{% endif %}
     {% if job.possible_duplicate_of and job.duplicate_confirmed is none %}<span class="icon-badge icon-flag" title="Possible duplicate of #{{ job.possible_duplicate_of }}">DUP?</span>{% endif %}
+    {% if job.tracked_at %}
+      <a href="/tracking#job-{{ job.id }}"
+         class="icon-badge icon-tracking"
+         title="View on tracking page"
+         onclick="event.stopPropagation()">📌</a>
+    {% else %}
+      <button type="button"
+              class="icon-badge icon-track-start"
+              title="Start tracking this job"
+              onclick="event.stopPropagation()"
+              hx-post="/jobs/{{ job.id }}/track"
+              hx-target="#row-{{ job.id }}"
+              hx-swap="outerHTML settle:0.1s">📌+</button>
+    {% endif %}
   </td>
   <td class="status-cell" onclick="event.stopPropagation()">
     {% if job.status in ('dead', 'error') %}
