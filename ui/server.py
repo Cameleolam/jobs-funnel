@@ -246,7 +246,7 @@ async def list_jobs(
     english_only: bool = Query(False, alias="english_only"),
     sort: str = Query("fit_score", alias="sort"),
     order: str = Query("desc", alias="order"),
-    limit: int = Query(50, alias="limit"),
+    limit: int = Query(100, alias="limit"),
     offset: int = Query(0, alias="offset"),
 ):
     allowed_sorts = {
