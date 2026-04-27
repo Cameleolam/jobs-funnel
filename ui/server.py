@@ -17,6 +17,7 @@ import psycopg2
 import psycopg2.extras
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form, HTTPException, Query, Request
+from pydantic import BaseModel
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from openpyxl import Workbook
@@ -644,4 +645,89 @@ async def api_tracking_stop(job_id: int):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     execute(f"UPDATE {TABLE} SET tracked_at = NULL WHERE id = %s", (job_id,))
+    return {}
+
+
+class EventCreate(BaseModel):
+    job_id: int
+    occurred_at: str
+    kind: str
+    label: str
+    notes: str | None = None
+
+
+class EventUpdate(BaseModel):
+    occurred_at: str | None = None
+    kind: str | None = None
+    label: str | None = None
+    notes: str | None = None
+
+
+VALID_EVENT_KINDS = {"application", "contact", "interview", "task", "decision", "note"}
+
+
+def _serialize_event(row):
+    return {
+        "id": row["id"],
+        "job_id": row["job_id"],
+        "occurred_at": row["occurred_at"].isoformat(),
+        "kind": row["kind"],
+        "label": row["label"],
+        "notes": row["notes"],
+    }
+
+
+@app.post("/api/tracking/events")
+async def api_create_event(payload: EventCreate):
+    if payload.kind not in VALID_EVENT_KINDS:
+        raise HTTPException(status_code=400, detail=f"Invalid kind: {payload.kind}")
+    if not payload.label.strip():
+        raise HTTPException(status_code=400, detail="label is required")
+    job = fetch_one(f"SELECT id FROM {TABLE} WHERE id = %s", (payload.job_id,))
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    row = fetch_one(
+        "INSERT INTO job_events (job_id, occurred_at, kind, label, notes) "
+        "VALUES (%s, %s, %s, %s, %s) "
+        "RETURNING id, job_id, occurred_at, kind, label, notes",
+        (payload.job_id, payload.occurred_at, payload.kind,
+         payload.label.strip(), payload.notes),
+    )
+    return _serialize_event(row)
+
+
+@app.patch("/api/tracking/events/{event_id}")
+async def api_update_event(event_id: int, payload: EventUpdate):
+    existing = fetch_one(
+        "SELECT id, job_id, occurred_at, kind, label, notes "
+        "FROM job_events WHERE id = %s", (event_id,))
+    if not existing:
+        raise HTTPException(status_code=404, detail="Event not found")
+    if payload.kind is not None and payload.kind not in VALID_EVENT_KINDS:
+        raise HTTPException(status_code=400, detail=f"Invalid kind: {payload.kind}")
+
+    fields = []
+    values: list = []
+    for col in ("occurred_at", "kind", "label", "notes"):
+        v = getattr(payload, col)
+        if v is not None:
+            fields.append(f"{col} = %s")
+            values.append(v)
+    if not fields:
+        return _serialize_event(existing)
+    values.append(event_id)
+    row = fetch_one(
+        f"UPDATE job_events SET {', '.join(fields)} WHERE id = %s "
+        f"RETURNING id, job_id, occurred_at, kind, label, notes",
+        tuple(values),
+    )
+    return _serialize_event(row)
+
+
+@app.delete("/api/tracking/events/{event_id}")
+async def api_delete_event(event_id: int):
+    existing = fetch_one("SELECT id FROM job_events WHERE id = %s", (event_id,))
+    if not existing:
+        raise HTTPException(status_code=404, detail="Event not found")
+    execute("DELETE FROM job_events WHERE id = %s", (event_id,))
     return {}

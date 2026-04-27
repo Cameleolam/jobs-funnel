@@ -140,3 +140,65 @@ def test_stop_tracking_clears_tracked_at(client, db, sample_tracked_job):
 def test_start_tracking_404_for_missing_job(client):
     resp = client.post("/api/tracking/jobs/99999999/start")
     assert resp.status_code == 404
+
+
+VALID_KINDS = ("application", "contact", "interview", "task", "decision", "note")
+
+
+def test_create_event(client, db, sample_tracked_job):
+    payload = {
+        "job_id": sample_tracked_job,
+        "occurred_at": "2026-04-01T09:00:00+00:00",
+        "kind": "interview",
+        "label": "Tech round",
+        "notes": "Whiteboard problem",
+    }
+    resp = client.post("/api/tracking/events", json=payload)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["id"] > 0
+    assert body["label"] == "Tech round"
+    assert body["kind"] == "interview"
+
+
+def test_create_event_rejects_bad_kind(client, sample_tracked_job):
+    resp = client.post("/api/tracking/events", json={
+        "job_id": sample_tracked_job,
+        "occurred_at": "2026-04-01T09:00:00+00:00",
+        "kind": "lunch",
+        "label": "x",
+    })
+    assert resp.status_code == 400
+
+
+def test_create_event_rejects_missing_job(client):
+    resp = client.post("/api/tracking/events", json={
+        "job_id": 99999999,
+        "occurred_at": "2026-04-01T09:00:00+00:00",
+        "kind": "note",
+        "label": "x",
+    })
+    assert resp.status_code == 404
+
+
+def test_update_event(client, sample_tracked_job, db):
+    with db, db.cursor() as cur:
+        cur.execute("SELECT id FROM job_events WHERE job_id = %s LIMIT 1",
+                    (sample_tracked_job,))
+        event_id = cur.fetchone()[0]
+    resp = client.patch(f"/api/tracking/events/{event_id}",
+                        json={"label": "Updated label"})
+    assert resp.status_code == 200
+    assert resp.json()["label"] == "Updated label"
+
+
+def test_delete_event(client, sample_tracked_job, db):
+    with db, db.cursor() as cur:
+        cur.execute("SELECT id FROM job_events WHERE job_id = %s LIMIT 1",
+                    (sample_tracked_job,))
+        event_id = cur.fetchone()[0]
+    resp = client.delete(f"/api/tracking/events/{event_id}")
+    assert resp.status_code == 200
+    with db, db.cursor() as cur:
+        cur.execute("SELECT id FROM job_events WHERE id = %s", (event_id,))
+        assert cur.fetchone() is None
