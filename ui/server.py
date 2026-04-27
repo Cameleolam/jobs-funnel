@@ -570,3 +570,58 @@ async def runs_list(
     return render(request, "partials/run_rows.html", {
         "runs": runs, "total": total, "limit": limit, "offset": offset,
     })
+
+
+# ── Tracking API ─────────────────────────────────────────────────────
+def _serialize_job_with_events(row):
+    """Shape a joined jobs+events row dict into the API response format."""
+    return {
+        "id": row["id"],
+        "title": row["title"],
+        "company": row["company"],
+        "url": row["url"],
+        "location": row["location"],
+        "tracked_at": row["tracked_at"].isoformat() if row["tracked_at"] else None,
+        "user_status": row["user_status"],
+        "events": [],
+    }
+
+
+@app.get("/api/tracking/jobs")
+async def api_tracking_jobs():
+    """Return all tracked jobs with their events embedded.
+
+    Ordered so the job whose latest event is newest appears first.
+    Jobs with no events yet sort by tracked_at desc.
+    """
+    jobs = fetch_all(
+        f"SELECT id, title, company, url, location, tracked_at, user_status "
+        f"FROM {TABLE} WHERE tracked_at IS NOT NULL"
+    )
+    if not jobs:
+        return []
+    by_id = {j["id"]: _serialize_job_with_events(j) for j in jobs}
+
+    events = fetch_all(
+        "SELECT id, job_id, occurred_at, kind, label, notes "
+        "FROM job_events WHERE job_id = ANY(%s) "
+        "ORDER BY occurred_at ASC, id ASC",
+        (list(by_id.keys()),),
+    )
+    for ev in events:
+        if ev["job_id"] in by_id:
+            by_id[ev["job_id"]]["events"].append({
+                "id": ev["id"],
+                "occurred_at": ev["occurred_at"].isoformat(),
+                "kind": ev["kind"],
+                "label": ev["label"],
+                "notes": ev["notes"],
+            })
+
+    def latest_event_ts(job):
+        if job["events"]:
+            return job["events"][-1]["occurred_at"]
+        return job["tracked_at"] or ""
+
+    result = sorted(by_id.values(), key=latest_event_ts, reverse=True)
+    return result
