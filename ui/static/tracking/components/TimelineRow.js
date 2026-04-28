@@ -16,6 +16,17 @@ export const TimelineRow = {
         pct: positionPercent(b.date, this.domain),
       }));
     },
+    segments() {
+      const out = [];
+      for (let i = 0; i < this.buckets.length - 1; i++) {
+        out.push({
+          from: this.buckets[i].pct,
+          to: this.buckets[i + 1].pct,
+          key: `${this.buckets[i].dayKey}-${this.buckets[i + 1].dayKey}`,
+        });
+      }
+      return out;
+    },
   },
   template: `
     <div class="timeline-row" :id="'job-' + job.id">
@@ -26,6 +37,9 @@ export const TimelineRow = {
            class="job-link">↗</a>
       </div>
       <div class="timeline-row-track">
+        <span v-for="seg in segments" :key="seg.key"
+              class="event-line"
+              :style="{ left: seg.from + '%', width: (seg.to - seg.from) + '%' }"></span>
         <div v-for="bucket in buckets" :key="bucket.dayKey"
              class="event-bucket"
              :style="{ left: bucket.pct + '%' }">

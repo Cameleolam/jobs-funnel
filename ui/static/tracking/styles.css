@@ -1,4 +1,4 @@
-.tracking-page { padding: 0.5rem 0; }
+.tracking-page { padding: 0.5rem 0; overscroll-behavior-x: contain; }
 .tracking-empty {
   background: #fff;
   padding: 2rem;
@@ -31,9 +31,20 @@
   border-radius: 8px;
   padding: 1rem;
   box-shadow: 0 1px 3px rgba(0,0,0,.08);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
 }
 
-.time-axis { padding-left: 220px; padding-right: 40px; margin-bottom: 0.5rem; }
+.time-axis {
+  padding-left: 220px;
+  padding-right: 40px;
+  margin-bottom: 0.5rem;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #fff;
+  padding-top: 0.25rem;
+}
 .time-axis-track {
   position: relative;
   height: 24px;
@@ -57,43 +68,67 @@
   grid-template-columns: 220px 1fr 40px;
   align-items: stretch;
   border-bottom: 1px solid #f0f0f0;
-  min-height: 48px;
+  min-height: 32px;
 }
 .timeline-row:last-child { border-bottom: none; }
 .timeline-row-label {
-  padding: 0.5rem 0.5rem 0.5rem 0;
-  font-size: 0.85rem;
+  padding: 0.25rem 0.5rem 0.25rem 0;
+  font-size: 0.8rem;
   display: flex;
   flex-direction: column;
   justify-content: center;
+  line-height: 1.2;
 }
-.timeline-row-label .role { color: #6b7280; font-size: 0.8rem; }
+.timeline-row-label .role { color: #6b7280; font-size: 0.72rem; }
 .timeline-row-track {
   position: relative;
   border-left: 1px solid #e5e7eb;
-  margin: 4px 0;
+  margin: 2px 0;
+}
+
+.event-line {
+  position: absolute;
+  top: 50%;
+  height: 2px;
+  background: #cbd5e1;
+  transform: translateY(-50%);
+  z-index: 0;
+  pointer-events: none;
 }
 
 .event-bucket {
   position: absolute;
-  top: 4px;
-  bottom: 4px;
+  top: 2px;
+  bottom: 2px;
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   align-items: center;
+  z-index: 1;
+}
+.event-dot-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
 }
 .event-dot {
-  width: 14px;
-  height: 14px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   border: 2px solid #fff;
   box-shadow: 0 0 0 1px rgba(0,0,0,.15);
   cursor: pointer;
   padding: 0;
 }
-.event-dot:hover { transform: scale(1.15); }
+.event-dot:hover { transform: scale(1.2); }
+.dot-date {
+  font-size: 0.6rem;
+  color: #9ca3af;
+  white-space: nowrap;
+  line-height: 1;
+}
 
 .add-event-btn {
   position: absolute;

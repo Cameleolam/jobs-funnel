@@ -15,16 +15,24 @@ export const EventDot = {
   emits: ['click'],
   computed: {
     color() { return KIND_COLORS[this.event.kind] || '#999'; },
+    dateLabel() {
+      return new Date(this.event.occurred_at).toISOString().slice(5, 10);
+    },
+    fullDate() {
+      return new Date(this.event.occurred_at).toISOString().slice(0, 10);
+    },
     title() {
-      const d = new Date(this.event.occurred_at).toISOString().slice(0, 10);
-      return `${this.event.label} · ${d}`;
+      return `${this.event.label} · ${this.fullDate}`;
     },
   },
   template: `
-    <button type="button"
-            class="event-dot"
-            :style="{ background: color }"
-            :title="title"
-            @click.stop="$emit('click', event)"></button>
+    <span class="event-dot-wrap">
+      <button type="button"
+              class="event-dot"
+              :style="{ background: color }"
+              :title="title"
+              @click.stop="$emit('click', event)"></button>
+      <span class="dot-date">{{ dateLabel }}</span>
+    </span>
   `,
 };
