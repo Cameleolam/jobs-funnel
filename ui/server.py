@@ -254,7 +254,7 @@ async def list_jobs(
     hide_staffing: bool = Query(False, alias="hide_staffing"),
     hide_geo: bool = Query(False, alias="hide_geo"),
     english_only: bool = Query(False, alias="english_only"),
-    hide_rejected: bool = Query(False, alias="hide_rejected"),
+    hide_rejected: bool = Query(True, alias="hide_rejected"),
     sort: str = Query("fit_score", alias="sort"),
     order: str = Query("desc", alias="order"),
     limit: int = Query(100, alias="limit"),
@@ -300,7 +300,7 @@ async def export_excel(
     hide_staffing: bool = Query(False),
     hide_geo: bool = Query(False),
     english_only: bool = Query(False),
-    hide_rejected: bool = Query(False),
+    hide_rejected: bool = Query(True),
     sort: str = Query("fit_score"),
     order: str = Query("desc"),
 ):
