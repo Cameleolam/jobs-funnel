@@ -85,10 +85,27 @@ for (let b = 0; b < $input.all().length; b++) {
       ERROR_KEYWORDS.some(kw => b.toLowerCase().includes(kw))
     ));
 
+    // Detect Claude's degenerate stub response: score=0 + SKIP + empty reasoning
+    // and empty blocker/match arrays. Means Claude didn't really evaluate the job.
+    const reasoningStr = (assessment.reasoning || '').trim();
+    const hasEmptyArrays =
+      (assessment.hard_blockers || []).length === 0 &&
+      (assessment.strong_matches || []).length === 0 &&
+      (assessment.soft_gaps || []).length === 0;
+    const isDegenerate = !isErrorFallback && score === 0 && decision === 'SKIP'
+      && reasoningStr === '' && hasEmptyArrays;
+
     if (isErrorFallback) {
       const errCode = classifyErrorCode(assessment);
       results.push({ json: {
         _updateQuery: `UPDATE ${table} SET status = ${DEAD_STATUS_EXPR}, error = ${sqlStr(assessment.reasoning || 'Fallback SKIP from failed Claude call')}, error_code = '${errCode}', retry_count = retry_count + 1 WHERE id = ${orig.id}`
+      }});
+      continue;
+    }
+
+    if (isDegenerate) {
+      results.push({ json: {
+        _updateQuery: `UPDATE ${table} SET status = ${DEAD_STATUS_EXPR}, error = 'Claude returned empty stub: score=0 SKIP with no reasoning or blockers', error_code = 'EMPTY_STUB', retry_count = retry_count + 1 WHERE id = ${orig.id}`
       }});
       continue;
     }

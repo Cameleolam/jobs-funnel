@@ -16,6 +16,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -23,6 +24,28 @@ PIPELINE_DIR = SCRIPT_DIR.parent
 CONFIG = json.loads((PIPELINE_DIR / "config.json").read_text(encoding="utf-8"))
 PROFILE = os.environ["JOBS_FUNNEL_PROFILE"]
 PROMPT_FILE = PIPELINE_DIR / "profiles" / PROFILE / "filter_prompt.md"
+LOG_DIR = PIPELINE_DIR / "temp" / "filter_log"
+
+
+def _log_batch(input_data, raw_output, parsed_count, expected_count, error_label=None):
+    """Persist the raw Claude exchange when batch returns fewer items than expected,
+    or when explicitly flagged as an error. Helps diagnose batch-incompleteness issues."""
+    try:
+        if error_label is None and parsed_count >= expected_count:
+            return  # Healthy batch, don't log
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        ts = time.strftime("%Y%m%d_%H%M%S")
+        label = error_label or f"short_{parsed_count}of{expected_count}"
+        path = LOG_DIR / f"{ts}_{label}.json"
+        path.write_text(json.dumps({
+            "expected_count": expected_count,
+            "parsed_count": parsed_count,
+            "error_label": error_label,
+            "input": input_data,
+            "raw_output": raw_output[:50000] if raw_output else "",
+        }, indent=2, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass  # Logging must never break the pipeline
 
 
 def main():
@@ -72,6 +95,11 @@ def main():
                 "--output-format", "json",
                 "--append-system-prompt", system_prompt,
                 "--max-turns", "3",
+                # No tools — filter is pure scoring, doesn't need any.
+                # Required: user-level skills (job-scorer, jm-profile) were auto-triggering
+                # on job-description keywords and exhausting turns on denied Read calls,
+                # producing error_max_turns + non-zero exit. See temp/filter_log/.
+                "--tools", "",
             ],
             input=user_prompt,
             capture_output=True,
@@ -88,10 +116,13 @@ def main():
         sys.exit(1)
 
     if result.returncode != 0:
+        if is_batch:
+            _log_batch(parsed_input, result.stdout, 0, len(parsed_input), error_label="api_error")
         print(json.dumps({
             "error": "claude -p returned non-zero",
             "error_code": "API_ERROR",
             "stderr": result.stderr[:500] if result.stderr else "",
+            "stdout": result.stdout[:500] if result.stdout else "",
         }))
         sys.exit(1)
 
@@ -135,6 +166,8 @@ def main():
     try:
         assessment = json.loads(clean)
     except json.JSONDecodeError:
+        if is_batch:
+            _log_batch(parsed_input, raw_output, 0, len(parsed_input), error_label="parse_fail")
         # Output SKIP fallback instead of failing - let downstream nodes handle it
         fallback = {
             "fit_score": 0,
@@ -157,6 +190,9 @@ def main():
     if is_batch:
         if not isinstance(assessment, list):
             assessment = [assessment]
+        # Log if Claude returned fewer entries than expected (this is the AMBOSS-class bug)
+        if len(assessment) < len(parsed_input):
+            _log_batch(parsed_input, raw_output, len(assessment), len(parsed_input))
         # Pad with SKIP entries if Claude returned fewer results
         while len(assessment) < len(parsed_input):
             assessment.append({
