@@ -188,7 +188,8 @@ def get_stats():
 
 # ── Query builder ────────────────────────────────────────────────────
 def build_job_filter(decision="", applied="", min_score=0, max_score=10, search="", view="",
-                     hide_staffing=False, hide_geo=False, english_only=False):
+                     hide_staffing=False, hide_geo=False, english_only=False,
+                     hide_rejected=False):
     params: list = []
     if view == "error":
         conditions = ["status = 'error'"]
@@ -230,6 +231,8 @@ def build_job_filter(decision="", applied="", min_score=0, max_score=10, search=
         conditions.append("geo_mismatch = FALSE")
     if english_only:
         conditions.append("likely_english = TRUE")
+    if hide_rejected:
+        conditions.append("(user_status IS NULL OR user_status NOT IN ('rejected', 'dismissed'))")
     return " AND ".join(conditions), params
 
 
@@ -251,6 +254,7 @@ async def list_jobs(
     hide_staffing: bool = Query(False, alias="hide_staffing"),
     hide_geo: bool = Query(False, alias="hide_geo"),
     english_only: bool = Query(False, alias="english_only"),
+    hide_rejected: bool = Query(False, alias="hide_rejected"),
     sort: str = Query("fit_score", alias="sort"),
     order: str = Query("desc", alias="order"),
     limit: int = Query(100, alias="limit"),
@@ -266,6 +270,7 @@ async def list_jobs(
     where, params = build_job_filter(
         decision, applied, min_score, max_score, search, view,
         hide_staffing=hide_staffing, hide_geo=hide_geo, english_only=english_only,
+        hide_rejected=hide_rejected,
     )
     # Add id as tiebreaker so pagination is stable (avoids duplicates on Load More)
     order_clause = f"{sort_col} {sort_dir}, id {sort_dir}"
@@ -295,6 +300,7 @@ async def export_excel(
     hide_staffing: bool = Query(False),
     hide_geo: bool = Query(False),
     english_only: bool = Query(False),
+    hide_rejected: bool = Query(False),
     sort: str = Query("fit_score"),
     order: str = Query("desc"),
 ):
@@ -308,6 +314,7 @@ async def export_excel(
     where, params = build_job_filter(
         decision, applied, min_score, max_score, search, view,
         hide_staffing=hide_staffing, hide_geo=hide_geo, english_only=english_only,
+        hide_rejected=hide_rejected,
     )
     order_clause = f"{sort_col} {sort_dir}, id {sort_dir}"
     query = (
