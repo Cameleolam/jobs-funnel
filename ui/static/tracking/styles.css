@@ -80,6 +80,25 @@
   line-height: 1.2;
 }
 .timeline-row-label .role { color: #6b7280; font-size: 0.72rem; }
+.timeline-row-label-line {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.row-close-btn {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  width: 18px;
+  height: 18px;
+  font-size: 0.85rem;
+  line-height: 1;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 0;
+}
+.row-close-btn:hover { background: #f3f4f6; color: #111; border-color: #e5e7eb; }
 .timeline-row-track {
   position: relative;
   border-left: 1px solid #e5e7eb;

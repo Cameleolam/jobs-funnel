@@ -1,4 +1,5 @@
 import { positionPercent, bucketEventsByDay } from '../timeline_math.js';
+import { closeTracking, reopenTracking } from '../state.js';
 import { EventDot } from './EventDot.js';
 
 export const TimelineRow = {
@@ -27,14 +28,31 @@ export const TimelineRow = {
       }
       return out;
     },
+    isClosed() {
+      return !!this.job.closed_at;
+    },
+  },
+  methods: {
+    async toggleClose() {
+      if (this.isClosed) {
+        await reopenTracking(this.job.id);
+      } else {
+        await closeTracking(this.job.id);
+      }
+    },
   },
   template: `
     <div class="timeline-row" :id="'job-' + job.id">
       <div class="timeline-row-label">
-        <strong>{{ job.company }}</strong>
+        <div class="timeline-row-label-line">
+          <strong>{{ job.company }}</strong>
+          <a v-if="job.url" :href="job.url" target="_blank" rel="noopener"
+             class="job-link">↗</a>
+          <button type="button" class="row-close-btn"
+                  :title="isClosed ? 'Reopen tracking' : 'Close tracking'"
+                  @click="toggleClose">{{ isClosed ? '↻' : '×' }}</button>
+        </div>
         <span class="role">{{ job.title }}</span>
-        <a v-if="job.url" :href="job.url" target="_blank" rel="noopener"
-           class="job-link">↗</a>
       </div>
       <div class="timeline-row-track">
         <span v-for="seg in segments" :key="seg.key"

@@ -629,6 +629,7 @@ def _serialize_job_with_events(row):
         "url": row["url"],
         "location": row["location"],
         "tracked_at": row["tracked_at"].isoformat() if row["tracked_at"] else None,
+        "closed_at": row["closed_at"].isoformat() if row.get("closed_at") else None,
         "user_status": row["user_status"],
         "events": [],
     }
@@ -642,7 +643,7 @@ async def api_tracking_jobs():
     Jobs with no events yet sort by tracked_at desc.
     """
     jobs = fetch_all(
-        f"SELECT id, title, company, url, location, tracked_at, user_status "
+        f"SELECT id, title, company, url, location, tracked_at, closed_at, user_status "
         f"FROM {TABLE} WHERE tracked_at IS NOT NULL"
     )
     if not jobs:
@@ -691,6 +692,26 @@ async def api_tracking_stop(job_id: int):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     execute(f"UPDATE {TABLE} SET tracked_at = NULL WHERE id = %s", (job_id,))
+    return {}
+
+
+@app.post("/api/tracking/jobs/{job_id}/close")
+async def api_tracking_close(job_id: int):
+    job = fetch_one(f"SELECT id, closed_at FROM {TABLE} WHERE id = %s", (job_id,))
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job["closed_at"] is None:
+        execute(f"UPDATE {TABLE} SET closed_at = NOW() WHERE id = %s", (job_id,))
+        job = fetch_one(f"SELECT closed_at FROM {TABLE} WHERE id = %s", (job_id,))
+    return {"closed_at": job["closed_at"].isoformat()}
+
+
+@app.post("/api/tracking/jobs/{job_id}/reopen")
+async def api_tracking_reopen(job_id: int):
+    job = fetch_one(f"SELECT id FROM {TABLE} WHERE id = %s", (job_id,))
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    execute(f"UPDATE {TABLE} SET closed_at = NULL WHERE id = %s", (job_id,))
     return {}
 
 

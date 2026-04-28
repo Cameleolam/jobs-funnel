@@ -202,3 +202,29 @@ def test_delete_event(client, sample_tracked_job, db):
     with db, db.cursor() as cur:
         cur.execute("SELECT id FROM job_events WHERE id = %s", (event_id,))
         assert cur.fetchone() is None
+
+
+def test_close_tracking_sets_closed_at(client, db, sample_tracked_job):
+    resp = client.post(f"/api/tracking/jobs/{sample_tracked_job}/close")
+    assert resp.status_code == 200
+    assert resp.json()["closed_at"] is not None
+    with db, db.cursor() as cur:
+        cur.execute(f"SELECT closed_at FROM {TABLE} WHERE id = %s", (sample_tracked_job,))
+        assert cur.fetchone()[0] is not None
+
+
+def test_reopen_tracking_clears_closed_at(client, db, sample_tracked_job):
+    client.post(f"/api/tracking/jobs/{sample_tracked_job}/close")
+    resp = client.post(f"/api/tracking/jobs/{sample_tracked_job}/reopen")
+    assert resp.status_code == 200
+    with db, db.cursor() as cur:
+        cur.execute(f"SELECT closed_at FROM {TABLE} WHERE id = %s", (sample_tracked_job,))
+        assert cur.fetchone()[0] is None
+
+
+def test_list_tracking_includes_closed_at(client, sample_tracked_job):
+    resp = client.get("/api/tracking/jobs")
+    assert resp.status_code == 200
+    target = next((j for j in resp.json() if j["id"] == sample_tracked_job), None)
+    assert target is not None
+    assert "closed_at" in target

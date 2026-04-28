@@ -8,12 +8,8 @@ export const store = reactive({
   tab: 'active', // 'active' | 'closed'
 });
 
-const CLOSED_LABEL_RE = /reject|declin|withdraw|ghost|accept|offer accepted/i;
-
 export function isJobClosed(job) {
-  if (!job.events || job.events.length === 0) return false;
-  const last = job.events[job.events.length - 1];
-  return last.kind === 'decision' && CLOSED_LABEL_RE.test(last.label || '');
+  return !!job.closed_at;
 }
 
 export async function fetchJobs() {
@@ -60,6 +56,18 @@ export async function deleteEvent(eventId) {
 
 export async function stopTracking(jobId) {
   const r = await fetch(`/api/tracking/jobs/${jobId}/stop`, { method: 'POST' });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  await fetchJobs();
+}
+
+export async function closeTracking(jobId) {
+  const r = await fetch(`/api/tracking/jobs/${jobId}/close`, { method: 'POST' });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  await fetchJobs();
+}
+
+export async function reopenTracking(jobId) {
+  const r = await fetch(`/api/tracking/jobs/${jobId}/reopen`, { method: 'POST' });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   await fetchJobs();
 }

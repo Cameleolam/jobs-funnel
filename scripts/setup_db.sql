@@ -110,3 +110,7 @@ CREATE TABLE IF NOT EXISTS job_events (
 );
 CREATE INDEX IF NOT EXISTS idx_job_events_job_id ON job_events(job_id);
 CREATE INDEX IF NOT EXISTS idx_job_events_occurred_at ON job_events(occurred_at);
+
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_jobs_closed_at
+    ON jobs(closed_at) WHERE closed_at IS NOT NULL;
