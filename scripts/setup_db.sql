@@ -1,13 +1,15 @@
 -- Jobs Funnel - PostgreSQL Schema
--- Run: psql -U postgres -f scripts/setup_db.sql
+-- Run via: python scripts/run_migration.py scripts/setup_db.sql
+-- (Resolves {{TABLE}} / {{EVENTS_TABLE}} from JOBS_FUNNEL_TABLE.)
+--
+-- Or run with psql by pre-substituting placeholders manually:
+--   sed 's/{{TABLE}}/jobs/g; s/{{EVENTS_TABLE}}/jobs_events/g' \
+--     scripts/setup_db.sql | psql -U postgres
 
 -- Create database (run this separately if needed):
 -- CREATE DATABASE jobs_funnel;
 
--- Connect to jobs_funnel first, then run the rest:
--- \c jobs_funnel
-
-CREATE TABLE IF NOT EXISTS jobs (
+CREATE TABLE IF NOT EXISTS {{TABLE}} (
     id              SERIAL PRIMARY KEY,
     url             TEXT NOT NULL UNIQUE,
     title           TEXT NOT NULL,
@@ -46,7 +48,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     sheet_synced    BOOLEAN DEFAULT FALSE,
     sheet_synced_at TIMESTAMPTZ,
 
-    user_status     TEXT,             -- applied/dismissed/null
+    user_status     TEXT,             -- interested/applied/in_process/offer/rejected/dismissed/null
     applied_at      TIMESTAMPTZ,
     notes           TEXT,
 
@@ -55,16 +57,17 @@ CREATE TABLE IF NOT EXISTS jobs (
     seniority_level TEXT,              -- junior/mid/senior/lead
     start_date      TEXT,              -- extracted start date (e.g. "sofort", "01.05.2026")
 
-    possible_duplicate_of  INTEGER REFERENCES jobs(id),
+    possible_duplicate_of  INTEGER REFERENCES {{TABLE}}(id),
     duplicate_confirmed    BOOLEAN            -- null=unreviewed, true=confirmed dup, false=not a dup
 );
 
-CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
-CREATE INDEX IF NOT EXISTS idx_jobs_sheet_synced ON jobs(sheet_synced) WHERE sheet_synced = FALSE;
-CREATE INDEX IF NOT EXISTS idx_jobs_decision ON jobs(decision);
-CREATE INDEX IF NOT EXISTS idx_jobs_error_code ON jobs(error_code) WHERE error_code IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_jobs_dead ON jobs(status) WHERE status = 'dead';
+CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_status ON {{TABLE}}(status);
+CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_sheet_synced ON {{TABLE}}(sheet_synced) WHERE sheet_synced = FALSE;
+CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_decision ON {{TABLE}}(decision);
+CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_error_code ON {{TABLE}}(error_code) WHERE error_code IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_dead ON {{TABLE}}(status) WHERE status = 'dead';
 
+-- pipeline_runs and job_raw_data are global (not per-profile) — kept literal.
 CREATE TABLE IF NOT EXISTS pipeline_runs (
     id              SERIAL PRIMARY KEY,
     execution_id    TEXT,                              -- n8n $execution.id
@@ -93,13 +96,13 @@ CREATE TABLE IF NOT EXISTS job_raw_data (
 );
 
 -- ── Tracking timeline (added 2026-04) ────────────────────────────────
-ALTER TABLE jobs ADD COLUMN IF NOT EXISTS tracked_at TIMESTAMPTZ;
-CREATE INDEX IF NOT EXISTS idx_jobs_tracked_at
-    ON jobs(tracked_at) WHERE tracked_at IS NOT NULL;
+ALTER TABLE {{TABLE}} ADD COLUMN IF NOT EXISTS tracked_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_tracked_at
+    ON {{TABLE}}(tracked_at) WHERE tracked_at IS NOT NULL;
 
-CREATE TABLE IF NOT EXISTS job_events (
+CREATE TABLE IF NOT EXISTS {{EVENTS_TABLE}} (
     id           SERIAL PRIMARY KEY,
-    job_id       INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+    job_id       INTEGER NOT NULL REFERENCES {{TABLE}}(id) ON DELETE CASCADE,
     occurred_at  TIMESTAMPTZ NOT NULL,
     kind         TEXT NOT NULL CHECK (kind IN (
                      'application','contact','interview','task','decision','note'
@@ -108,9 +111,9 @@ CREATE TABLE IF NOT EXISTS job_events (
     notes        TEXT,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_job_events_job_id ON job_events(job_id);
-CREATE INDEX IF NOT EXISTS idx_job_events_occurred_at ON job_events(occurred_at);
+CREATE INDEX IF NOT EXISTS idx_{{EVENTS_TABLE}}_job_id ON {{EVENTS_TABLE}}(job_id);
+CREATE INDEX IF NOT EXISTS idx_{{EVENTS_TABLE}}_occurred_at ON {{EVENTS_TABLE}}(occurred_at);
 
-ALTER TABLE jobs ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ;
-CREATE INDEX IF NOT EXISTS idx_jobs_closed_at
-    ON jobs(closed_at) WHERE closed_at IS NOT NULL;
+ALTER TABLE {{TABLE}} ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_closed_at
+    ON {{TABLE}}(closed_at) WHERE closed_at IS NOT NULL;

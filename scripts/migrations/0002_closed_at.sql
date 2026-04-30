@@ -1,8 +1,8 @@
 -- Migration 0002: explicit Close tracking
--- Adds closed_at column on jobs.
+-- Adds closed_at column on {{TABLE}}.
 -- Idempotent.
 
-ALTER TABLE jobs ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ;
+ALTER TABLE {{TABLE}} ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ;
 
-CREATE INDEX IF NOT EXISTS idx_jobs_closed_at
-    ON jobs(closed_at) WHERE closed_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_closed_at
+    ON {{TABLE}}(closed_at) WHERE closed_at IS NOT NULL;
