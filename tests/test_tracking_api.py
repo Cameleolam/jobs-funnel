@@ -16,6 +16,7 @@ load_dotenv()
 from ui.server import app  # noqa: E402
 
 TABLE = os.environ.get("JOBS_FUNNEL_TABLE", "jobs")
+EVENTS_TABLE = f"{TABLE}_events"
 
 
 @pytest.fixture
@@ -49,9 +50,9 @@ def sample_tracked_job(db):
         )
         job_id = cur.fetchone()[0]
         cur.execute(
-            "INSERT INTO job_events (job_id, occurred_at, kind, label) VALUES "
-            "(%s, %s, 'application', 'Applied'), "
-            "(%s, %s, 'interview', 'First call')",
+            f"INSERT INTO {EVENTS_TABLE} (job_id, occurred_at, kind, label) VALUES "
+            f"(%s, %s, 'application', 'Applied'), "
+            f"(%s, %s, 'interview', 'First call')",
             (job_id, datetime(2026, 3, 1, tzinfo=timezone.utc),
              job_id, datetime(2026, 3, 10, tzinfo=timezone.utc)),
         )
@@ -133,7 +134,7 @@ def test_stop_tracking_clears_tracked_at(client, db, sample_tracked_job):
         cur.execute(f"SELECT tracked_at FROM {TABLE} WHERE id = %s", (sample_tracked_job,))
         assert cur.fetchone()[0] is None
         # Events are preserved
-        cur.execute("SELECT COUNT(*) FROM job_events WHERE job_id = %s", (sample_tracked_job,))
+        cur.execute(f"SELECT COUNT(*) FROM {EVENTS_TABLE} WHERE job_id = %s", (sample_tracked_job,))
         assert cur.fetchone()[0] == 2
 
 
@@ -183,7 +184,7 @@ def test_create_event_rejects_missing_job(client):
 
 def test_update_event(client, sample_tracked_job, db):
     with db, db.cursor() as cur:
-        cur.execute("SELECT id FROM job_events WHERE job_id = %s LIMIT 1",
+        cur.execute(f"SELECT id FROM {EVENTS_TABLE} WHERE job_id = %s LIMIT 1",
                     (sample_tracked_job,))
         event_id = cur.fetchone()[0]
     resp = client.patch(f"/api/tracking/events/{event_id}",
@@ -194,13 +195,13 @@ def test_update_event(client, sample_tracked_job, db):
 
 def test_delete_event(client, sample_tracked_job, db):
     with db, db.cursor() as cur:
-        cur.execute("SELECT id FROM job_events WHERE job_id = %s LIMIT 1",
+        cur.execute(f"SELECT id FROM {EVENTS_TABLE} WHERE job_id = %s LIMIT 1",
                     (sample_tracked_job,))
         event_id = cur.fetchone()[0]
     resp = client.delete(f"/api/tracking/events/{event_id}")
     assert resp.status_code == 200
     with db, db.cursor() as cur:
-        cur.execute("SELECT id FROM job_events WHERE id = %s", (event_id,))
+        cur.execute(f"SELECT id FROM {EVENTS_TABLE} WHERE id = %s", (event_id,))
         assert cur.fetchone() is None
 
 

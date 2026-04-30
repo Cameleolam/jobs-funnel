@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 def main():
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
     table = os.environ.get("JOBS_FUNNEL_TABLE", "jobs")
+    events_table = f"{table}_events"
     conn = psycopg2.connect(
         host=os.environ.get("JOBS_FUNNEL_PG_HOST", "localhost"),
         port=os.environ.get("JOBS_FUNNEL_PG_PORT", "5432"),
@@ -26,15 +27,15 @@ def main():
         cur.execute(
             f"SELECT j.id, j.applied_at "
             f"FROM {table} j "
-            f"LEFT JOIN job_events e ON e.job_id = j.id "
+            f"LEFT JOIN {events_table} e ON e.job_id = j.id "
             f"WHERE j.applied_at IS NOT NULL AND e.id IS NULL "
             f"GROUP BY j.id, j.applied_at"
         )
         rows = cur.fetchall()
         for job_id, applied_at in rows:
             cur.execute(
-                "INSERT INTO job_events (job_id, occurred_at, kind, label) "
-                "VALUES (%s, %s, 'application', 'Applied')",
+                f"INSERT INTO {events_table} (job_id, occurred_at, kind, label) "
+                f"VALUES (%s, %s, 'application', 'Applied')",
                 (job_id, applied_at),
             )
             cur.execute(

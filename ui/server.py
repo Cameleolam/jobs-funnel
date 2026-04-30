@@ -35,6 +35,7 @@ DB_CONF = dict(
     password=os.environ.get("JOBS_FUNNEL_PG_PASSWORD", ""),
 )
 TABLE = os.environ.get("JOBS_FUNNEL_TABLE", "jobs")
+EVENTS_TABLE = f"{TABLE}_events"
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 
@@ -489,8 +490,8 @@ async def create_manual_job(
         execute(
             f"UPDATE {TABLE} SET tracked_at = NOW() WHERE id = %s", (new_id,))
         execute(
-            "INSERT INTO job_events (job_id, occurred_at, kind, label) "
-            "VALUES (%s, %s, 'application', 'Applied')",
+            f"INSERT INTO {EVENTS_TABLE} (job_id, occurred_at, kind, label) "
+            f"VALUES (%s, %s, 'application', 'Applied')",
             (new_id, applied_iso),
         )
         return RedirectResponse(url=f"/tracking#job-{new_id}", status_code=303)
@@ -658,9 +659,9 @@ async def api_tracking_jobs():
     by_id = {j["id"]: _serialize_job_with_events(j) for j in jobs}
 
     events = fetch_all(
-        "SELECT id, job_id, occurred_at, kind, label, notes "
-        "FROM job_events WHERE job_id = ANY(%s) "
-        "ORDER BY occurred_at ASC, id ASC",
+        f"SELECT id, job_id, occurred_at, kind, label, notes "
+        f"FROM {EVENTS_TABLE} WHERE job_id = ANY(%s) "
+        f"ORDER BY occurred_at ASC, id ASC",
         (list(by_id.keys()),),
     )
     for ev in events:
@@ -761,9 +762,9 @@ async def api_create_event(payload: EventCreate):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     row = fetch_one(
-        "INSERT INTO job_events (job_id, occurred_at, kind, label, notes) "
-        "VALUES (%s, %s, %s, %s, %s) "
-        "RETURNING id, job_id, occurred_at, kind, label, notes",
+        f"INSERT INTO {EVENTS_TABLE} (job_id, occurred_at, kind, label, notes) "
+        f"VALUES (%s, %s, %s, %s, %s) "
+        f"RETURNING id, job_id, occurred_at, kind, label, notes",
         (payload.job_id, payload.occurred_at, payload.kind,
          payload.label.strip(), payload.notes),
     )
@@ -773,8 +774,8 @@ async def api_create_event(payload: EventCreate):
 @app.patch("/api/tracking/events/{event_id}")
 async def api_update_event(event_id: int, payload: EventUpdate):
     existing = fetch_one(
-        "SELECT id, job_id, occurred_at, kind, label, notes "
-        "FROM job_events WHERE id = %s", (event_id,))
+        f"SELECT id, job_id, occurred_at, kind, label, notes "
+        f"FROM {EVENTS_TABLE} WHERE id = %s", (event_id,))
     if not existing:
         raise HTTPException(status_code=404, detail="Event not found")
     if payload.kind is not None and payload.kind not in VALID_EVENT_KINDS:
@@ -791,7 +792,7 @@ async def api_update_event(event_id: int, payload: EventUpdate):
         return _serialize_event(existing)
     values.append(event_id)
     row = fetch_one(
-        f"UPDATE job_events SET {', '.join(fields)} WHERE id = %s "
+        f"UPDATE {EVENTS_TABLE} SET {', '.join(fields)} WHERE id = %s "
         f"RETURNING id, job_id, occurred_at, kind, label, notes",
         tuple(values),
     )
@@ -800,8 +801,8 @@ async def api_update_event(event_id: int, payload: EventUpdate):
 
 @app.delete("/api/tracking/events/{event_id}")
 async def api_delete_event(event_id: int):
-    existing = fetch_one("SELECT id FROM job_events WHERE id = %s", (event_id,))
+    existing = fetch_one(f"SELECT id FROM {EVENTS_TABLE} WHERE id = %s", (event_id,))
     if not existing:
         raise HTTPException(status_code=404, detail="Event not found")
-    execute("DELETE FROM job_events WHERE id = %s", (event_id,))
+    execute(f"DELETE FROM {EVENTS_TABLE} WHERE id = %s", (event_id,))
     return {}
