@@ -181,6 +181,80 @@
     },
     {
       "parameters": {
+        "jsCode": "// Prep step: read inserted job ids from the DB Insert step's RETURNING output.\n//\n// Strategy: re-query the DB for just-inserted ids using a small SELECT\n// keyed on the URLs we just inserted. This avoids depending on n8n's\n// per-driver behaviour around RETURNING in batched INSERTs.\nconst table = $env.JOBS_FUNNEL_TABLE;\n\nconst upstreamItems = $('Prep Insert').all();\nconst urls = upstreamItems\n  .map(i => i.json && i.json._insertQuery)\n  .filter(Boolean)\n  .map(q => {\n    const m = q.match(/INSERT INTO [^(]+\\([^)]+\\) VALUES \\('([^']+(?:''[^']*)*)'/);\n    return m ? m[1].replace(/''/g, \"'\") : null;\n  })\n  .filter(Boolean);\n\nif (urls.length === 0) {\n  return [{ json: { _embedQuery: 'SELECT 1 WHERE FALSE', _empty: true } }];\n}\n\n// Build a SELECT to fetch ids of rows that need embedding (just inserted OR\n// already in DB without embeddings — covers idempotent re-runs).\nconst inClause = urls.map(u => \"'\" + u.replace(/'/g, \"''\") + \"'\").join(', ');\nconst query = `SELECT id FROM ${table} WHERE url IN (${inClause}) AND embedding IS NULL`;\n\nreturn [{ json: { _embedQuery: query } }];"
+      },
+      "id": "embed-prep",
+      "name": "Embed: Prep Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3225, 350]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json._embedQuery }}",
+        "options": {}
+      },
+      "id": "embed-fetch-ids",
+      "name": "Embed: Fetch IDs",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [3275, 350],
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_ME",
+          "name": "Postgres - Jobs Funnel"
+        }
+      },
+      "alwaysOutputData": true,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "command": "=python \"{{ $env.JOBS_FUNNEL_PROJECT_DIR }}/scripts/run_embed.py\" \"{{ $env.JOBS_FUNNEL_PROJECT_DIR }}\" {{ $json.id }}"
+      },
+      "id": "embed-execute",
+      "name": "Embed: Execute",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [3325, 350],
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collect ExecuteCommand outputs from the embed step, build pipeline_runs\n// metric update query.\nconst items = $input.all();\nlet okCount = 0;\nlet failCount = 0;\nlet degraded = false;\n\nfor (const it of items) {\n  const stdout = (it.json && it.json.stdout) || '';\n  try {\n    const payload = JSON.parse(stdout.trim().split('\\n').pop() || '{}');\n    if (payload.status === 'ok') okCount++;\n    else if (payload.status === 'embed_failed') { failCount++; degraded = true; }\n    else if (payload.status === 'error') { failCount++; degraded = true; }\n  } catch (e) {\n    failCount++;\n    degraded = true;\n  }\n}\n\n// Lookup runId from whichever DB: Run Start variant ran (matches run-end.js pattern)\nlet runId = null;\ntry { runId = $('DB: Run Start').first().json.id; } catch (e) {}\nif (!runId) {\n  try { runId = $('DB: Run Start (Analyze)').first().json.id; } catch (e) {}\n}\n\nif (runId) {\n  const updates = [];\n  updates.push(`embed_count = COALESCE(embed_count,0) + ${okCount}`);\n  updates.push(`embed_failures = COALESCE(embed_failures,0) + ${failCount}`);\n  if (degraded) updates.push(`embed_degraded = TRUE`);\n  const sql = `UPDATE pipeline_runs SET ${updates.join(', ')} WHERE id = ${Number(runId)}`;\n  return [{ json: { _embedMetricsQuery: sql, _embedSummary: { ok: okCount, fail: failCount, degraded } } }];\n}\nreturn [{ json: { _embedMetricsQuery: 'SELECT 1', _embedSummary: { ok: okCount, fail: failCount, degraded } } }];"
+      },
+      "id": "embed-collect",
+      "name": "Embed: Collect Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3340, 350],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json._embedMetricsQuery }}",
+        "options": {}
+      },
+      "id": "embed-metrics",
+      "name": "Embed: Metrics Update",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [3345, 350],
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_ME",
+          "name": "Postgres - Jobs Funnel"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
         "jsCode": "// Emit a single item to trigger the analyze phase, carrying crawl counts\nlet crawled = 0, inserted = 0;\ntry { crawled = $('Dedup Merge').all().length; } catch(e) {}\ntry { inserted = $('Dedup: Filter New').all().filter(i => !i.json._empty).length; } catch(e) {}\nreturn [{ json: { _trigger: 'crawl_complete', _crawled: crawled, _inserted: inserted } }];"
       },
       "id": "goto-analyze",
@@ -532,6 +606,31 @@
       ]]
     },
     "DB: Insert Jobs": {
+      "main": [[
+        { "node": "Embed: Prep Query", "type": "main", "index": 0 }
+      ]]
+    },
+    "Embed: Prep Query": {
+      "main": [[
+        { "node": "Embed: Fetch IDs", "type": "main", "index": 0 }
+      ]]
+    },
+    "Embed: Fetch IDs": {
+      "main": [[
+        { "node": "Embed: Execute", "type": "main", "index": 0 }
+      ]]
+    },
+    "Embed: Execute": {
+      "main": [[
+        { "node": "Embed: Collect Metrics", "type": "main", "index": 0 }
+      ]]
+    },
+    "Embed: Collect Metrics": {
+      "main": [[
+        { "node": "Embed: Metrics Update", "type": "main", "index": 0 }
+      ]]
+    },
+    "Embed: Metrics Update": {
       "main": [[
         { "node": "Start Analyze", "type": "main", "index": 0 }
       ]]
