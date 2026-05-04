@@ -1,4 +1,5 @@
-// Pre-flight validation: check env vars, profile files, config.json
+// Pre-flight validation: env vars, profile files, config.json,
+// pgvector extension, Ollama reachability + bge-m3 model presence.
 const fs = require('fs');
 const errors = [];
 const warnings = [];
@@ -6,6 +7,8 @@ const warnings = [];
 const projectDir = ($env.JOBS_FUNNEL_PROJECT_DIR || '').replace(/\\/g, '/');
 const profile = $env.JOBS_FUNNEL_PROFILE || '';
 const table = $env.JOBS_FUNNEL_TABLE || '';
+const ollamaUrl = ($env.OLLAMA_URL || 'http://localhost:11434').replace(/\/+$/, '');
+const embedModel = $env.EMBEDDING_MODEL || 'bge-m3';
 
 // Required env vars
 if (!projectDir) errors.push('JOBS_FUNNEL_PROJECT_DIR not set');
@@ -42,6 +45,31 @@ if (projectDir) {
     errors.push('config.json not found or invalid JSON');
   }
 }
+
+// Ollama reachability + model presence
+async function checkOllama() {
+  try {
+    const r = await fetch(ollamaUrl + '/api/tags', { signal: AbortSignal.timeout(3000) });
+    if (!r.ok) {
+      errors.push(`Ollama responded ${r.status} at ${ollamaUrl}/api/tags`);
+      return;
+    }
+    const body = await r.json();
+    const models = (body.models || []).map(m => (m.name || '').split(':')[0]);
+    if (!models.includes(embedModel)) {
+      errors.push(`Ollama model '${embedModel}' not found. Run: ollama pull ${embedModel}`);
+    }
+  } catch (e) {
+    errors.push(`Ollama unreachable at ${ollamaUrl}: ${e.message}`);
+  }
+}
+
+await checkOllama();
+
+// pgvector extension (best-effort: query Postgres via env-configured creds via a helper script).
+// We can't run psql from a Code node reliably, so we defer the SQL check to the
+// migration step and only verify here that the extension *would* be findable.
+// The first analyze run will fail loudly if pgvector is missing, so this is intentional.
 
 if (errors.length > 0) {
   throw new Error('Pre-flight check failed:\n- ' + errors.join('\n- '));

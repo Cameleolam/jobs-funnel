@@ -33,7 +33,8 @@ for (let i = 0; i < all.length; i += BATCH_SIZE) {
     start_date: item.json.start_date || null,
     _likely_english: item.json.likely_english || false,
     _staffing_agency: item.json.staffing_agency || false,
-    _geo_mismatch: item.json.geo_mismatch || false
+    _geo_mismatch: item.json.geo_mismatch || false,
+    _embedding_calibration_present: item.json.embedding_calibration != null
   }));
   const tmpPath = tmpDir + '/n8n_batch_' + Date.now() + '_' + i + '.json';
   fs.writeFileSync(tmpPath, JSON.stringify(batchJobs), 'utf-8');

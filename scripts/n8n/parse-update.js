@@ -128,8 +128,9 @@ for (let b = 0; b < $input.all().length; b++) {
       ? `, salary_min = CASE WHEN salary_min IS NULL THEN ${Number(exSalMin)} ELSE salary_min END, salary_max = CASE WHEN salary_max IS NULL THEN ${exSalMax ? Number(exSalMax) : 'NULL'} ELSE salary_max END, salary_currency = CASE WHEN salary_currency IS NULL OR salary_currency = 'EUR' THEN ${sqlStr(exSalCur || 'EUR')} ELSE salary_currency END`
       : '';
 
+    const uncalibrated = assessment.scored_uncalibrated === true;
     results.push({ json: {
-      _updateQuery: `UPDATE ${table} SET status = 'analyzed', analyzed_at = NOW(), error = NULL, error_code = NULL, retry_count = 0, fit_score = ${score}, decision = '${decision}', cv_variant = '${cvVariant}', hard_blockers = ${jsonbLiteral(assessment.hard_blockers)}, soft_gaps = ${jsonbLiteral(assessment.soft_gaps)}, strong_matches = ${jsonbLiteral(assessment.strong_matches)}, reasoning = ${sqlStr(assessment.reasoning || '')}, priority_notes = ${sqlStr(assessment.priority_notes || null)}, employment_type = ${sqlStr(empType)}, seniority_level = ${sqlStr(senLevel)}, start_date = COALESCE(start_date, ${sqlStr(startDate)})${salaryClause} WHERE id = ${orig.id}`
+      _updateQuery: `UPDATE ${table} SET status = 'analyzed', analyzed_at = NOW(), error = NULL, error_code = NULL, retry_count = 0, fit_score = ${score}, decision = '${decision}', cv_variant = '${cvVariant}', hard_blockers = ${jsonbLiteral(assessment.hard_blockers)}, soft_gaps = ${jsonbLiteral(assessment.soft_gaps)}, strong_matches = ${jsonbLiteral(assessment.strong_matches)}, reasoning = ${sqlStr(assessment.reasoning || '')}, priority_notes = ${sqlStr(assessment.priority_notes || null)}, employment_type = ${sqlStr(empType)}, seniority_level = ${sqlStr(senLevel)}, start_date = COALESCE(start_date, ${sqlStr(startDate)})${salaryClause}, scored_uncalibrated = ${uncalibrated ? 'TRUE' : 'FALSE'} WHERE id = ${orig.id}`
     }});
   }
 }

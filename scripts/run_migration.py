@@ -110,17 +110,18 @@ def main():
     sql = resolve_placeholders(raw_sql, table)
 
     conn = connect()
-    with conn:
-        with conn.cursor() as cur:
-            ensure_tracking_table(cur)
-            if already_applied(cur, sql_path.name, table):
-                print(f"Skipping {sql_path.name} (already applied to {table})")
-                conn.close()
-                return
-            cur.execute(sql)
-            record_applied(cur, sql_path.name, table)
-    conn.close()
-    print(f"Applied {sql_path.name} to {table}")
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                ensure_tracking_table(cur)
+                if already_applied(cur, sql_path.name, table):
+                    print(f"Skipping {sql_path.name} (already applied to {table})")
+                    return
+                cur.execute(sql)
+                record_applied(cur, sql_path.name, table)
+        print(f"Applied {sql_path.name} to {table}")
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":

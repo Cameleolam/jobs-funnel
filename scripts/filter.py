@@ -186,6 +186,21 @@ def main():
             print(json.dumps(fallback, indent=2))
         sys.exit(0)
 
+    # Phase 1: stamp scored_uncalibrated when calibration embedding was missing
+    # at scoring time. Used by backfill --rescore-uncalibrated to requeue
+    # the job once its calibration vector lands.
+    def _has_calibration(j):
+        # default to True if the flag was not provided (legacy callers)
+        return j.get("_embedding_calibration_present", True)
+
+    if is_batch:
+        for i, sub_input in enumerate(parsed_input):
+            if i < len(assessment) and not _has_calibration(sub_input):
+                assessment[i]["scored_uncalibrated"] = True
+    else:
+        if not _has_calibration(parsed_input):
+            assessment["scored_uncalibrated"] = True
+
     # For batch input, ensure we got an array with the right count
     if is_batch:
         if not isinstance(assessment, list):

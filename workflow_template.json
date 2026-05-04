@@ -177,6 +177,80 @@
     },
     {
       "parameters": {
+        "jsCode": "{{file:scripts/n8n/embed-prep.js}}"
+      },
+      "id": "embed-prep",
+      "name": "Embed: Prep Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3225, 350]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json._embedQuery }}",
+        "options": {}
+      },
+      "id": "embed-fetch-ids",
+      "name": "Embed: Fetch IDs",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [3275, 350],
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_ME",
+          "name": "Postgres - Jobs Funnel"
+        }
+      },
+      "alwaysOutputData": true,
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "command": "=python \"{{ $env.JOBS_FUNNEL_PROJECT_DIR }}/scripts/run_embed.py\" \"{{ $env.JOBS_FUNNEL_PROJECT_DIR }}\" {{ $json.id }}"
+      },
+      "id": "embed-execute",
+      "name": "Embed: Execute",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [3325, 350],
+      "continueOnFail": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "jsCode": "{{file:scripts/n8n/embed-collect.js}}"
+      },
+      "id": "embed-collect",
+      "name": "Embed: Collect Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3340, 350],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json._embedMetricsQuery }}",
+        "options": {}
+      },
+      "id": "embed-metrics",
+      "name": "Embed: Metrics Update",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [3345, 350],
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_ME",
+          "name": "Postgres - Jobs Funnel"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
         "jsCode": "// Emit a single item to trigger the analyze phase, carrying crawl counts\nlet crawled = 0, inserted = 0;\ntry { crawled = $('Dedup Merge').all().length; } catch(e) {}\ntry { inserted = $('Dedup: Filter New').all().filter(i => !i.json._empty).length; } catch(e) {}\nreturn [{ json: { _trigger: 'crawl_complete', _crawled: crawled, _inserted: inserted } }];"
       },
       "id": "goto-analyze",
@@ -523,6 +597,31 @@
       ]]
     },
     "DB: Insert Jobs": {
+      "main": [[
+        { "node": "Embed: Prep Query", "type": "main", "index": 0 }
+      ]]
+    },
+    "Embed: Prep Query": {
+      "main": [[
+        { "node": "Embed: Fetch IDs", "type": "main", "index": 0 }
+      ]]
+    },
+    "Embed: Fetch IDs": {
+      "main": [[
+        { "node": "Embed: Execute", "type": "main", "index": 0 }
+      ]]
+    },
+    "Embed: Execute": {
+      "main": [[
+        { "node": "Embed: Collect Metrics", "type": "main", "index": 0 }
+      ]]
+    },
+    "Embed: Collect Metrics": {
+      "main": [[
+        { "node": "Embed: Metrics Update", "type": "main", "index": 0 }
+      ]]
+    },
+    "Embed: Metrics Update": {
       "main": [[
         { "node": "Start Analyze", "type": "main", "index": 0 }
       ]]
