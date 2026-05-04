@@ -70,3 +70,95 @@ def text_for_calibration(job: dict) -> str:
     header = "\n".join(f"{k}: {v}" for k, v in fields.items())
     description = (job.get("description") or "")[:DESC_MAX_CHARS]
     return f"{header}\n---\n{description}"
+
+
+import argparse
+import json
+import sys
+
+import psycopg2.extras
+
+from scripts import db
+
+
+SELECT_COLS = (
+    "id, title, company, location, description, remote, "
+    "seniority_level, employment_type, likely_english"
+)
+
+
+def _select_job(cur, table: str, job_id: int):
+    cur.execute(
+        f"SELECT {SELECT_COLS} FROM {table} WHERE id = %s",
+        (job_id,),
+    )
+    return cur.fetchone()
+
+
+def _write_embeddings(cur, table: str, job_id: int, dedup_vec, calib_vec, model: str):
+    cur.execute(
+        f"UPDATE {table} SET "
+        f"  embedding = %s, "
+        f"  embedding_calibration = %s, "
+        f"  embedded_at = NOW(), "
+        f"  embed_model = %s, "
+        f"  embed_attempts = 0 "
+        f"WHERE id = %s",
+        (dedup_vec, calib_vec, model, job_id),
+    )
+
+
+def _record_failure(cur, table: str, job_id: int):
+    """Increment embed_attempts; mark EMBED_FAILED at >=3."""
+    cur.execute(
+        f"UPDATE {table} SET "
+        f"  embed_attempts = embed_attempts + 1, "
+        f"  error_code = CASE WHEN embed_attempts + 1 >= 3 THEN 'EMBED_FAILED' ELSE error_code END "
+        f"WHERE id = %s",
+        (job_id,),
+    )
+
+
+def run_cli(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description="Embed a single job by id.")
+    parser.add_argument("--job-id", type=int, required=True)
+    args = parser.parse_args(argv)
+
+    table = db.table_name()
+    conn = db.get_vector_conn()
+    try:
+        with conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                row = _select_job(cur, table, args.job_id)
+                if row is None:
+                    print(json.dumps({
+                        "job_id": args.job_id,
+                        "status": "error",
+                        "error": f"Job {args.job_id} not found in {table}",
+                    }))
+                    return 1
+                try:
+                    dedup_vec = embed(text_for_dedup(dict(row)))
+                    calib_vec = embed(text_for_calibration(dict(row)))
+                except EmbedError as e:
+                    _record_failure(cur, table, args.job_id)
+                    print(json.dumps({
+                        "job_id": args.job_id,
+                        "status": "embed_failed",
+                        "error": str(e),
+                    }))
+                    return 2
+                _write_embeddings(cur, table, args.job_id, dedup_vec, calib_vec, MODEL)
+                print(json.dumps({
+                    "job_id": args.job_id,
+                    "status": "ok",
+                    "dim": len(dedup_vec),
+                    "model": MODEL,
+                }))
+                return 0
+    finally:
+        conn.close()
+
+
+if __name__ == "__main__":
+    sys.exit(run_cli(sys.argv[1:]))

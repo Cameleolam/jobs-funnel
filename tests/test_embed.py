@@ -112,3 +112,100 @@ def test_text_for_calibration_defaults_for_missing():
     assert "SENIORITY: unspecified" in txt
     assert "EMPLOYMENT: unspecified" in txt
     assert "LANGUAGE: german" in txt
+
+
+def test_cli_job_id_success(monkeypatch, capsys):
+    """CLI mode reads job, computes both embeddings, writes back, prints JSON."""
+    from scripts import embed as embed_mod
+
+    fake_job = {
+        "id": 42,
+        "title": "Mid Backend",
+        "company": "X",
+        "location": "Berlin",
+        "description": "desc",
+        "remote": False,
+        "seniority_level": "mid",
+        "employment_type": "full-time",
+        "likely_english": False,
+    }
+    fake_vec = [0.1] * 1024
+
+    fake_cur = MagicMock()
+    fake_cur.fetchone.return_value = dict(fake_job)
+    fake_cur.__enter__ = MagicMock(return_value=fake_cur)
+    fake_cur.__exit__ = MagicMock(return_value=False)
+
+    fake_conn = MagicMock()
+    fake_conn.cursor.return_value = fake_cur
+    fake_conn.__enter__ = MagicMock(return_value=fake_conn)
+    fake_conn.__exit__ = MagicMock(return_value=False)
+
+    monkeypatch.setenv("JOBS_FUNNEL_TABLE", "jobs")
+    monkeypatch.setattr("scripts.db.get_vector_conn", lambda: fake_conn)
+    monkeypatch.setattr(embed_mod, "embed", lambda txt: fake_vec)
+
+    rc = embed_mod.run_cli(["--job-id", "42"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    payload = json.loads(out)
+    assert payload["job_id"] == 42
+    assert payload["status"] == "ok"
+    assert payload["dim"] == 1024
+    # confirm UPDATE was executed (one of the cur.execute calls had embedding=)
+    update_calls = [c for c in fake_cur.execute.call_args_list if "UPDATE" in c.args[0].upper()]
+    assert len(update_calls) == 1
+
+
+def test_cli_job_id_missing_returns_error(monkeypatch, capsys):
+    from scripts import embed as embed_mod
+
+    fake_cur = MagicMock()
+    fake_cur.fetchone.return_value = None
+    fake_cur.__enter__ = MagicMock(return_value=fake_cur)
+    fake_cur.__exit__ = MagicMock(return_value=False)
+
+    fake_conn = MagicMock()
+    fake_conn.cursor.return_value = fake_cur
+    fake_conn.__enter__ = MagicMock(return_value=fake_conn)
+    fake_conn.__exit__ = MagicMock(return_value=False)
+
+    monkeypatch.setattr("scripts.db.get_vector_conn", lambda: fake_conn)
+
+    rc = embed_mod.run_cli(["--job-id", "999"])
+    out = capsys.readouterr().out
+    assert rc == 1
+    payload = json.loads(out)
+    assert payload["status"] == "error"
+    assert "not found" in payload["error"].lower()
+
+
+def test_cli_job_id_embed_failure_increments_attempts(monkeypatch, capsys):
+    from scripts import embed as embed_mod
+
+    fake_job = {"id": 7, "title": "T", "company": "C", "description": "d"}
+    fake_cur = MagicMock()
+    fake_cur.fetchone.return_value = dict(fake_job)
+    fake_cur.__enter__ = MagicMock(return_value=fake_cur)
+    fake_cur.__exit__ = MagicMock(return_value=False)
+
+    fake_conn = MagicMock()
+    fake_conn.cursor.return_value = fake_cur
+    fake_conn.__enter__ = MagicMock(return_value=fake_conn)
+    fake_conn.__exit__ = MagicMock(return_value=False)
+
+    monkeypatch.setattr("scripts.db.get_vector_conn", lambda: fake_conn)
+
+    def boom(_):
+        raise embed_mod.EmbedError("ollama down")
+
+    monkeypatch.setattr(embed_mod, "embed", boom)
+
+    rc = embed_mod.run_cli(["--job-id", "7"])
+    out = capsys.readouterr().out
+    assert rc == 2  # soft-degrade exit code
+    payload = json.loads(out)
+    assert payload["status"] == "embed_failed"
+    # an UPDATE that increments embed_attempts must have run
+    update_calls = [c for c in fake_cur.execute.call_args_list if "embed_attempts" in c.args[0]]
+    assert len(update_calls) == 1
