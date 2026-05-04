@@ -56,7 +56,8 @@ ROW_COLS = (
     "posted_at, employment_type, seniority_level, start_date, "
     "error, error_code, retry_count, "
     "possible_duplicate_of, duplicate_confirmed, "
-    "tracked_at"
+    "tracked_at, "
+    "(embedding IS NULL) AS awaiting_embedding, scored_uncalibrated"
 )
 
 
@@ -184,6 +185,11 @@ def get_stats():
         f"SELECT COUNT(*) as cnt FROM {TABLE} WHERE status = 'dead'"
     )
     stats["dead"] = dead["cnt"] if dead else 0
+    awaiting = fetch_one(
+        f"SELECT COUNT(*) as cnt FROM {TABLE} "
+        f"WHERE embedding IS NULL AND (error_code IS NULL OR error_code != 'EMBED_FAILED')"
+    )
+    stats["awaiting_embedding"] = awaiting["cnt"] if awaiting else 0
     return stats
 
 
