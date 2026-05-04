@@ -107,34 +107,40 @@ def run(argv: list[str]) -> dict:
 
     table = db.table_name()
     conn = db.get_vector_conn()
+    # Per-row commits: each UPDATE lands immediately so the run is truly
+    # resumable and progress is visible. The alternative (one big transaction)
+    # holds row locks for the entire run, blocking concurrent readers/writers.
+    # register_vector probes the catalog and opens an implicit transaction;
+    # rollback first, then flip autocommit on.
+    conn.rollback()
+    conn.autocommit = True
     summary = {"processed": 0, "failed": 0, "requeued": 0, "table": table}
     try:
-        with conn:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                if args.rescore_uncalibrated:
-                    rows = _select_rescore_targets(cur, table, args.limit)
-                    for r in rows:
-                        if args.dry_run:
-                            summary["requeued"] += 1
-                            continue
-                        _requeue_for_rescore(cur, table, r["id"])
-                        summary["requeued"] += 1
-                    return summary
-
-                rows = _select_missing(cur, table, args.force_retry_dead, args.limit)
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if args.rescore_uncalibrated:
+                rows = _select_rescore_targets(cur, table, args.limit)
                 for r in rows:
                     if args.dry_run:
-                        summary["processed"] += 1
+                        summary["requeued"] += 1
                         continue
-                    try:
-                        dedup_vec = embed_mod.embed(embed_mod.text_for_dedup(dict(r)))
-                        calib_vec = embed_mod.embed(embed_mod.text_for_calibration(dict(r)))
-                    except embed_mod.EmbedError:
-                        _record_failure(cur, table, r["id"])
-                        summary["failed"] += 1
-                        continue
-                    _write_embeddings(cur, table, r["id"], dedup_vec, calib_vec, embed_mod.MODEL)
+                    _requeue_for_rescore(cur, table, r["id"])
+                    summary["requeued"] += 1
+                return summary
+
+            rows = _select_missing(cur, table, args.force_retry_dead, args.limit)
+            for r in rows:
+                if args.dry_run:
                     summary["processed"] += 1
+                    continue
+                try:
+                    dedup_vec = embed_mod.embed(embed_mod.text_for_dedup(dict(r)))
+                    calib_vec = embed_mod.embed(embed_mod.text_for_calibration(dict(r)))
+                except embed_mod.EmbedError:
+                    _record_failure(cur, table, r["id"])
+                    summary["failed"] += 1
+                    continue
+                _write_embeddings(cur, table, r["id"], dedup_vec, calib_vec, embed_mod.MODEL)
+                summary["processed"] += 1
         return summary
     finally:
         conn.close()
