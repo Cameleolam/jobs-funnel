@@ -107,7 +107,8 @@ def _write_embeddings(cur, table: str, job_id: int, dedup_vec, calib_vec, model:
         f"  embedding_calibration = %s, "
         f"  embedded_at = NOW(), "
         f"  embed_model = %s, "
-        f"  embed_attempts = 0 "
+        f"  embed_attempts = 0, "
+        f"  error_code = CASE WHEN error_code = 'EMBED_FAILED' THEN NULL ELSE error_code END "
         f"WHERE id = %s",
         (dedup_vec, calib_vec, model, job_id),
     )
