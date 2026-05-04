@@ -45,3 +45,19 @@ def get_conn():
         user=os.environ.get("JOBS_FUNNEL_PG_USER", "postgres"),
         password=os.environ.get("JOBS_FUNNEL_PG_PASSWORD", ""),
     )
+
+
+def register_vector(conn) -> None:
+    """Register pgvector type adapters on a psycopg2 connection.
+
+    Idempotent — pgvector handles repeat registration. Call once per new conn.
+    """
+    from pgvector.psycopg2 import register_vector as _reg
+    _reg(conn)
+
+
+def get_vector_conn():
+    """get_conn() + pgvector adapter registration. Use this when binding vectors."""
+    conn = get_conn()
+    register_vector(conn)
+    return conn
