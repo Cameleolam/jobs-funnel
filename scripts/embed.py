@@ -75,6 +75,11 @@ def text_for_calibration(job: dict) -> str:
 import argparse
 import json
 import sys
+from pathlib import Path
+
+# Allow direct invocation: `python scripts/embed.py --job-id N`.
+# When run as a module (`python -m scripts.embed`) this is a no-op.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import psycopg2.extras
 

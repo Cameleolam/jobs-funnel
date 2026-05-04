@@ -18,6 +18,11 @@ mid-run kill leaves a consistent partial state.
 import argparse
 import json
 import sys
+from pathlib import Path
+
+# Allow direct invocation: `python scripts/backfill_embeddings.py`.
+# When run as a module (`python -m scripts.backfill_embeddings`) this is a no-op.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import psycopg2.extras
 
