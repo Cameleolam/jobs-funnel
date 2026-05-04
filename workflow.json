@@ -219,9 +219,8 @@
       "typeVersion": 1,
       "position": [3325, 350],
       "continueOnFail": true,
-      "retryOnFail": true,
-      "maxTries": 2,
-      "waitBetweenTries": 5000
+      "retryOnFail": false,
+      "maxTries": 1
     },
     {
       "parameters": {
@@ -508,6 +507,19 @@
     },
     {
       "parameters": {
+        "command": "=python \"{{ $env.JOBS_FUNNEL_PROJECT_DIR }}/scripts/backfill_embeddings.py\" --rescore-uncalibrated --limit 200"
+      },
+      "id": "rescore-uncalibrated",
+      "name": "Rescore: Uncalibrated",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [3050, 650],
+      "executeOnce": true,
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
         "jsCode": "// Finalize the pipeline_runs row with stats and duration.\n// Reads run_id from whichever DB: Run Start node executed.\nconst table = ($env.JOBS_FUNNEL_TABLE || 'jobs').replace(/'/g, \"''\");\n\nlet runId = null;\nlet startedAt = null;\ntry {\n  const row = $('DB: Run Start').first().json;\n  runId = row.id;\n  startedAt = row.started_at;\n} catch (e) { /* full pipeline path not taken */ }\nif (!runId) {\n  try {\n    const row = $('DB: Run Start (Analyze)').first().json;\n    runId = row.id;\n    startedAt = row.started_at;\n  } catch (e) { /* neither path?? */ }\n}\n\nif (!runId) {\n  // No run was started — skip gracefully\n  return [{ json: { _runEndQuery: 'SELECT 1' } }];\n}\n\nconst durationMs = Date.now() - new Date(startedAt).getTime();\n\n// Crawl stats from the Start Analyze node (0 for webhook/analyze-only path)\nlet crawled = 0;\nlet inserted = 0;\ntry {\n  const sa = $('Start Analyze').first().json;\n  crawled = sa._crawled || 0;\n  inserted = sa._inserted || 0;\n} catch (e) { /* analyze-only path — no crawl */ }\n\n// Escape the started_at timestamp for SQL\nconst safeStarted = new Date(startedAt).toISOString();\n\nconst query = `\n  WITH stats AS (\n    SELECT\n      COUNT(*) FILTER (WHERE analyzed_at >= '${safeStarted}') AS analyzed,\n      COUNT(*) FILTER (WHERE error_code IS NOT NULL AND (analyzed_at >= '${safeStarted}' OR (status IN ('error','dead') AND crawled_at >= '${safeStarted}'))) AS errored\n    FROM ${table}\n  )\n  UPDATE pipeline_runs SET\n    finished_at = NOW(),\n    jobs_crawled = ${crawled},\n    jobs_inserted = ${inserted},\n    jobs_analyzed = stats.analyzed,\n    jobs_errored = stats.errored,\n    duration_ms = ${durationMs},\n    status = CASE WHEN stats.errored > 0 THEN 'partial' ELSE 'success' END\n  FROM stats\n  WHERE pipeline_runs.id = ${runId}`;\n\nreturn [{ json: { _runEndQuery: query } }];"
       },
       "id": "run-end",
@@ -637,7 +649,7 @@
     },
     "Start Analyze": {
       "main": [[
-        { "node": "DB: Fetch Pending", "type": "main", "index": 0 }
+        { "node": "Rescore: Uncalibrated", "type": "main", "index": 0 }
       ]]
     },
     "Run Analyze Only": {
@@ -651,6 +663,11 @@
       ]]
     },
     "DB: Run Start (Analyze)": {
+      "main": [[
+        { "node": "Rescore: Uncalibrated", "type": "main", "index": 0 }
+      ]]
+    },
+    "Rescore: Uncalibrated": {
       "main": [[
         { "node": "DB: Fetch Pending", "type": "main", "index": 0 }
       ]]

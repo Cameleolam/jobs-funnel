@@ -186,6 +186,12 @@ def main():
             print(json.dumps(fallback, indent=2))
         sys.exit(0)
 
+    # Normalize batch shape BEFORE indexing. Claude occasionally returns a
+    # single object for a batch request; without this guard the loop below
+    # crashes with TypeError on `assessment[i]`.
+    if is_batch and not isinstance(assessment, list):
+        assessment = [assessment]
+
     # Phase 1: stamp scored_uncalibrated when calibration embedding was missing
     # at scoring time. Used by backfill --rescore-uncalibrated to requeue
     # the job once its calibration vector lands.
@@ -201,10 +207,8 @@ def main():
         if not _has_calibration(parsed_input):
             assessment["scored_uncalibrated"] = True
 
-    # For batch input, ensure we got an array with the right count
+    # For batch input, log + pad short responses to match input length
     if is_batch:
-        if not isinstance(assessment, list):
-            assessment = [assessment]
         # Log if Claude returned fewer entries than expected (this is the AMBOSS-class bug)
         if len(assessment) < len(parsed_input):
             _log_batch(parsed_input, raw_output, len(assessment), len(parsed_input))

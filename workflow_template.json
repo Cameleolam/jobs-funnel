@@ -215,9 +215,8 @@
       "typeVersion": 1,
       "position": [3325, 350],
       "continueOnFail": true,
-      "retryOnFail": true,
-      "maxTries": 2,
-      "waitBetweenTries": 5000
+      "retryOnFail": false,
+      "maxTries": 1
     },
     {
       "parameters": {
@@ -504,6 +503,19 @@
     },
     {
       "parameters": {
+        "command": "=python \"{{ $env.JOBS_FUNNEL_PROJECT_DIR }}/scripts/backfill_embeddings.py\" --rescore-uncalibrated --limit 200"
+      },
+      "id": "rescore-uncalibrated",
+      "name": "Rescore: Uncalibrated",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [3050, 650],
+      "executeOnce": true,
+      "continueOnFail": true,
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
         "jsCode": "{{file:scripts/n8n/run-end.js}}"
       },
       "id": "run-end",
@@ -628,7 +640,7 @@
     },
     "Start Analyze": {
       "main": [[
-        { "node": "DB: Fetch Pending", "type": "main", "index": 0 }
+        { "node": "Rescore: Uncalibrated", "type": "main", "index": 0 }
       ]]
     },
     "Run Analyze Only": {
@@ -642,6 +654,11 @@
       ]]
     },
     "DB: Run Start (Analyze)": {
+      "main": [[
+        { "node": "Rescore: Uncalibrated", "type": "main", "index": 0 }
+      ]]
+    },
+    "Rescore: Uncalibrated": {
       "main": [[
         { "node": "DB: Fetch Pending", "type": "main", "index": 0 }
       ]]

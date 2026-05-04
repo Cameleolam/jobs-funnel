@@ -22,10 +22,33 @@ from dotenv import load_dotenv
 
 SCHEMA_MIGRATIONS_DDL = """
 CREATE TABLE IF NOT EXISTS schema_migrations (
-    name        TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
     applied_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    table_scope TEXT NOT NULL
+    table_scope TEXT NOT NULL,
+    PRIMARY KEY (name, table_scope)
 );
+"""
+
+# Older databases were created with PRIMARY KEY (name) only, which silently
+# blocks the same migration filename from applying to a second profile table.
+# Detect that case and swap to the composite PK in place.
+SCHEMA_MIGRATIONS_UPGRADE = """
+DO $$
+DECLARE
+    pk_cols TEXT;
+BEGIN
+    SELECT string_agg(a.attname, ',' ORDER BY array_position(i.indkey, a.attnum))
+    INTO pk_cols
+    FROM pg_index i
+    JOIN pg_class c ON c.oid = i.indrelid
+    JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY(i.indkey)
+    WHERE c.relname = 'schema_migrations' AND i.indisprimary;
+
+    IF pk_cols = 'name' THEN
+        ALTER TABLE schema_migrations DROP CONSTRAINT schema_migrations_pkey;
+        ALTER TABLE schema_migrations ADD PRIMARY KEY (name, table_scope);
+    END IF;
+END $$;
 """
 
 
@@ -48,6 +71,7 @@ def connect():
 
 def ensure_tracking_table(cur):
     cur.execute(SCHEMA_MIGRATIONS_DDL)
+    cur.execute(SCHEMA_MIGRATIONS_UPGRADE)
 
 
 def already_applied(cur, name: str, table: str) -> bool:
@@ -61,7 +85,7 @@ def already_applied(cur, name: str, table: str) -> bool:
 def record_applied(cur, name: str, table: str):
     cur.execute(
         "INSERT INTO schema_migrations (name, table_scope) VALUES (%s, %s) "
-        "ON CONFLICT (name) DO NOTHING",
+        "ON CONFLICT (name, table_scope) DO NOTHING",
         (name, table),
     )
 

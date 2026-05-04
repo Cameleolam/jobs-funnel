@@ -90,3 +90,45 @@ def test_filter_omits_flag_when_calibration_present(tmp_path, monkeypatch, capsy
     payload = json.loads(out)
     # flag absent OR explicitly false (filter only adds it when False per spec)
     assert payload.get("scored_uncalibrated", False) is False
+
+
+def test_filter_batch_handles_single_object_response(tmp_path, monkeypatch, capsys):
+    # Regression: batch input + Claude returning a single object (not an array)
+    # used to crash on assessment[i] indexing before normalization.
+    monkeypatch.setenv("JOBS_FUNNEL_PROFILE", "test")
+    pro = _make_profile(tmp_path)
+
+    import importlib
+    import scripts.filter as fil
+    importlib.reload(fil)
+    monkeypatch.setattr(fil, "PIPELINE_DIR", tmp_path)
+    monkeypatch.setattr(fil, "PROMPT_FILE", pro / "filter_prompt.md")
+
+    batch = [
+        {"title": "A", "description": "D", "_embedding_calibration_present": False},
+        {"title": "B", "description": "D", "_embedding_calibration_present": True},
+    ]
+    job_file = tmp_path / "batch_input.json"
+    job_file.write_text(json.dumps(batch), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["filter.py", str(job_file)])
+
+    # Claude returns a single object instead of the requested array
+    single_object = json.dumps({
+        "fit_score": 60, "decision": "MAYBE", "cv_variant": "default",
+        "hard_blockers": [], "soft_gaps": [], "strong_matches": [],
+        "reasoning": "ok", "priority_notes": None,
+    })
+    fake_response = json.dumps({"result": single_object})
+    with patch.object(subprocess, "run", return_value=_fake_claude(fake_response)):
+        try:
+            fil.main()
+        except SystemExit:
+            pass
+    out = capsys.readouterr().out
+    payload = json.loads(out)
+    assert isinstance(payload, list)
+    assert len(payload) == 2
+    # First job had calibration_present=False so the flag should be stamped
+    assert payload[0].get("scored_uncalibrated") is True
+    # Second is BATCH_PADDING (Claude returned only one)
+    assert payload[1].get("error_code") == "BATCH_PADDING"

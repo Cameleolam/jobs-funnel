@@ -46,8 +46,31 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 STATIC_DIR.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-# ── Row columns selected for list views ──────────────────────────────
-ROW_COLS = (
+# ── Embedding schema detection ───────────────────────────────────────
+# The Phase 1 embedding migration (0003_pgvector.sql) is per-profile-table.
+# When the UI runs against a DB that hasn't applied it yet, we must avoid
+# referencing the embedding/scored_uncalibrated columns or the queries crash.
+def _detect_embedding_schema():
+    try:
+        conn = psycopg2.connect(**DB_CONF)
+    except psycopg2.OperationalError:
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = %s AND column_name IN ('embedding', 'scored_uncalibrated')",
+                (TABLE,),
+            )
+            cols = {r[0] for r in cur.fetchall()}
+        return {"embedding", "scored_uncalibrated"}.issubset(cols)
+    finally:
+        conn.close()
+
+
+HAS_EMBEDDING_COLUMNS = _detect_embedding_schema()
+
+_BASE_ROW_COLS = (
     "id, url, title, company, location, source, fit_score, decision, "
     "cv_variant, reasoning, status, crawled_at, analyzed_at, "
     "salary_min, salary_max, salary_currency, remote, likely_english, "
@@ -56,9 +79,19 @@ ROW_COLS = (
     "posted_at, employment_type, seniority_level, start_date, "
     "error, error_code, retry_count, "
     "possible_duplicate_of, duplicate_confirmed, "
-    "tracked_at, "
-    "(embedding IS NULL) AS awaiting_embedding, scored_uncalibrated"
+    "tracked_at"
 )
+
+if HAS_EMBEDDING_COLUMNS:
+    ROW_COLS = (
+        f"{_BASE_ROW_COLS}, "
+        "(embedding IS NULL) AS awaiting_embedding, scored_uncalibrated"
+    )
+else:
+    ROW_COLS = (
+        f"{_BASE_ROW_COLS}, "
+        "FALSE AS awaiting_embedding, FALSE AS scored_uncalibrated"
+    )
 
 
 # ── Jinja filters ────────────────────────────────────────────────────
@@ -185,11 +218,14 @@ def get_stats():
         f"SELECT COUNT(*) as cnt FROM {TABLE} WHERE status = 'dead'"
     )
     stats["dead"] = dead["cnt"] if dead else 0
-    awaiting = fetch_one(
-        f"SELECT COUNT(*) as cnt FROM {TABLE} "
-        f"WHERE embedding IS NULL AND (error_code IS NULL OR error_code != 'EMBED_FAILED')"
-    )
-    stats["awaiting_embedding"] = awaiting["cnt"] if awaiting else 0
+    if HAS_EMBEDDING_COLUMNS:
+        awaiting = fetch_one(
+            f"SELECT COUNT(*) as cnt FROM {TABLE} "
+            f"WHERE embedding IS NULL AND (error_code IS NULL OR error_code != 'EMBED_FAILED')"
+        )
+        stats["awaiting_embedding"] = awaiting["cnt"] if awaiting else 0
+    else:
+        stats["awaiting_embedding"] = 0
     return stats
 
 
