@@ -8,6 +8,8 @@
   "an_delay_ms": 5000,
   "an_days_back": 7,
   "batch_size": 8,
+  "embed_batch_size": 8,
+  "embed_cap_per_run": 80,
   "dedup_cap": 80,
   "description_max_chars": 5000,
   "api_max_retries": 2,
