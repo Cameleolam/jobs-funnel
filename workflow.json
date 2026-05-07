@@ -181,79 +181,6 @@
     },
     {
       "parameters": {
-        "jsCode": "// Prep step: read inserted job ids from the DB Insert step's RETURNING output.\n//\n// Strategy: re-query the DB for just-inserted ids using a small SELECT\n// keyed on the URLs we just inserted. This avoids depending on n8n's\n// per-driver behaviour around RETURNING in batched INSERTs.\nconst table = $env.JOBS_FUNNEL_TABLE;\n\nconst upstreamItems = $('Prep Insert').all();\nconst urls = upstreamItems\n  .map(i => i.json && i.json._insertQuery)\n  .filter(Boolean)\n  .map(q => {\n    const m = q.match(/INSERT INTO [^(]+\\([^)]+\\) VALUES \\('([^']+(?:''[^']*)*)'/);\n    return m ? m[1].replace(/''/g, \"'\") : null;\n  })\n  .filter(Boolean);\n\nif (urls.length === 0) {\n  return [{ json: { _embedQuery: 'SELECT 1 WHERE FALSE', _empty: true } }];\n}\n\n// Build a SELECT to fetch ids of rows that need embedding (just inserted OR\n// already in DB without embeddings — covers idempotent re-runs).\nconst inClause = urls.map(u => \"'\" + u.replace(/'/g, \"''\") + \"'\").join(', ');\nconst query = `SELECT id FROM ${table} WHERE url IN (${inClause}) AND embedding IS NULL`;\n\nreturn [{ json: { _embedQuery: query } }];"
-      },
-      "id": "embed-prep",
-      "name": "Embed: Prep Query",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [3225, 350]
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "={{ $json._embedQuery }}",
-        "options": {}
-      },
-      "id": "embed-fetch-ids",
-      "name": "Embed: Fetch IDs",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [3275, 350],
-      "credentials": {
-        "postgres": {
-          "id": "CONFIGURE_ME",
-          "name": "Postgres - Jobs Funnel"
-        }
-      },
-      "alwaysOutputData": true,
-      "continueOnFail": true
-    },
-    {
-      "parameters": {
-        "command": "=python \"{{ $env.JOBS_FUNNEL_PROJECT_DIR }}/scripts/run_embed.py\" \"{{ $env.JOBS_FUNNEL_PROJECT_DIR }}\" {{ $json.id }}"
-      },
-      "id": "embed-execute",
-      "name": "Embed: Execute",
-      "type": "n8n-nodes-base.executeCommand",
-      "typeVersion": 1,
-      "position": [3325, 350],
-      "continueOnFail": true,
-      "retryOnFail": false,
-      "maxTries": 1
-    },
-    {
-      "parameters": {
-        "jsCode": "// Collect ExecuteCommand outputs from the embed step, build pipeline_runs\n// metric update query.\nconst items = $input.all();\nlet okCount = 0;\nlet failCount = 0;\nlet degraded = false;\n\nfor (const it of items) {\n  const stdout = (it.json && it.json.stdout) || '';\n  try {\n    const payload = JSON.parse(stdout.trim().split('\\n').pop() || '{}');\n    if (payload.status === 'ok') okCount++;\n    else if (payload.status === 'embed_failed') { failCount++; degraded = true; }\n    else if (payload.status === 'error') { failCount++; degraded = true; }\n  } catch (e) {\n    failCount++;\n    degraded = true;\n  }\n}\n\n// Lookup runId from whichever DB: Run Start variant ran (matches run-end.js pattern)\nlet runId = null;\ntry { runId = $('DB: Run Start').first().json.id; } catch (e) {}\nif (!runId) {\n  try { runId = $('DB: Run Start (Analyze)').first().json.id; } catch (e) {}\n}\n\nif (runId) {\n  const updates = [];\n  updates.push(`embed_count = COALESCE(embed_count,0) + ${okCount}`);\n  updates.push(`embed_failures = COALESCE(embed_failures,0) + ${failCount}`);\n  if (degraded) updates.push(`embed_degraded = TRUE`);\n  const sql = `UPDATE pipeline_runs SET ${updates.join(', ')} WHERE id = ${Number(runId)}`;\n  return [{ json: { _embedMetricsQuery: sql, _embedSummary: { ok: okCount, fail: failCount, degraded } } }];\n}\nreturn [{ json: { _embedMetricsQuery: 'SELECT 1', _embedSummary: { ok: okCount, fail: failCount, degraded } } }];"
-      },
-      "id": "embed-collect",
-      "name": "Embed: Collect Metrics",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [3340, 350],
-      "executeOnce": true
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "={{ $json._embedMetricsQuery }}",
-        "options": {}
-      },
-      "id": "embed-metrics",
-      "name": "Embed: Metrics Update",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [3345, 350],
-      "credentials": {
-        "postgres": {
-          "id": "CONFIGURE_ME",
-          "name": "Postgres - Jobs Funnel"
-        }
-      },
-      "continueOnFail": true
-    },
-    {
-      "parameters": {
         "jsCode": "// Emit a single item to trigger the analyze phase, carrying crawl counts\nlet crawled = 0, inserted = 0;\ntry { crawled = $('Dedup Merge').all().length; } catch(e) {}\ntry { inserted = $('Dedup: Filter New').all().filter(i => !i.json._empty).length; } catch(e) {}\nreturn [{ json: { _trigger: 'crawl_complete', _crawled: crawled, _inserted: inserted } }];"
       },
       "id": "goto-analyze",
@@ -265,8 +192,70 @@
     },
     {
       "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const fs = require('fs');\n\nfunction readConfig() {\n  const projectDir = ($env.JOBS_FUNNEL_PROJECT_DIR || '.').replace(/\\\\/g, '/');\n  try {\n    return JSON.parse(fs.readFileSync(projectDir + '/config.json', 'utf-8'));\n  } catch (e) {\n    return {};\n  }\n}\n\nfunction parseSummary(stdout) {\n  const text = String(stdout || '').trim();\n  if (!text) {\n    return {parsed: false, summary: {processed: 0, failed: 0, attempted: 0, has_more: true}};\n  }\n  try {\n    const summary = JSON.parse(text.split('\\n').pop());\n    return {\n      parsed: true,\n      summary: {\n        batch_id: summary.batch_id || '',\n        processed: Number(summary.processed || 0),\n        failed: Number(summary.failed || 0),\n        attempted: Number(summary.attempted || ((summary.processed || 0) + (summary.failed || 0))),\n        has_more: summary.has_more !== false,\n      },\n    };\n  } catch (e) {\n    return {parsed: false, summary: {processed: 0, failed: 0, attempted: 0, has_more: true}};\n  }\n}\n\nfunction readRunStart() {\n  try {\n    return $('DB: Run Start').first().json;\n  } catch (e) {}\n  try {\n    return $('DB: Run Start (Analyze)').first().json;\n  } catch (e) {}\n  return {};\n}\n\nconst config = readConfig();\nconst batchSize = Number(config.embed_batch_size || 8);\nconst configuredCap = Number(config.embed_cap_per_run == null ? 80 : config.embed_cap_per_run);\nconst cap = configuredCap > 0 ? configuredCap : Number.POSITIVE_INFINITY;\n\nlet priorStdout = '';\ntry {\n  priorStdout = $('Embed: Next Batch').last().json.stdout || '';\n} catch (e) {}\n\nconst parsed = parseSummary(priorStdout);\nconst summary = parsed.summary;\nconst runStart = readRunStart();\nconst runId = runStart.id || $execution.id || 'unknown';\nconst staticData = $getWorkflowStaticData('global');\nstaticData.embedRunTotals = staticData.embedRunTotals || {};\nconst totals = staticData.embedRunTotals[String(runId)] || {\n  processed: 0,\n  failed: 0,\n  attempted: 0,\n  lastBatchId: '',\n  emptyStreak: 0,\n};\n\nif (parsed.parsed && summary.batch_id && summary.batch_id !== totals.lastBatchId) {\n  totals.processed += summary.processed;\n  totals.failed += summary.failed;\n  totals.attempted += summary.attempted;\n  totals.lastBatchId = summary.batch_id;\n  totals.emptyStreak = summary.attempted === 0 ? totals.emptyStreak + 1 : 0;\n} else if (!parsed.parsed && priorStdout) {\n  totals.emptyStreak += 1;\n}\n\nconst capRemaining = Number.isFinite(cap) ? Math.max(0, cap - totals.attempted) : -1;\nconst capHit = Number.isFinite(cap) && capRemaining === 0 && summary.has_more;\nconst stalled = totals.emptyStreak >= 3;\nconst moreToEmbed = summary.has_more && !capHit && !stalled;\nconst degraded = totals.failed > 0 || capHit || stalled;\n\nstaticData.embedRunTotals[String(runId)] = totals;\n\nlet metricsQuery = 'SELECT 1';\nif (runStart.id) {\n  metricsQuery =\n    'UPDATE pipeline_runs SET ' +\n    `embed_count = ${totals.processed}, ` +\n    `embed_failures = ${totals.failed}, ` +\n    `embed_degraded = ${degraded ? 'TRUE' : 'FALSE'} ` +\n    `WHERE id = ${Number(runStart.id)}`;\n}\n\nreturn [{\n  json: {\n    _embedLimit: capRemaining < 0 ? batchSize : Math.min(batchSize, capRemaining),\n    _embedCapRemaining: capRemaining,\n    _embedMoreToDo: moreToEmbed,\n    _embedMetricsQuery: metricsQuery,\n    _embedSummary: {\n      last: summary,\n      cumulative: totals,\n      capRemaining,\n      capHit,\n      stalled,\n      degraded,\n    },\n  },\n}];"
+      },
+      "id": "embed-loop-control",
+      "name": "Embed: Loop Control",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3350, 520]
+    },
+    {
+      "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM {{ $env.JOBS_FUNNEL_TABLE }} WHERE status IN ('pending', 'error') AND retry_count < 3 ORDER BY CASE description_quality WHEN 'good' THEN 0 WHEN 'unknown' THEN 1 WHEN 'poor' THEN 2 WHEN 'empty' THEN 3 ELSE 4 END, crawled_at ASC LIMIT 80",
+        "query": "={{ $json._embedMetricsQuery }}",
+        "options": {}
+      },
+      "id": "embed-metrics",
+      "name": "Embed: Metrics Update",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [3500, 520],
+      "credentials": {
+        "postgres": {
+          "id": "CONFIGURE_ME",
+          "name": "Postgres - Jobs Funnel"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "loose" },
+          "conditions": [
+            {
+              "leftValue": "={{ $json._embedMoreToDo }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true" }
+            }
+          ]
+        }
+      },
+      "id": "embed-more",
+      "name": "Embed More?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [3650, 520]
+    },
+    {
+      "parameters": {
+        "command": "=python \"{{ $env.JOBS_FUNNEL_PROJECT_DIR }}/scripts/embed_next_batch.py\" --limit {{ $json._embedLimit }} --cap-remaining {{ $json._embedCapRemaining }}"
+      },
+      "id": "embed-next-batch",
+      "name": "Embed: Next Batch",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [3900, 430],
+      "continueOnFail": true,
+      "retryOnFail": false,
+      "maxTries": 1
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM {{ $env.JOBS_FUNNEL_TABLE }} WHERE status IN ('pending', 'error') AND retry_count < 3 AND embedding_calibration IS NOT NULL ORDER BY CASE description_quality WHEN 'good' THEN 0 WHEN 'unknown' THEN 1 WHEN 'poor' THEN 2 WHEN 'empty' THEN 3 ELSE 4 END, crawled_at ASC LIMIT 80",
         "options": {}
       },
       "id": "db-fetch-pending",
@@ -588,7 +577,7 @@
     "Has Results?": {
       "main": [
         [{ "node": "Dedup: Get Seen URLs", "type": "main", "index": 0 }],
-        [{ "node": "DB: Fetch Pending", "type": "main", "index": 0 }]
+        [{ "node": "Start Analyze", "type": "main", "index": 0 }]
       ]
     },
     "Dedup: Get Seen URLs": {
@@ -604,7 +593,7 @@
     "Has New?": {
       "main": [
         [{ "node": "AA: Fetch Descriptions", "type": "main", "index": 0 }],
-        [{ "node": "DB: Fetch Pending", "type": "main", "index": 0 }]
+        [{ "node": "Start Analyze", "type": "main", "index": 0 }]
       ]
     },
     "AA: Fetch Descriptions": {
@@ -618,31 +607,6 @@
       ]]
     },
     "DB: Insert Jobs": {
-      "main": [[
-        { "node": "Embed: Prep Query", "type": "main", "index": 0 }
-      ]]
-    },
-    "Embed: Prep Query": {
-      "main": [[
-        { "node": "Embed: Fetch IDs", "type": "main", "index": 0 }
-      ]]
-    },
-    "Embed: Fetch IDs": {
-      "main": [[
-        { "node": "Embed: Execute", "type": "main", "index": 0 }
-      ]]
-    },
-    "Embed: Execute": {
-      "main": [[
-        { "node": "Embed: Collect Metrics", "type": "main", "index": 0 }
-      ]]
-    },
-    "Embed: Collect Metrics": {
-      "main": [[
-        { "node": "Embed: Metrics Update", "type": "main", "index": 0 }
-      ]]
-    },
-    "Embed: Metrics Update": {
       "main": [[
         { "node": "Start Analyze", "type": "main", "index": 0 }
       ]]
@@ -668,6 +632,27 @@
       ]]
     },
     "Rescore: Uncalibrated": {
+      "main": [[
+        { "node": "Embed: Loop Control", "type": "main", "index": 0 }
+      ]]
+    },
+    "Embed: Loop Control": {
+      "main": [[
+        { "node": "Embed: Metrics Update", "type": "main", "index": 0 }
+      ]]
+    },
+    "Embed: Metrics Update": {
+      "main": [[
+        { "node": "Embed More?", "type": "main", "index": 0 }
+      ]]
+    },
+    "Embed More?": {
+      "main": [
+        [{ "node": "Embed: Next Batch", "type": "main", "index": 0 }],
+        [{ "node": "DB: Fetch Pending", "type": "main", "index": 0 }]
+      ]
+    },
+    "Embed: Next Batch": {
       "main": [[
         { "node": "DB: Fetch Pending", "type": "main", "index": 0 }
       ]]
@@ -735,7 +720,7 @@
     },
     "Check More Pending": {
       "main": [[
-        { "node": "DB: Fetch Pending", "type": "main", "index": 0 }
+        { "node": "Embed: Loop Control", "type": "main", "index": 0 }
       ]]
     },
     "Run End": {
