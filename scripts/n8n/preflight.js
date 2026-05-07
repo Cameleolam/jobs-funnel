@@ -46,21 +46,23 @@ if (projectDir) {
   }
 }
 
-// Ollama reachability + model presence
+// Ollama reachability + model presence.
+// Uses this.helpers.httpRequest, the same HTTP path the existing crawlers
+// use. The n8n task-runner sandbox blocks fetch(), URL, and require('http').
 async function checkOllama() {
   try {
-    const r = await fetch(ollamaUrl + '/api/tags', { signal: AbortSignal.timeout(3000) });
-    if (!r.ok) {
-      errors.push(`Ollama responded ${r.status} at ${ollamaUrl}/api/tags`);
-      return;
-    }
-    const body = await r.json();
-    const models = (body.models || []).map(m => (m.name || '').split(':')[0]);
+    const body = await this.helpers.httpRequest({
+      method: 'GET',
+      url: ollamaUrl + '/api/tags',
+      timeout: 3000,
+      json: true,
+    });
+    const models = ((body && body.models) || []).map(m => (m.name || '').split(':')[0]);
     if (!models.includes(embedModel)) {
       errors.push(`Ollama model '${embedModel}' not found. Run: ollama pull ${embedModel}`);
     }
   } catch (e) {
-    errors.push(`Ollama unreachable at ${ollamaUrl}: ${e.message}`);
+    errors.push(`Ollama unreachable at ${ollamaUrl}: ${e.message || e}`);
   }
 }
 
