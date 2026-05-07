@@ -61,30 +61,67 @@ def test_each_crawler_connects_to_merge_sources_with_unique_index():
 
 def test_unknown_crawler_id_fails_build():
     """Profile with an unknown crawler id should fail build with useful error."""
-    # Use a temp profile copy with a bogus id
-    import shutil, tempfile, os as _os
-    with tempfile.TemporaryDirectory() as td:
-        bad_profile = Path(td) / "profile_bad"
-        shutil.copytree(REPO / "profiles" / "profile1", bad_profile)
-        search = json.loads((bad_profile / "search.json").read_text(encoding="utf-8"))
-        search["crawlers"] = ["does_not_exist"]
-        (bad_profile / "search.json").write_text(json.dumps(search), encoding="utf-8")
+    import shutil, os as _os
 
-        # Run with JOBS_FUNNEL_PROFILE pointing at our bad profile; we need to also
-        # point the script at the parent dir. Easiest: monkey-patch via an env var
-        # override is not supported. Instead, copy it under profiles/ temporarily.
-        tmp_name = "profile_ci_bad_7f3a"
-        tmp_dest = REPO / "profiles" / tmp_name
-        shutil.copytree(bad_profile, tmp_dest)
-        try:
-            env = _os.environ.copy()
-            env["JOBS_FUNNEL_PROFILE"] = tmp_name
-            result = subprocess.run(
-                [sys.executable, "scripts/build_workflow.py"],
-                cwd=REPO, env=env, capture_output=True, text=True
-            )
-            assert result.returncode != 0
-            combined = result.stdout + result.stderr
-            assert "does_not_exist" in combined
-        finally:
-            shutil.rmtree(tmp_dest, ignore_errors=True)
+    tmp_dest = REPO / "profiles" / "profile_ci_bad_7f3a"
+    shutil.rmtree(tmp_dest, ignore_errors=True)
+    shutil.copytree(REPO / "profiles" / "profile1", tmp_dest)
+    try:
+        search = json.loads((tmp_dest / "search.json").read_text(encoding="utf-8"))
+        search["crawlers"] = ["does_not_exist"]
+        (tmp_dest / "search.json").write_text(json.dumps(search), encoding="utf-8")
+
+        env = _os.environ.copy()
+        env["JOBS_FUNNEL_PROFILE"] = tmp_dest.name
+        result = subprocess.run(
+            [sys.executable, "scripts/build_workflow.py"],
+            cwd=REPO, env=env, capture_output=True, text=True
+        )
+        assert result.returncode != 0
+        combined = result.stdout + result.stderr
+        assert "does_not_exist" in combined
+    finally:
+        shutil.rmtree(tmp_dest, ignore_errors=True)
+
+
+def test_streaming_embed_nodes_replace_inline_embed_chain():
+    wf = run_build("profile1")
+    node_names = {n["name"] for n in wf["nodes"]}
+
+    assert "Embed: Loop Control" in node_names
+    assert "Embed More?" in node_names
+    assert "Embed: Next Batch" in node_names
+    assert "Embed: Metrics Update" in node_names
+
+    assert "Embed: Prep Query" not in node_names
+    assert "Embed: Fetch IDs" not in node_names
+    assert "Embed: Execute" not in node_names
+    assert "Embed: Collect Metrics" not in node_names
+
+
+def test_streaming_embed_interleaves_before_each_pending_fetch():
+    wf = run_build("profile1")
+    conns = wf["connections"]
+
+    db_fetch = next(n for n in wf["nodes"] if n["name"] == "DB: Fetch Pending")
+    assert "embedding_calibration IS NOT NULL" in db_fetch["parameters"]["query"]
+
+    loop_node = next(n for n in wf["nodes"] if n["name"] == "Embed: Loop Control")
+    assert loop_node["parameters"]["mode"] == "runOnceForAllItems"
+    assert "executeOnce" not in loop_node
+
+    assert conns["Has Results?"]["main"][1][0]["node"] == "Start Analyze"
+    assert conns["Has New?"]["main"][1][0]["node"] == "Start Analyze"
+    assert conns["DB: Insert Jobs"]["main"][0][0]["node"] == "Start Analyze"
+    assert conns["Start Analyze"]["main"][0][0]["node"] == "Rescore: Uncalibrated"
+    assert conns["DB: Run Start (Analyze)"]["main"][0][0]["node"] == "Rescore: Uncalibrated"
+    assert conns["Rescore: Uncalibrated"]["main"][0][0]["node"] == "Embed: Loop Control"
+    assert conns["Embed: Loop Control"]["main"][0][0]["node"] == "Embed: Metrics Update"
+    assert conns["Embed: Metrics Update"]["main"][0][0]["node"] == "Embed More?"
+
+    embed_more_true = conns["Embed More?"]["main"][0][0]["node"]
+    embed_more_false = conns["Embed More?"]["main"][1][0]["node"]
+    assert embed_more_true == "Embed: Next Batch"
+    assert embed_more_false == "DB: Fetch Pending"
+    assert conns["Embed: Next Batch"]["main"][0][0]["node"] == "DB: Fetch Pending"
+    assert conns["Check More Pending"]["main"][0][0]["node"] == "Embed: Loop Control"
