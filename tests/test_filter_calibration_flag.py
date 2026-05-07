@@ -4,6 +4,7 @@ We don't invoke claude -p in tests; we patch subprocess.run to return a
 known JSON payload, then assert filter.py merges scored_uncalibrated into
 the output for jobs where _embedding_calibration_present is False.
 """
+import base64
 import json
 import subprocess
 import sys
@@ -11,6 +12,10 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
+
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
+FILTER_PROMPT = FIXTURES / "filter_prompt.md"
 
 
 def _fake_claude(stdout):
@@ -21,29 +26,23 @@ def _fake_claude(stdout):
     return r
 
 
-def _make_profile(tmp_path):
-    pro = tmp_path / "profiles" / "test"
-    pro.mkdir(parents=True)
-    (pro / "filter_prompt.md").write_text("stub", encoding="utf-8")
-    return pro
+def _argv_for_payload(payload):
+    raw = json.dumps(payload).encode("utf-8")
+    encoded = base64.b64encode(raw).decode("ascii")
+    return ["filter.py", "--base64", encoded]
 
 
-def test_filter_stamps_scored_uncalibrated_on_missing_flag(tmp_path, monkeypatch, capsys):
+def test_filter_stamps_scored_uncalibrated_on_missing_flag(monkeypatch, capsys):
     monkeypatch.setenv("JOBS_FUNNEL_PROFILE", "test")
-    pro = _make_profile(tmp_path)
 
     # Reload filter after env is set; patch its module-level paths.
     import importlib
     import scripts.filter as fil
     importlib.reload(fil)
-    monkeypatch.setattr(fil, "PIPELINE_DIR", tmp_path)
-    monkeypatch.setattr(fil, "PROMPT_FILE", pro / "filter_prompt.md")
+    monkeypatch.setattr(fil, "PROMPT_FILE", FILTER_PROMPT)
 
-    # Write job JSON to a temp file and pass via sys.argv (avoids stdin complexity)
     job = {"title": "T", "description": "D", "_embedding_calibration_present": False}
-    job_file = tmp_path / "job_input.json"
-    job_file.write_text(json.dumps(job), encoding="utf-8")
-    monkeypatch.setattr(sys, "argv", ["filter.py", str(job_file)])
+    monkeypatch.setattr(sys, "argv", _argv_for_payload(job))
 
     fake_response = json.dumps({"result": json.dumps({
         "fit_score": 50, "decision": "MAYBE", "cv_variant": "default",
@@ -61,20 +60,16 @@ def test_filter_stamps_scored_uncalibrated_on_missing_flag(tmp_path, monkeypatch
     assert payload.get("scored_uncalibrated") is True
 
 
-def test_filter_omits_flag_when_calibration_present(tmp_path, monkeypatch, capsys):
+def test_filter_omits_flag_when_calibration_present(monkeypatch, capsys):
     monkeypatch.setenv("JOBS_FUNNEL_PROFILE", "test")
-    pro = _make_profile(tmp_path)
 
     import importlib
     import scripts.filter as fil
     importlib.reload(fil)
-    monkeypatch.setattr(fil, "PIPELINE_DIR", tmp_path)
-    monkeypatch.setattr(fil, "PROMPT_FILE", pro / "filter_prompt.md")
+    monkeypatch.setattr(fil, "PROMPT_FILE", FILTER_PROMPT)
 
     job = {"title": "T", "description": "D", "_embedding_calibration_present": True}
-    job_file = tmp_path / "job_input.json"
-    job_file.write_text(json.dumps(job), encoding="utf-8")
-    monkeypatch.setattr(sys, "argv", ["filter.py", str(job_file)])
+    monkeypatch.setattr(sys, "argv", _argv_for_payload(job))
 
     fake_response = json.dumps({"result": json.dumps({
         "fit_score": 80, "decision": "PASS", "cv_variant": "default",
@@ -92,25 +87,21 @@ def test_filter_omits_flag_when_calibration_present(tmp_path, monkeypatch, capsy
     assert payload.get("scored_uncalibrated", False) is False
 
 
-def test_filter_batch_handles_single_object_response(tmp_path, monkeypatch, capsys):
+def test_filter_batch_handles_single_object_response(monkeypatch, capsys):
     # Regression: batch input + Claude returning a single object (not an array)
     # used to crash on assessment[i] indexing before normalization.
     monkeypatch.setenv("JOBS_FUNNEL_PROFILE", "test")
-    pro = _make_profile(tmp_path)
 
     import importlib
     import scripts.filter as fil
     importlib.reload(fil)
-    monkeypatch.setattr(fil, "PIPELINE_DIR", tmp_path)
-    monkeypatch.setattr(fil, "PROMPT_FILE", pro / "filter_prompt.md")
+    monkeypatch.setattr(fil, "PROMPT_FILE", FILTER_PROMPT)
 
     batch = [
         {"title": "A", "description": "D", "_embedding_calibration_present": False},
         {"title": "B", "description": "D", "_embedding_calibration_present": True},
     ]
-    job_file = tmp_path / "batch_input.json"
-    job_file.write_text(json.dumps(batch), encoding="utf-8")
-    monkeypatch.setattr(sys, "argv", ["filter.py", str(job_file)])
+    monkeypatch.setattr(sys, "argv", _argv_for_payload(batch))
 
     # Claude returns a single object instead of the requested array
     single_object = json.dumps({

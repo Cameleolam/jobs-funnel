@@ -1,9 +1,13 @@
 """Tests for scripts.lib.country_pack."""
 import dataclasses
+from pathlib import Path
 
 import pytest
 
 from scripts.lib.country_pack import CountryPack, LanguageHint, load_pack
+
+
+FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
 
 
 def test_load_de_pack_has_expected_fields():
@@ -36,21 +40,10 @@ def test_country_pack_is_immutable_dataclass():
         pack.code = "xx"
 
 
-def test_load_pack_detects_code_mismatch(tmp_path, monkeypatch):
+def test_load_pack_detects_code_mismatch(monkeypatch):
     """Code field in country.json must match directory name."""
-    import json as _json
-    bad_dir = tmp_path / "countries" / "xx"
-    bad_dir.mkdir(parents=True)
-    (bad_dir / "country.json").write_text(_json.dumps({
-        "code": "yy", "name": "Mismatch", "default_language": "en",
-        "secondary_languages": [], "currency": "USD"
-    }), encoding="utf-8")
-    (bad_dir / "staffing_patterns.json").write_text('{"patterns": []}', encoding="utf-8")
-    (bad_dir / "geo_allowlist.json").write_text('{"allowlist": []}', encoding="utf-8")
-    (bad_dir / "language_hints.json").write_text('{"languages": {}}', encoding="utf-8")
-
     from scripts.lib import country_pack as cp_mod
-    monkeypatch.setattr(cp_mod, "_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(cp_mod, "_repo_root", lambda: FIXTURES)
 
     with pytest.raises(ValueError, match="Code mismatch"):
         cp_mod.load_pack("xx")
