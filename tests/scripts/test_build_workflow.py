@@ -132,3 +132,18 @@ def test_streaming_embed_interleaves_before_each_pending_fetch():
     assert embed_more_false == "DB: Fetch Pending"
     assert conns["Embed: Next Batch"]["main"][0][0]["node"] == "DB: Fetch Pending"
     assert conns["Check More Pending"]["main"][0][0]["node"] == "Embed: Loop Control"
+
+
+def test_streaming_embed_uses_loop_control_values_after_metrics_update():
+    wf = run_build("profile1")
+
+    embed_more = next(n for n in wf["nodes"] if n["name"] == "Embed More?")
+    condition = embed_more["parameters"]["conditions"]["conditions"][0]
+    assert "$(\"Embed: Loop Control\").first().json._embedMoreToDo" in condition["leftValue"]
+
+    next_batch = next(n for n in wf["nodes"] if n["name"] == "Embed: Next Batch")
+    command = next_batch["parameters"]["command"]
+    assert "$(\"Embed: Loop Control\").first().json._embedLimit" in command
+    assert "$(\"Embed: Loop Control\").first().json._embedCapRemaining" in command
+    assert "$json._embedLimit" not in command
+    assert "$json._embedCapRemaining" not in command

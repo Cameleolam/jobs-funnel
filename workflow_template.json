@@ -222,7 +222,7 @@
           "options": { "caseSensitive": true, "typeValidation": "loose" },
           "conditions": [
             {
-              "leftValue": "={{ $json._embedMoreToDo }}",
+              "leftValue": "={{ $(\"Embed: Loop Control\").first().json._embedMoreToDo }}",
               "rightValue": true,
               "operator": { "type": "boolean", "operation": "true" }
             }
@@ -237,7 +237,7 @@
     },
     {
       "parameters": {
-        "command": "=python \"{{ $env.JOBS_FUNNEL_PROJECT_DIR }}/scripts/embed_next_batch.py\" --limit {{ $json._embedLimit }} --cap-remaining {{ $json._embedCapRemaining }}"
+        "command": "=python \"{{ $env.JOBS_FUNNEL_PROJECT_DIR }}/scripts/embed_next_batch.py\" --limit {{ $(\"Embed: Loop Control\").first().json._embedLimit }} --cap-remaining {{ $(\"Embed: Loop Control\").first().json._embedCapRemaining }}"
       },
       "id": "embed-next-batch",
       "name": "Embed: Next Batch",
