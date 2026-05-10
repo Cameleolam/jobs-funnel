@@ -1,5 +1,5 @@
 // Prep semantic duplicate detection: collect newly analyzed jobs + existing jobs,
-// write a temp file for dedup_semantic.py to process.
+// write a temp file for run_dedup.py to process.
 const fs = require('fs');
 const table = $env.JOBS_FUNNEL_TABLE;
 const projectDir = ($env.JOBS_FUNNEL_PROJECT_DIR || '.').replace(/\\/g, '/');
@@ -54,7 +54,7 @@ if (filteredExisting.length === 0) {
   return [{ json: { _dedupSkipped: true, _dedupQuery: '' } }];
 }
 
-// Write temp file for dedup_semantic.py
+// Write temp file for run_dedup.py
 fs.mkdirSync(tmpDir, { recursive: true });
 const tmpPath = tmpDir + '/n8n_dedup_' + Date.now() + '.json';
 fs.writeFileSync(tmpPath, JSON.stringify({

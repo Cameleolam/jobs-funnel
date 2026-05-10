@@ -79,6 +79,15 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
     jobs_inserted   INTEGER DEFAULT 0,
     jobs_analyzed   INTEGER DEFAULT 0,
     jobs_errored    INTEGER DEFAULT 0,
+    embed_count     INTEGER DEFAULT 0,
+    embed_failures  INTEGER DEFAULT 0,
+    embed_degraded  BOOLEAN DEFAULT FALSE,
+    dedup_vector_resolved INTEGER DEFAULT 0,
+    dedup_claude_calls    INTEGER DEFAULT 0,
+    score_critique_count INTEGER DEFAULT 0,
+    score_human_flagged  INTEGER DEFAULT 0,
+    score_uncalibrated   INTEGER DEFAULT 0,
+    score_rescored       INTEGER DEFAULT 0,
     duration_ms     INTEGER,
     status          TEXT NOT NULL DEFAULT 'running',   -- running/success/partial/failed
     notes           TEXT

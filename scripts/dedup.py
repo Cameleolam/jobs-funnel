@@ -6,16 +6,17 @@ import json
 import os
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import psycopg2.extras
+from dotenv import load_dotenv
 
 from scripts import db
 
 
-THRESHOLD_CERTAIN = float(os.environ.get("DEDUP_THRESHOLD_CERTAIN", "0.95"))
-THRESHOLD_REVIEW = float(os.environ.get("DEDUP_THRESHOLD_REVIEW", "0.85"))
-SCOPE_DAYS = int(os.environ.get("DEDUP_SCOPE_DAYS", "30"))
+ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
+_DOTENV_LOADED = False
 
 CLAUDE_PROMPT = """\
 You are deciding whether two job postings are the same role.
@@ -62,11 +63,34 @@ class DedupDecision:
 def classify_similarity(similarity: float | None) -> str:
     if similarity is None:
         return "no_match"
-    if similarity >= THRESHOLD_CERTAIN:
+    if similarity >= _threshold_certain():
         return "vector_certain"
-    if similarity < THRESHOLD_REVIEW:
+    if similarity < _threshold_review():
         return "vector_clear"
     return "claude_review"
+
+
+def _load_env() -> None:
+    global _DOTENV_LOADED
+    if _DOTENV_LOADED:
+        return
+    load_dotenv(ENV_PATH)
+    _DOTENV_LOADED = True
+
+
+def _threshold_certain() -> float:
+    _load_env()
+    return float(os.environ.get("DEDUP_THRESHOLD_CERTAIN", "0.95"))
+
+
+def _threshold_review() -> float:
+    _load_env()
+    return float(os.environ.get("DEDUP_THRESHOLD_REVIEW", "0.85"))
+
+
+def _scope_days() -> int:
+    _load_env()
+    return int(os.environ.get("DEDUP_SCOPE_DAYS", "30"))
 
 
 def _load_job(cur, table: str, job_id: int) -> dict[str, Any] | None:
@@ -86,7 +110,15 @@ def _nearest_vector_match(
     table: str,
     job: dict[str, Any],
     scope_days: int,
+    candidate_ids: list[int] | None = None,
 ) -> dict[str, Any] | None:
+    candidate_condition = ""
+    params: tuple[Any, ...] = (job["embedding"], job["id"], scope_days)
+    if candidate_ids is not None:
+        candidate_condition = "AND id = ANY(%s)"
+        params = (*params, candidate_ids)
+    params = (*params, job["embedding"])
+
     cur.execute(
         f"""
         SELECT
@@ -100,10 +132,11 @@ def _nearest_vector_match(
           AND embedding IS NOT NULL
           AND status = 'analyzed'
           AND crawled_at > NOW() - make_interval(days => %s)
+          {candidate_condition}
         ORDER BY embedding <=> %s
         LIMIT 1
         """,
-        (job["embedding"], job["id"], scope_days, job["embedding"]),
+        params,
     )
     return cur.fetchone()
 
@@ -151,9 +184,11 @@ def _claude_review_decision(job: dict[str, Any], match: dict[str, Any], similari
 def find_duplicate_by_id(
     job_id: int,
     table: str | None = None,
-    scope_days: int = SCOPE_DAYS,
+    scope_days: int | None = None,
+    candidate_ids: list[int] | None = None,
 ) -> DedupDecision:
     table = table or db.table_name()
+    scope_days = _scope_days() if scope_days is None else scope_days
     conn = db.get_vector_conn()
     try:
         with conn:
@@ -164,7 +199,10 @@ def find_duplicate_by_id(
                 if job.get("embedding") is None:
                     return DedupDecision(int(job["id"]), None, "no_embedding")
 
-                match = _nearest_vector_match(cur, table, job, scope_days)
+                if candidate_ids is not None and not candidate_ids:
+                    return DedupDecision(int(job["id"]), None, "no_match")
+
+                match = _nearest_vector_match(cur, table, job, scope_days, candidate_ids)
                 if match is None:
                     return DedupDecision(int(job["id"]), None, "no_match")
 

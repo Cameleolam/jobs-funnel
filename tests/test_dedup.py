@@ -1,4 +1,5 @@
 """Tests for scripts/dedup.py."""
+import os
 from unittest.mock import MagicMock
 
 import scripts.dedup as dedup
@@ -21,6 +22,22 @@ def test_classify_similarity_routes_review_band():
 
 def test_classify_similarity_rejects_missing_similarity():
     assert dedup.classify_similarity(None) == "no_match"
+
+
+def test_classify_similarity_loads_thresholds_from_dotenv(tmp_path, monkeypatch):
+    env_path = tmp_path / ".env"
+    env_path.write_text(
+        "DEDUP_THRESHOLD_CERTAIN=0.91\nDEDUP_THRESHOLD_REVIEW=0.72\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("DEDUP_THRESHOLD_CERTAIN", raising=False)
+    monkeypatch.delenv("DEDUP_THRESHOLD_REVIEW", raising=False)
+    monkeypatch.setattr(dedup, "ENV_PATH", env_path)
+    monkeypatch.setattr(dedup, "_DOTENV_LOADED", False)
+
+    assert dedup.classify_similarity(0.90) == "claude_review"
+    assert dedup.classify_similarity(0.91) == "vector_certain"
+    assert os.environ["DEDUP_THRESHOLD_CERTAIN"] == "0.91"
 
 
 def _fake_conn(fetchone_rows):
@@ -65,6 +82,52 @@ def test_find_duplicate_by_id_marks_vector_certain_duplicate(monkeypatch):
     assert decision.confidence == "high"
     assert "embedding <=>" in cur.execute.call_args_list[1].args[0]
     assert "make_interval(days => %s)" in cur.execute.call_args_list[1].args[0]
+
+
+def test_find_duplicate_by_id_filters_nearest_match_to_candidate_ids(monkeypatch):
+    conn, cur = _fake_conn([
+        {"id": 10, "title": "Backend", "company": "Acme", "location": "Berlin", "embedding": [0.1] * 1024},
+        {"id": 9, "title": "Backend Engineer", "company": "Acme", "location": "Berlin", "similarity": 0.97},
+    ])
+    monkeypatch.setattr("scripts.db.get_vector_conn", lambda: conn)
+
+    decision = dedup.find_duplicate_by_id(10, table="jobs_test", candidate_ids=[9, 8])
+
+    query, params = cur.execute.call_args_list[1].args
+    assert decision.existing_id == 9
+    assert "id = ANY(%s)" in query
+    assert params == ([0.1] * 1024, 10, 30, [9, 8], [0.1] * 1024)
+
+
+def test_find_duplicate_by_id_loads_scope_days_from_dotenv(tmp_path, monkeypatch):
+    env_path = tmp_path / ".env"
+    env_path.write_text("DEDUP_SCOPE_DAYS=12\n", encoding="utf-8")
+    monkeypatch.delenv("DEDUP_SCOPE_DAYS", raising=False)
+    monkeypatch.setattr(dedup, "ENV_PATH", env_path)
+    monkeypatch.setattr(dedup, "_DOTENV_LOADED", False)
+    conn, cur = _fake_conn([
+        {"id": 10, "title": "Backend", "company": "Acme", "location": "Berlin", "embedding": [0.1] * 1024},
+        {"id": 9, "title": "Backend Engineer", "company": "Acme", "location": "Berlin", "similarity": 0.97},
+    ])
+    monkeypatch.setattr("scripts.db.get_vector_conn", lambda: conn)
+
+    dedup.find_duplicate_by_id(10, table="jobs_test")
+
+    _, params = cur.execute.call_args_list[1].args
+    assert params[2] == 12
+
+
+def test_find_duplicate_by_id_returns_no_match_for_empty_candidate_ids(monkeypatch):
+    conn, cur = _fake_conn([
+        {"id": 10, "title": "Backend", "company": "Acme", "location": "Berlin", "embedding": [0.1] * 1024},
+    ])
+    monkeypatch.setattr("scripts.db.get_vector_conn", lambda: conn)
+
+    decision = dedup.find_duplicate_by_id(10, table="jobs_test", candidate_ids=[])
+
+    assert decision.existing_id is None
+    assert decision.decision_path == "no_match"
+    assert cur.execute.call_count == 1
 
 
 def test_find_duplicate_by_id_returns_clear_when_similarity_below_review(monkeypatch):

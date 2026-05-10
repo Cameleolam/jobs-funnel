@@ -205,6 +205,42 @@ def test_phase2_dedup_uses_tiered_wrapper_and_metrics():
     assert "dedup_claude_calls" in code
 
 
+def test_phase2_dedup_fetch_recent_uses_configured_scope_days():
+    wf = run_build("profile1")
+    fetch_recent = next(n for n in wf["nodes"] if n["name"] == "Dedup: Fetch Recent")
+    query = fetch_recent["parameters"]["query"]
+
+    assert "DEDUP_SCOPE_DAYS" in query
+    assert "make_interval(days =>" in query
+    assert "INTERVAL '30 days'" not in query
+
+
+def test_phase2_dedup_prep_comments_reference_current_wrapper():
+    wf = run_build("profile1")
+    prep = next(n for n in wf["nodes"] if n["name"] == "Dedup: Semantic Prep")
+    code = prep["parameters"]["jsCode"]
+
+    assert "run_dedup.py" in code
+    assert "dedup_semantic.py" not in code
+
+
+def test_fresh_setup_schema_includes_pipeline_metric_columns():
+    sql = (REPO / "scripts" / "setup_db.sql").read_text(encoding="utf-8")
+
+    for column in [
+        "embed_count",
+        "embed_failures",
+        "embed_degraded",
+        "dedup_vector_resolved",
+        "dedup_claude_calls",
+        "score_critique_count",
+        "score_human_flagged",
+        "score_uncalibrated",
+        "score_rescored",
+    ]:
+        assert column in sql
+
+
 def test_phase2_dedup_parse_empty_stdout_returns_select_one_before_metrics():
     wf = run_build("profile1")
     code = dedup_parse_code(wf)

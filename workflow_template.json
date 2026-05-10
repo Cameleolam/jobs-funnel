@@ -362,7 +362,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT id, title, company, location FROM {{ $env.JOBS_FUNNEL_TABLE }} WHERE status = 'analyzed' AND crawled_at > NOW() - INTERVAL '30 days' ORDER BY crawled_at DESC LIMIT 200",
+        "query": "SELECT id, title, company, location FROM {{ $env.JOBS_FUNNEL_TABLE }} WHERE status = 'analyzed' AND crawled_at > NOW() - make_interval(days => {{ Number.isFinite(Number($env.DEDUP_SCOPE_DAYS)) && Number($env.DEDUP_SCOPE_DAYS) > 0 ? Math.floor(Number($env.DEDUP_SCOPE_DAYS)) : 30 }}) ORDER BY crawled_at DESC LIMIT 200",
         "options": {}
       },
       "id": "dedup-fetch-recent",
