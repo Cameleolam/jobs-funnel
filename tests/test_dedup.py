@@ -79,3 +79,70 @@ def test_find_duplicate_by_id_returns_clear_when_similarity_below_review(monkeyp
     assert decision.existing_id is None
     assert decision.decision_path == "vector_clear"
     assert decision.similarity == 0.70
+
+
+def test_claude_review_marks_duplicate_on_true_response(monkeypatch):
+    job = {"id": 10, "title": "Backend", "company": "Acme", "location": "Berlin"}
+    match = {"id": 9, "title": "Backend Engineer", "company": "Acme", "location": "Berlin"}
+    fake = MagicMock(returncode=0, stdout='{"result":"{\\"duplicate\\": true, \\"reason\\": \\"same role\\"}"}', stderr="")
+    monkeypatch.setattr("subprocess.run", lambda *a, **k: fake)
+
+    decision = dedup._claude_review_decision(job, match, 0.90)
+
+    assert decision.existing_id == 9
+    assert decision.decision_path == "claude_dup"
+    assert decision.confidence == "medium"
+
+
+def test_claude_review_returns_clear_on_false_response(monkeypatch):
+    job = {"id": 10, "title": "Backend", "company": "Acme", "location": "Berlin"}
+    match = {"id": 9, "title": "Frontend", "company": "Acme", "location": "Berlin"}
+    fake = MagicMock(returncode=0, stdout='{"result":"{\\"duplicate\\": false, \\"reason\\": \\"different role\\"}"}', stderr="")
+    monkeypatch.setattr("subprocess.run", lambda *a, **k: fake)
+
+    decision = dedup._claude_review_decision(job, match, 0.90)
+
+    assert decision.existing_id is None
+    assert decision.decision_path == "claude_clear"
+
+
+def test_claude_review_fails_closed_on_bad_response(monkeypatch):
+    job = {"id": 10, "title": "Backend", "company": "Acme", "location": "Berlin"}
+    match = {"id": 9, "title": "Backend Engineer", "company": "Acme", "location": "Berlin"}
+    fake = MagicMock(returncode=1, stdout="", stderr="boom")
+    monkeypatch.setattr("subprocess.run", lambda *a, **k: fake)
+
+    decision = dedup._claude_review_decision(job, match, 0.90)
+
+    assert decision.existing_id is None
+    assert decision.decision_path == "claude_error"
+
+
+def test_claude_review_fails_closed_on_process_launch_os_error(monkeypatch):
+    job = {"id": 10, "title": "Backend", "company": "Acme", "location": "Berlin"}
+    match = {"id": 9, "title": "Backend Engineer", "company": "Acme", "location": "Berlin"}
+
+    def raise_permission_error(*args, **kwargs):
+        raise PermissionError("claude shim is not executable")
+
+    monkeypatch.setattr("subprocess.run", raise_permission_error)
+
+    decision = dedup._claude_review_decision(job, match, 0.90)
+
+    assert decision.existing_id is None
+    assert decision.decision_path == "claude_error"
+
+
+def test_claude_review_fails_closed_on_timeout(monkeypatch):
+    job = {"id": 10, "title": "Backend", "company": "Acme", "location": "Berlin"}
+    match = {"id": 9, "title": "Backend Engineer", "company": "Acme", "location": "Berlin"}
+
+    def raise_timeout(*args, **kwargs):
+        raise dedup.subprocess.TimeoutExpired(cmd="claude", timeout=120)
+
+    monkeypatch.setattr("subprocess.run", raise_timeout)
+
+    decision = dedup._claude_review_decision(job, match, 0.90)
+
+    assert decision.existing_id is None
+    assert decision.decision_path == "claude_error"
