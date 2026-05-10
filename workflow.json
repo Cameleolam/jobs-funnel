@@ -396,7 +396,7 @@
     },
     {
       "parameters": {
-        "command": "=python \"{{ $env.JOBS_FUNNEL_PROJECT_DIR }}/scripts/dedup_semantic.py\" \"{{ $json._dedupTmpPath }}\""
+        "command": "=python \"{{ $env.JOBS_FUNNEL_PROJECT_DIR }}/scripts/run_dedup.py\" \"{{ $json._dedupTmpPath }}\""
       },
       "id": "dedup-claude",
       "name": "Dedup: Claude",
@@ -407,7 +407,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Parse dedup_semantic.py output and build UPDATE queries\nconst table = $env.JOBS_FUNNEL_TABLE;\nconst stdout = $input.first().json.stdout || '[]';\ntry {\n  const pairs = JSON.parse(stdout);\n  if (!Array.isArray(pairs) || pairs.length === 0) {\n    return [{ json: { _dedupQuery: '' } }];\n  }\n  return pairs.map(p => ({\n    json: {\n      _dedupQuery: `UPDATE ${table} SET possible_duplicate_of = ${Number(p.existing_id)} WHERE id = ${Number(p.new_id)} AND possible_duplicate_of IS NULL`\n    }\n  }));\n} catch (e) {\n  return [{ json: { _dedupQuery: '' } }];\n}"
+        "jsCode": "// Parse tiered run_dedup.py output and build duplicate + metric UPDATE queries\nconst table = $env.JOBS_FUNNEL_TABLE;\n\nfunction readRunStart() {\n  try { return $('DB: Run Start').first().json; } catch (e) {}\n  try { return $('DB: Run Start (Analyze)').first().json; } catch (e) {}\n  return {};\n}\n\nfunction isPlainObject(value) {\n  return value !== null && typeof value === 'object' && !Array.isArray(value);\n}\n\nfunction metricCount(value) {\n  const n = Number(value);\n  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;\n}\n\nconst stdout = ($input.first().json.stdout || '').trim();\nif (!stdout) return [{ json: { _dedupQuery: 'SELECT 1' } }];\n\nlet payload;\ntry {\n  payload = JSON.parse(stdout);\n} catch (e) {\n  payload = null;\n}\n\nlet pairs = [];\nlet metrics = {};\nif (Array.isArray(payload)) {\n  pairs = payload;\n} else if (isPlainObject(payload)) {\n  pairs = Array.isArray(payload.pairs) ? payload.pairs : [];\n  metrics = isPlainObject(payload.metrics) ? payload.metrics : {};\n}\nconst out = [];\n\nfor (const p of pairs) {\n  if (!isPlainObject(p)) continue;\n  const newId = Number(p.new_id);\n  const existingId = Number(p.existing_id);\n  if (Number.isFinite(newId) && Number.isFinite(existingId)) {\n    out.push({\n      json: {\n        _dedupQuery: `UPDATE ${table} SET possible_duplicate_of = ${existingId}, duplicate_confirmed = TRUE WHERE id = ${newId} AND possible_duplicate_of IS NULL`\n      }\n    });\n  }\n}\n\nconst runStart = readRunStart();\nif (runStart.id) {\n  out.push({\n    json: {\n      _dedupQuery:\n        `UPDATE pipeline_runs SET ` +\n        `dedup_vector_resolved = dedup_vector_resolved + ${metricCount(metrics.vector_resolved)}, ` +\n        `dedup_claude_calls = dedup_claude_calls + ${metricCount(metrics.claude_calls)} ` +\n        `WHERE id = ${Number(runStart.id)}`\n    }\n  });\n}\n\nreturn out.length ? out : [{ json: { _dedupQuery: 'SELECT 1' } }];"
       },
       "id": "dedup-semantic-parse",
       "name": "Dedup: Parse Results",

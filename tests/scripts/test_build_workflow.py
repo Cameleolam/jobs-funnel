@@ -21,6 +21,49 @@ def run_build(profile: str):
     return json.loads((REPO / "workflow.json").read_text(encoding="utf-8"))
 
 
+def dedup_parse_code(wf):
+    parse = next(n for n in wf["nodes"] if n["name"] == "Dedup: Parse Results")
+    return parse["parameters"]["jsCode"]
+
+
+def run_dedup_parse(code: str, stdout: str, run_start_id=17):
+    harness = """
+const fs = require('fs');
+const input = JSON.parse(fs.readFileSync(0, 'utf8'));
+const fn = new Function('$input', '$env', '$', input.code);
+const $input = {
+  first() {
+    return { json: { stdout: input.stdout } };
+  }
+};
+const $env = { JOBS_FUNNEL_TABLE: 'jobs' };
+function $(name) {
+  if (!input.runStartId) throw new Error(`missing ${name}`);
+  return {
+    first() {
+      return { json: { id: input.runStartId } };
+    }
+  };
+}
+Promise.resolve(fn($input, $env, $)).then(
+  result => process.stdout.write(JSON.stringify(result)),
+  error => {
+    console.error(error && error.stack ? error.stack : String(error));
+    process.exit(1);
+  }
+);
+"""
+    result = subprocess.run(
+        ["node", "-e", harness],
+        input=json.dumps({"code": code, "stdout": stdout, "runStartId": run_start_id}),
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)
+
+
 def test_build_emits_all_five_crawlers_for_profile1():
     wf = run_build("profile1")
     node_names = {n["name"] for n in wf["nodes"]}
@@ -147,3 +190,73 @@ def test_streaming_embed_uses_loop_control_values_after_metrics_update():
     assert "$(\"Embed: Loop Control\").first().json._embedCapRemaining" in command
     assert "$json._embedLimit" not in command
     assert "$json._embedCapRemaining" not in command
+
+
+def test_phase2_dedup_uses_tiered_wrapper_and_metrics():
+    wf = run_build("profile1")
+    dedup_cmd = next(n for n in wf["nodes"] if n["name"] == "Dedup: Claude")
+    command = dedup_cmd["parameters"]["command"]
+    assert "scripts/run_dedup.py" in command
+    assert "scripts/dedup_semantic.py" not in command
+
+    code = dedup_parse_code(wf)
+    assert "payload.pairs" in code
+    assert "dedup_vector_resolved" in code
+    assert "dedup_claude_calls" in code
+
+
+def test_phase2_dedup_parse_empty_stdout_returns_select_one_before_metrics():
+    wf = run_build("profile1")
+    code = dedup_parse_code(wf)
+
+    assert "const stdout = ($input.first().json.stdout || '').trim();" in code
+    assert "if (!stdout) return [{ json: { _dedupQuery: 'SELECT 1' } }];" in code
+    assert code.index("if (!stdout)") < code.index("const runStart = readRunStart();")
+
+    assert run_dedup_parse(code, "") == [{"json": {"_dedupQuery": "SELECT 1"}}]
+
+
+def test_phase2_dedup_parse_executes_tiered_payloads_safely():
+    wf = run_build("profile1")
+    code = dedup_parse_code(wf)
+
+    zero_pair_metrics = run_dedup_parse(
+        code,
+        json.dumps({"pairs": [], "metrics": {"vector_resolved": 3, "claude_calls": 2}}),
+    )
+    assert len(zero_pair_metrics) == 1
+    assert "dedup_vector_resolved = dedup_vector_resolved + 3" in zero_pair_metrics[0]["json"]["_dedupQuery"]
+    assert "dedup_claude_calls = dedup_claude_calls + 2" in zero_pair_metrics[0]["json"]["_dedupQuery"]
+
+    legacy_array = run_dedup_parse(
+        code,
+        json.dumps([{"new_id": 22, "existing_id": 11}]),
+        run_start_id=None,
+    )
+    assert legacy_array == [{
+        "json": {
+            "_dedupQuery": (
+                "UPDATE jobs SET possible_duplicate_of = 11, duplicate_confirmed = TRUE "
+                "WHERE id = 22 AND possible_duplicate_of IS NULL"
+            )
+        }
+    }]
+
+    assert run_dedup_parse(code, "{", run_start_id=None) == [{"json": {"_dedupQuery": "SELECT 1"}}]
+    assert run_dedup_parse(code, "null", run_start_id=None) == [{"json": {"_dedupQuery": "SELECT 1"}}]
+    assert run_dedup_parse(code, json.dumps({"pairs": {}}), run_start_id=None) == [
+        {"json": {"_dedupQuery": "SELECT 1"}}
+    ]
+
+    sanitized_metrics = run_dedup_parse(
+        code,
+        json.dumps({
+            "pairs": "bad",
+            "metrics": {"vector_resolved": "many", "claude_calls": -4},
+        }),
+    )
+    query = sanitized_metrics[0]["json"]["_dedupQuery"]
+    assert "NaN" not in query
+    assert "+ -" not in query
+    assert "dedup_vector_resolved = dedup_vector_resolved + 0" in query
+    assert "dedup_claude_calls = dedup_claude_calls + 0" in query
