@@ -75,3 +75,83 @@ def test_merge_batch_anchors_dedupes_and_caps_by_weighted_score(monkeypatch):
 
     assert [a["id"] for a in merged] == [2, 1]
     assert merged[1]["weighted_score"] == 0.8
+
+
+def _fake_conn(fetchone_rows=None, fetchall_rows=None):
+    cur = MagicMock()
+    one_rows = list(fetchone_rows or [])
+    all_rows = list(fetchall_rows or [])
+    cur.fetchone.side_effect = lambda: one_rows.pop(0) if one_rows else None
+    cur.fetchall.side_effect = lambda: all_rows.pop(0) if all_rows else []
+    cur.__enter__ = MagicMock(return_value=cur)
+    cur.__exit__ = MagicMock(return_value=False)
+    conn = MagicMock()
+    conn.cursor.return_value = cur
+    conn.__enter__ = MagicMock(return_value=conn)
+    conn.__exit__ = MagicMock(return_value=False)
+    return conn, cur
+
+
+def test_retrieve_returns_empty_when_embedding_fails(monkeypatch):
+    monkeypatch.setattr(retrieval.embed_mod, "embed", MagicMock(side_effect=RuntimeError("ollama down")))
+    get_conn = MagicMock()
+    monkeypatch.setattr(retrieval.db, "get_vector_conn", get_conn)
+
+    assert retrieval.retrieve_similar_decisions({"title": "Backend"}) == []
+    get_conn.assert_not_called()
+
+
+def test_retrieve_returns_empty_when_database_fails(monkeypatch):
+    monkeypatch.setattr(retrieval.embed_mod, "embed", lambda text: [0.1] * 1024)
+    monkeypatch.setattr(retrieval.embed_mod, "text_for_calibration", lambda job: "calibration text")
+    monkeypatch.setattr(retrieval.db, "get_vector_conn", MagicMock(side_effect=RuntimeError("db down")))
+
+    assert retrieval.retrieve_similar_decisions({"title": "Backend"}, k=3) == []
+
+
+def test_retrieve_returns_empty_when_pool_below_minimum(monkeypatch):
+    conn, cur = _fake_conn(fetchone_rows=[{"n": 2}])
+    monkeypatch.setattr(retrieval.embed_mod, "embed", lambda text: [0.1] * 1024)
+    monkeypatch.setattr(retrieval.embed_mod, "text_for_calibration", lambda job: "calibration text")
+    monkeypatch.setattr(retrieval.db, "get_vector_conn", lambda: conn)
+    monkeypatch.setattr(retrieval, "calibration_min_pool", lambda: 3)
+
+    assert retrieval.retrieve_similar_decisions({"title": "Backend"}, k=3) == []
+    assert cur.execute.call_count == 1
+    conn.close.assert_called_once_with()
+
+
+def test_retrieve_queries_weighted_candidates_from_active_tables(monkeypatch):
+    rows = [{
+        "id": 3,
+        "title": "Backend",
+        "company": "Acme",
+        "fit_score": 82,
+        "decision": "APPLY",
+        "reasoning": "good backend match",
+        "notes": "got interview",
+        "user_status": "applied",
+        "seniority_level": "mid",
+        "calibration_label": "applied",
+        "reached_interview": True,
+        "received_offer": False,
+        "similarity": 0.91,
+        "weighted_score": 1.09,
+    }]
+    conn, cur = _fake_conn(fetchone_rows=[{"n": 4}], fetchall_rows=[rows])
+    monkeypatch.setattr(retrieval.embed_mod, "embed", lambda text: [0.1] * 1024)
+    monkeypatch.setattr(retrieval.embed_mod, "text_for_calibration", lambda job: "calibration text")
+    monkeypatch.setattr(retrieval.db, "get_vector_conn", lambda: conn)
+    monkeypatch.setattr(retrieval.db, "table_name", lambda: "jobs_test")
+    monkeypatch.setattr(retrieval.db, "events_table_name", lambda: "jobs_test_events")
+
+    out = retrieval.retrieve_similar_decisions({"title": "Backend", "seniority_level": "mid"}, k=2)
+
+    assert out == rows
+    pool_sql = cur.execute.call_args_list[0].args[0]
+    retrieval_sql, params = cur.execute.call_args_list[1].args
+    assert "FROM jobs_test" in pool_sql
+    assert "FROM jobs_test_events" in retrieval_sql
+    assert "embedding_calibration <=>" in retrieval_sql
+    assert "weighted_score DESC" in retrieval_sql
+    assert params[-2:] == ("mid", 2)
