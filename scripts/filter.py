@@ -80,6 +80,16 @@ def _system_prompt_with_calibration(system_prompt, parsed_input, is_batch):
     return system_prompt.rstrip() + "\n\n" + block
 
 
+def _loads_jsonish(text):
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        repaired = re.sub(r"([{\[,]\s*)'([A-Za-z_][A-Za-z0-9_]*)'\s*:", r'\1"\2":', text)
+        if repaired == text:
+            raise
+        return json.loads(repaired)
+
+
 def main():
     if not PROMPT_FILE.exists():
         print(json.dumps({"error": f"filter_prompt.md not found at {PROMPT_FILE}"}), file=sys.stderr)
@@ -197,7 +207,7 @@ def main():
 
     # Validate and output
     try:
-        assessment = json.loads(clean)
+        assessment = _loads_jsonish(clean)
     except json.JSONDecodeError:
         if is_batch:
             _log_batch(parsed_input, raw_output, 0, len(parsed_input), error_label="parse_fail")

@@ -268,3 +268,43 @@ def test_filter_passes_calibration_block_to_claude_system_prompt(monkeypatch, ca
     assert "Backend Engineer @ Acme" in seen_prompt["system"]
     assert "Your note: interviewed after backend-focused pitch" in seen_prompt["system"]
     json.loads(capsys.readouterr().out)
+
+
+def test_filter_repairs_single_quoted_json_property_from_claude(monkeypatch, capsys):
+    monkeypatch.setenv("JOBS_FUNNEL_PROFILE", "test")
+
+    import importlib
+    import scripts.filter as fil
+    importlib.reload(fil)
+    monkeypatch.setattr(fil, "PROMPT_FILE", FILTER_PROMPT)
+    monkeypatch.setattr(fil.retrieval, "retrieve_similar_decisions", lambda job: [])
+
+    job = {"title": "T", "description": "D", "_embedding_calibration_present": True}
+    monkeypatch.setattr(sys, "argv", _argv_for_payload(job))
+
+    claude_result = """```json
+[
+  {
+    "fit_score": 2,
+    "decision": "SKIP",
+    "cv_variant": "software",
+    "hard_blockers": [],
+    "soft_gaps": [],
+    "strong_matches": [],
+    "reasoning": "ok",
+    "priority_notes": null,
+    "extracted_salary_min": null,
+    'extracted_salary_max': null,
+    "extracted_salary_currency": "EUR"
+  }
+]
+```"""
+    fake_response = json.dumps({"result": claude_result})
+
+    with patch.object(subprocess, "run", return_value=_fake_claude(fake_response)):
+        fil.main()
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload[0]["fit_score"] == 2
+    assert payload[0]["extracted_salary_max"] is None
+    assert payload[0].get("error_code") != "PARSE_FAIL"
