@@ -215,3 +215,56 @@ def test_filter_merges_batch_calibration_anchors(monkeypatch):
     assert "CALIBRATION - here's how you handled similar jobs in the past." in prompt
     assert "Historical A @ Acme" in prompt
     assert "Historical B @ Acme" in prompt
+
+
+def test_filter_passes_calibration_block_to_claude_system_prompt(monkeypatch, capsys):
+    monkeypatch.setenv("JOBS_FUNNEL_PROFILE", "test")
+
+    import importlib
+    import scripts.filter as fil
+    importlib.reload(fil)
+    monkeypatch.setattr(fil, "PROMPT_FILE", FILTER_PROMPT)
+    monkeypatch.setattr(
+        fil.retrieval,
+        "retrieve_similar_decisions",
+        lambda job: [{
+            "id": 10,
+            "title": "Backend Engineer",
+            "company": "Acme",
+            "fit_score": 82,
+            "calibration_label": "applied",
+            "notes": "interviewed after backend-focused pitch",
+            "reasoning": "",
+            "reached_interview": True,
+            "received_offer": False,
+            "weighted_score": 0.95,
+        }],
+    )
+
+    job = {"title": "T", "description": "D", "_embedding_calibration_present": True}
+    monkeypatch.setattr(sys, "argv", _argv_for_payload(job))
+
+    fake_response = json.dumps({"result": json.dumps({
+        "fit_score": 80,
+        "decision": "PASS",
+        "cv_variant": "default",
+        "hard_blockers": [],
+        "soft_gaps": [],
+        "strong_matches": [],
+        "reasoning": "ok",
+        "priority_notes": None,
+    })})
+    seen_prompt = {}
+
+    def fake_run(cmd, **kwargs):
+        idx = cmd.index("--append-system-prompt")
+        seen_prompt["system"] = cmd[idx + 1]
+        return _fake_claude(fake_response)
+
+    with patch.object(subprocess, "run", side_effect=fake_run):
+        fil.main()
+
+    assert "CALIBRATION - here's how you handled similar jobs in the past." in seen_prompt["system"]
+    assert "Backend Engineer @ Acme" in seen_prompt["system"]
+    assert "Your note: interviewed after backend-focused pitch" in seen_prompt["system"]
+    json.loads(capsys.readouterr().out)

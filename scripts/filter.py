@@ -111,6 +111,7 @@ def main():
     # Detect batch (array) vs single (object) input
     parsed_input = json.loads(job_data)
     is_batch = isinstance(parsed_input, list)
+    system_prompt = _system_prompt_with_calibration(system_prompt, parsed_input, is_batch)
 
     if is_batch:
         user_prompt = f"Evaluate these {len(parsed_input)} job postings:\n\n"
