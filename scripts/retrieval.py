@@ -181,10 +181,10 @@ def retrieve_similar_decisions(new_job: dict[str, Any], k: int | None = None) ->
                                     SELECT 1 FROM {events_table} e
                                     WHERE e.job_id = {table}.id
                                       AND e.kind = 'decision'
-                                      AND LOWER(e.label) LIKE '%offer%'
+                                      AND LOWER(e.label) LIKE '%%offer%%'
                                 )
                             ) AS received_offer,
-                            1 - (embedding_calibration <=> %s) AS similarity
+                            1 - (embedding_calibration <=> %s::vector) AS similarity
                         FROM {table}
                         WHERE embedding_calibration IS NOT NULL
                           AND user_status IN ('interested','applied','in_process','offer','dismissed','rejected')

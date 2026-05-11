@@ -152,6 +152,7 @@ def test_retrieve_queries_weighted_candidates_from_active_tables(monkeypatch):
     retrieval_sql, params = cur.execute.call_args_list[1].args
     assert "FROM jobs_test" in pool_sql
     assert "FROM jobs_test_events" in retrieval_sql
-    assert "embedding_calibration <=>" in retrieval_sql
+    assert "embedding_calibration <=> %s::vector" in retrieval_sql
+    assert "LIKE '%%offer%%'" in retrieval_sql
     assert "weighted_score DESC" in retrieval_sql
     assert params[-2:] == ("mid", 2)
