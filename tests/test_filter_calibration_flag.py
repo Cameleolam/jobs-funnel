@@ -6,6 +6,7 @@ the output for jobs where _embedding_calibration_present is False.
 """
 import base64
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -123,3 +124,94 @@ def test_filter_batch_handles_single_object_response(monkeypatch, capsys):
     assert payload[0].get("scored_uncalibrated") is True
     # Second is BATCH_PADDING (Claude returned only one)
     assert payload[1].get("error_code") == "BATCH_PADDING"
+
+
+def test_filter_script_direct_invocation_keeps_package_import_working():
+    repo = Path(__file__).resolve().parents[1]
+    env = os.environ.copy()
+    env["JOBS_FUNNEL_PROFILE"] = "profile1"
+
+    result = subprocess.run(
+        [sys.executable, str(repo / "scripts" / "filter.py")],
+        input="",
+        capture_output=True,
+        text=True,
+        cwd=repo,
+        env=env,
+    )
+
+    assert result.returncode == 1
+    assert "No input provided on stdin" in result.stdout
+    assert "ModuleNotFoundError" not in result.stderr
+
+
+def test_filter_prompt_is_byte_identical_when_no_calibration_anchors(monkeypatch):
+    monkeypatch.setenv("JOBS_FUNNEL_PROFILE", "test")
+
+    import importlib
+    import scripts.filter as fil
+    importlib.reload(fil)
+    monkeypatch.setattr(fil.retrieval, "retrieve_similar_decisions", lambda job: [])
+
+    prompt = "BASE PROMPT"
+    job = {"title": "T", "_embedding_calibration_present": True}
+
+    assert fil._system_prompt_with_calibration(prompt, job, is_batch=False) is prompt
+
+
+def test_filter_skips_retrieval_for_jobs_without_calibration_vector(monkeypatch):
+    monkeypatch.setenv("JOBS_FUNNEL_PROFILE", "test")
+
+    import importlib
+    import scripts.filter as fil
+    importlib.reload(fil)
+    retrieve = MagicMock(return_value=[{"id": 1}])
+    monkeypatch.setattr(fil.retrieval, "retrieve_similar_decisions", retrieve)
+
+    prompt = "BASE PROMPT"
+    job = {"title": "T", "_embedding_calibration_present": False}
+
+    assert fil._system_prompt_with_calibration(prompt, job, is_batch=False) is prompt
+    retrieve.assert_not_called()
+
+
+def test_filter_merges_batch_calibration_anchors(monkeypatch):
+    monkeypatch.setenv("JOBS_FUNNEL_PROFILE", "test")
+
+    import importlib
+    import scripts.filter as fil
+    importlib.reload(fil)
+    calls = []
+
+    def fake_retrieve(job):
+        calls.append(job["title"])
+        return [{
+            "id": len(calls),
+            "title": "Historical " + job["title"],
+            "company": "Acme",
+            "fit_score": 80,
+            "calibration_label": "applied",
+            "notes": "useful anchor",
+            "reasoning": "",
+            "reached_interview": False,
+            "received_offer": False,
+            "weighted_score": 0.9,
+        }]
+
+    monkeypatch.setattr(fil.retrieval, "retrieve_similar_decisions", fake_retrieve)
+    monkeypatch.setattr(fil.retrieval, "calibration_k_batch", lambda: 6)
+
+    prompt = fil._system_prompt_with_calibration(
+        "BASE PROMPT",
+        [
+            {"title": "A", "_embedding_calibration_present": True},
+            {"title": "B", "_embedding_calibration_present": True},
+        ],
+        is_batch=True,
+    )
+
+    assert calls == ["A", "B"]
+    assert "BASE PROMPT" in prompt
+    assert "CALIBRATION - here's how you handled similar jobs in the past." in prompt
+    assert "Historical A @ Acme" in prompt
+    assert "Historical B @ Acme" in prompt

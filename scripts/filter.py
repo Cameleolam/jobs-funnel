@@ -21,6 +21,11 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 PIPELINE_DIR = SCRIPT_DIR.parent
+if str(PIPELINE_DIR) not in sys.path:
+    sys.path.insert(0, str(PIPELINE_DIR))
+
+from scripts import retrieval
+
 CONFIG = json.loads((PIPELINE_DIR / "config.json").read_text(encoding="utf-8"))
 PROFILE = os.environ["JOBS_FUNNEL_PROFILE"]
 PROMPT_FILE = PIPELINE_DIR / "profiles" / PROFILE / "filter_prompt.md"
@@ -46,6 +51,33 @@ def _log_batch(input_data, raw_output, parsed_count, expected_count, error_label
         }, indent=2, ensure_ascii=False), encoding="utf-8")
     except Exception:
         pass  # Logging must never break the pipeline
+
+
+def _has_calibration(j):
+    return j.get("_embedding_calibration_present", True)
+
+
+def _calibration_anchor_groups(parsed_input, is_batch):
+    jobs = parsed_input if is_batch else [parsed_input]
+    groups = []
+    for job in jobs:
+        if not isinstance(job, dict) or not _has_calibration(job):
+            continue
+        anchors = retrieval.retrieve_similar_decisions(job)
+        if anchors:
+            groups.append(anchors)
+    return groups
+
+
+def _system_prompt_with_calibration(system_prompt, parsed_input, is_batch):
+    groups = _calibration_anchor_groups(parsed_input, is_batch)
+    if not groups:
+        return system_prompt
+    anchors = retrieval.merge_batch_anchors(groups)
+    block = retrieval.format_calibration_block(anchors)
+    if not block:
+        return system_prompt
+    return system_prompt.rstrip() + "\n\n" + block
 
 
 def main():
@@ -191,13 +223,6 @@ def main():
     # crashes with TypeError on `assessment[i]`.
     if is_batch and not isinstance(assessment, list):
         assessment = [assessment]
-
-    # Phase 1: stamp scored_uncalibrated when calibration embedding was missing
-    # at scoring time. Used by backfill --rescore-uncalibrated to requeue
-    # the job once its calibration vector lands.
-    def _has_calibration(j):
-        # default to True if the flag was not provided (legacy callers)
-        return j.get("_embedding_calibration_present", True)
 
     if is_batch:
         for i, sub_input in enumerate(parsed_input):
