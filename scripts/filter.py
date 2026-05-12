@@ -25,6 +25,7 @@ if str(PIPELINE_DIR) not in sys.path:
     sys.path.insert(0, str(PIPELINE_DIR))
 
 from scripts import retrieval
+from scripts.lib.job_text import normalize_job_for_llm
 
 CONFIG = json.loads((PIPELINE_DIR / "config.json").read_text(encoding="utf-8"))
 PROFILE = os.environ["JOBS_FUNNEL_PROFILE"]
@@ -55,6 +56,17 @@ def _log_batch(input_data, raw_output, parsed_count, expected_count, error_label
 
 def _has_calibration(j):
     return j.get("_embedding_calibration_present", True)
+
+
+def _normalize_filter_input(parsed_input):
+    if isinstance(parsed_input, list):
+        return [
+            normalize_job_for_llm(job) if isinstance(job, dict) else job
+            for job in parsed_input
+        ]
+    if isinstance(parsed_input, dict):
+        return normalize_job_for_llm(parsed_input)
+    return parsed_input
 
 
 def _calibration_anchor_groups(parsed_input, is_batch):
@@ -121,14 +133,15 @@ def main():
     # Detect batch (array) vs single (object) input
     parsed_input = json.loads(job_data)
     is_batch = isinstance(parsed_input, list)
-    system_prompt = _system_prompt_with_calibration(system_prompt, parsed_input, is_batch)
+    prompt_input = _normalize_filter_input(parsed_input)
+    system_prompt = _system_prompt_with_calibration(system_prompt, prompt_input, is_batch)
 
     if is_batch:
-        user_prompt = f"Evaluate these {len(parsed_input)} job postings:\n\n"
-        for i, job in enumerate(parsed_input):
-            user_prompt += f"--- JOB {i + 1} ---\n{json.dumps(job)}\n\n"
+        user_prompt = f"Evaluate these {len(prompt_input)} job postings:\n\n"
+        for i, job in enumerate(prompt_input):
+            user_prompt += f"--- JOB {i + 1} ---\n{json.dumps(job, ensure_ascii=False)}\n\n"
     else:
-        user_prompt = f"Evaluate this job posting:\n\n{job_data}"
+        user_prompt = f"Evaluate this job posting:\n\n{json.dumps(prompt_input, ensure_ascii=False)}"
 
     try:
         result = subprocess.run(

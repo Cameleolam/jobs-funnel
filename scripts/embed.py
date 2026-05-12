@@ -7,8 +7,16 @@ Two text builders:
   text_for_calibration — structured prefix (TITLE/COMPANY/...) + description
 """
 import os
+import sys
+from pathlib import Path
+
+# Allow direct invocation: `python scripts/embed.py --job-id N`.
+# When run as a module (`python -m scripts.embed`) this is a no-op.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import httpx
+
+from scripts.lib.job_text import normalize_description
 
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/") + "/api/embeddings"
@@ -48,7 +56,7 @@ def text_for_dedup(job: dict) -> str:
     """Title-heavy text for the dedup vector. Title repeated to weight it."""
     title = (job.get("title") or "")
     company = (job.get("company") or "")
-    description = (job.get("description") or "")[:DESC_MAX_CHARS]
+    description = normalize_description(job.get("description"))[:DESC_MAX_CHARS]
     return f"{title}\n{title}\n{company}\n{description}"
 
 
@@ -68,18 +76,12 @@ def text_for_calibration(job: dict) -> str:
         "LANGUAGE":   "english" if job.get("likely_english") else "german",
     }
     header = "\n".join(f"{k}: {v}" for k, v in fields.items())
-    description = (job.get("description") or "")[:DESC_MAX_CHARS]
+    description = normalize_description(job.get("description"))[:DESC_MAX_CHARS]
     return f"{header}\n---\n{description}"
 
 
 import argparse
 import json
-import sys
-from pathlib import Path
-
-# Allow direct invocation: `python scripts/embed.py --job-id N`.
-# When run as a module (`python -m scripts.embed`) this is a no-op.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import psycopg2.extras
 

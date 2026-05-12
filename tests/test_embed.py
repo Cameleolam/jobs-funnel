@@ -74,6 +74,18 @@ def test_text_for_dedup_truncates_description():
     assert txt.count("x") == 3000
 
 
+def test_text_for_dedup_normalizes_description():
+    job = {
+        "title": "Backend Dev",
+        "company": "ACME",
+        "description": "<p>Python &amp; APIs</p><p>Find more English Speaking Jobs in Germany on Arbeitnow</p>",
+    }
+    txt = embed_mod.text_for_dedup(job)
+    assert "<p>" not in txt
+    assert "Python & APIs" in txt
+    assert "English Speaking Jobs in Germany" not in txt
+
+
 def test_text_for_dedup_handles_missing_fields():
     txt = embed_mod.text_for_dedup({})
     # should not raise; produces a string
@@ -112,6 +124,20 @@ def test_text_for_calibration_defaults_for_missing():
     assert "SENIORITY: unspecified" in txt
     assert "EMPLOYMENT: unspecified" in txt
     assert "LANGUAGE: german" in txt
+
+
+def test_text_for_calibration_normalizes_description():
+    job = {
+        "title": "Backend Dev",
+        "company": "ACME",
+        "location": "M\u00c3\u00bcnster",
+        "description": "<p>Location: M\u00c3\u00bcnster</p><p>Find Jobs in Germany on Arbeitnow</p>",
+    }
+    txt = embed_mod.text_for_calibration(job)
+    assert "LOCATION: M\u00c3\u00bcnster" in txt
+    assert "Location: M\u00fcnster" in txt
+    assert "<p>" not in txt
+    assert "Jobs in Germany" not in txt
 
 
 def test_cli_job_id_success(monkeypatch, capsys):

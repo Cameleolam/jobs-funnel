@@ -270,6 +270,48 @@ def test_filter_passes_calibration_block_to_claude_system_prompt(monkeypatch, ca
     json.loads(capsys.readouterr().out)
 
 
+def test_filter_normalizes_description_before_claude_prompt(monkeypatch, capsys):
+    monkeypatch.setenv("JOBS_FUNNEL_PROFILE", "test")
+
+    import importlib
+    import scripts.filter as fil
+    importlib.reload(fil)
+    monkeypatch.setattr(fil, "PROMPT_FILE", FILTER_PROMPT)
+    monkeypatch.setattr(fil.retrieval, "retrieve_similar_decisions", lambda job: [])
+
+    job = {
+        "title": "Backend Engineer",
+        "description": "<p>Python &amp; APIs</p><p>Find more English Speaking Jobs in Germany on Arbeitnow</p>",
+        "_embedding_calibration_present": True,
+    }
+    monkeypatch.setattr(sys, "argv", _argv_for_payload(job))
+
+    fake_response = json.dumps({"result": json.dumps({
+        "fit_score": 8,
+        "decision": "PASS",
+        "cv_variant": "software",
+        "hard_blockers": [],
+        "soft_gaps": [],
+        "strong_matches": [],
+        "reasoning": "ok",
+        "priority_notes": None,
+    })})
+    seen = {}
+
+    def fake_run(cmd, **kwargs):
+        seen["input"] = kwargs["input"]
+        return _fake_claude(fake_response)
+
+    with patch.object(subprocess, "run", side_effect=fake_run):
+        fil.main()
+
+    prompt = seen["input"]
+    assert "<p>" not in prompt
+    assert "Python & APIs" in prompt
+    assert "English Speaking Jobs in Germany" not in prompt
+    json.loads(capsys.readouterr().out)
+
+
 def test_filter_repairs_single_quoted_json_property_from_claude(monkeypatch, capsys):
     monkeypatch.setenv("JOBS_FUNNEL_PROFILE", "test")
 
