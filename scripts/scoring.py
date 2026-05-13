@@ -70,11 +70,24 @@ def provider_keys_from_env() -> tuple[str, str | None]:
 
 def should_review(assessment: dict[str, Any]) -> bool:
     try:
-        score = int(assessment.get("fit_score"))
+        score = float(assessment.get("fit_score"))
     except (TypeError, ValueError):
         return False
-    low, high = review_band()
+    try:
+        low, high = review_band()
+    except (TypeError, ValueError):
+        return False
     return low <= score <= high
+
+
+def _review_max_per_batch() -> int:
+    raw = os.environ.get("SCORING_REVIEW_MAX_PER_BATCH", "8").strip()
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return 8
+    # Explicit zero or negative values disable review attempts.
+    return max(value, 0)
 
 
 def _metadata(provider_key: str, model: str) -> dict[str, str]:
@@ -143,9 +156,11 @@ def _review_one(
     )
     parsed = loads_jsonish(response.text)
     if isinstance(parsed, list):
-        parsed = parsed[0] if parsed else {}
+        parsed = parsed[0] if parsed else None
     if not isinstance(parsed, dict):
-        return base_assessment
+        kept = dict(base_assessment)
+        kept["review_error"] = f"Invalid review response: {repr(parsed)[:160]}"
+        return kept
     reviewed = dict(base_assessment)
     reviewed.update(parsed)
     reviewed["scoring_provider"] = base_assessment.get("scoring_provider")
@@ -167,7 +182,7 @@ def _apply_review(
 ) -> Any:
     if review_provider is None:
         return assessment
-    max_reviews = int(os.environ.get("SCORING_REVIEW_MAX_PER_BATCH", "8"))
+    max_reviews = _review_max_per_batch()
     reviewed_count = 0
 
     if isinstance(assessment, list):
@@ -179,8 +194,8 @@ def _apply_review(
                 and isinstance(item, dict)
                 and i < len(jobs)
                 and isinstance(jobs[i], dict)
-                and should_review(item)
                 and not item.get("error_code")
+                and should_review(item)
             ):
                 reviewed_count += 1
                 try:
@@ -196,8 +211,8 @@ def _apply_review(
     if (
         isinstance(assessment, dict)
         and isinstance(prompt_input, dict)
-        and should_review(assessment)
         and not assessment.get("error_code")
+        and should_review(assessment)
     ):
         try:
             return _review_one(prompt_input, assessment, system_prompt, root, review_provider)

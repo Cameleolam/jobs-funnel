@@ -186,6 +186,15 @@ def test_should_review_uses_inclusive_four_to_six(monkeypatch):
     assert should_review({"fit_score": 7}) is False
 
 
+def test_should_review_uses_float_scores_without_truncation(monkeypatch):
+    monkeypatch.delenv("SCORING_REVIEW_LOW", raising=False)
+    monkeypatch.delenv("SCORING_REVIEW_HIGH", raising=False)
+
+    assert should_review({"fit_score": 6.0}) is True
+    assert should_review({"fit_score": 6.9}) is False
+    assert should_review({"fit_score": 3.9}) is False
+
+
 def test_score_input_single_provider_returns_same_json_shape_with_metadata(monkeypatch, tmp_path):
     monkeypatch.setattr("scripts.scoring._system_prompt_with_calibration", lambda prompt, parsed, is_batch: prompt)
     base = FakeProvider("claude_sonnet", json.dumps(_assessment()))
@@ -508,6 +517,58 @@ def test_review_provider_respects_max_reviews(monkeypatch, tmp_path):
     assert len(review.requests) == 1
 
 
+@pytest.mark.parametrize("max_reviews", ["", "not-a-number"])
+def test_review_max_invalid_env_defaults_to_eight(monkeypatch, tmp_path, max_reviews):
+    monkeypatch.setenv("SCORING_REVIEW_MAX_PER_BATCH", max_reviews)
+    monkeypatch.setattr("scripts.scoring._system_prompt_with_calibration", lambda prompt, parsed, is_batch: prompt)
+    base = FakeProvider(
+        "claude_sonnet",
+        json.dumps([_assessment(score=5, decision="MAYBE", reasoning="borderline")]),
+    )
+    review = FakeProvider(
+        "codex_gpt55_high",
+        json.dumps(_assessment(score=7, decision="PASS", reasoning="reviewed")),
+    )
+
+    result = score_input(
+        parsed_input=[{"title": "A", "description": "D"}],
+        system_prompt="SYSTEM",
+        config={},
+        root=tmp_path,
+        base_provider=base,
+        review_provider=review,
+    )
+
+    assert result[0]["review_provider"] == "codex_gpt55_high"
+    assert len(review.requests) == 1
+
+
+def test_review_max_negative_env_disables_reviews(monkeypatch, tmp_path):
+    monkeypatch.setenv("SCORING_REVIEW_MAX_PER_BATCH", "-1")
+    monkeypatch.setattr("scripts.scoring._system_prompt_with_calibration", lambda prompt, parsed, is_batch: prompt)
+    base = FakeProvider(
+        "claude_sonnet",
+        json.dumps([_assessment(score=5, decision="MAYBE", reasoning="borderline")]),
+    )
+    review = FakeProvider(
+        "codex_gpt55_high",
+        json.dumps(_assessment(score=7, decision="PASS", reasoning="should not run")),
+    )
+
+    result = score_input(
+        parsed_input=[{"title": "A", "description": "D"}],
+        system_prompt="SYSTEM",
+        config={},
+        root=tmp_path,
+        base_provider=base,
+        review_provider=review,
+    )
+
+    assert result[0]["fit_score"] == 5
+    assert result[0].get("review_provider") is None
+    assert len(review.requests) == 0
+
+
 def test_review_failure_keeps_base_assessment_and_records_error(monkeypatch, tmp_path):
     monkeypatch.setattr("scripts.scoring._system_prompt_with_calibration", lambda prompt, parsed, is_batch: prompt)
     base = FakeProvider(
@@ -628,3 +689,54 @@ def test_review_provider_skips_items_with_error_code(monkeypatch, tmp_path):
         "scoring_provider": "claude_sonnet",
         "scoring_model": "claude_sonnet-model",
     }
+
+
+def test_review_provider_skips_error_code_before_malformed_review_band(monkeypatch, tmp_path):
+    monkeypatch.setenv("SCORING_REVIEW_LOW", "bad-low")
+    monkeypatch.setattr("scripts.scoring._system_prompt_with_calibration", lambda prompt, parsed, is_batch: prompt)
+    base_item = {
+        **_assessment(score=5, decision="MAYBE", reasoning="parse fallback"),
+        "error_code": "PARSE_FAIL",
+    }
+    base = FakeProvider("claude_sonnet", json.dumps([base_item]))
+    review = FakeProvider(
+        "codex_gpt55_high",
+        json.dumps(_assessment(score=7, decision="PASS", reasoning="should not run")),
+    )
+
+    result = score_input(
+        parsed_input=[{"title": "A", "description": "D"}],
+        system_prompt="SYSTEM",
+        config={},
+        root=tmp_path,
+        base_provider=base,
+        review_provider=review,
+    )
+
+    assert len(review.requests) == 0
+    assert result[0]["error_code"] == "PARSE_FAIL"
+    assert result[0].get("review_provider") is None
+
+
+def test_review_null_response_keeps_base_assessment_and_records_error(monkeypatch, tmp_path):
+    monkeypatch.setattr("scripts.scoring._system_prompt_with_calibration", lambda prompt, parsed, is_batch: prompt)
+    base = FakeProvider(
+        "claude_sonnet",
+        json.dumps(_assessment(score=5, decision="MAYBE", reasoning="borderline")),
+    )
+    review = FakeProvider("codex_gpt55_high", "null")
+
+    result = score_input(
+        parsed_input={"title": "T", "description": "D"},
+        system_prompt="SYSTEM",
+        config={},
+        root=tmp_path,
+        base_provider=base,
+        review_provider=review,
+    )
+
+    assert result["fit_score"] == 5
+    assert result["decision"] == "MAYBE"
+    assert result["reasoning"] == "borderline"
+    assert result.get("review_provider") is None
+    assert "Invalid review response" in result["review_error"]
