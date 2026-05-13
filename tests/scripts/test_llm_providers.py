@@ -13,7 +13,7 @@ from scripts.llm.providers import (
     review_band,
 )
 from scripts.llm import ScoringProvider
-from scripts.llm.types import ProviderRequest, ProviderTimeout
+from scripts.llm.types import ProviderError, ProviderRequest, ProviderTimeout
 
 
 def _completed(stdout='{"result":"[]"}', stderr="", returncode=0):
@@ -64,6 +64,7 @@ def test_codex_provider_uses_read_only_exec_and_embeds_system_prompt(monkeypatch
         return _completed(stdout='[{"fit_score": 7}]')
 
     monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr("shutil.which", lambda command: None)
     provider = CodexCliProvider(
         provider_key="codex_gpt55_high",
         model="gpt-5.5",
@@ -76,6 +77,9 @@ def test_codex_provider_uses_read_only_exec_and_embeds_system_prompt(monkeypatch
     assert seen["cmd"] == [
         "codex",
         "exec",
+        "--ephemeral",
+        "--ignore-user-config",
+        "--ignore-rules",
         "-m",
         "gpt-5.5",
         "-c",
@@ -116,6 +120,19 @@ def test_codex_provider_wraps_bat_files_on_windows(monkeypatch):
     assert provider._command_prefix() == ["cmd.exe", "/c", r"D:\tools\codex.bat"]
 
 
+def test_codex_provider_wraps_bare_command_resolved_to_cmd_on_windows(monkeypatch):
+    monkeypatch.setattr("os.name", "nt")
+    monkeypatch.setattr("shutil.which", lambda command: r"D:\tools\npm-global\codex.cmd")
+    provider = CodexCliProvider(
+        provider_key="codex_gpt55_high",
+        model="gpt-5.5",
+        reasoning_effort="high",
+        command="codex",
+    )
+
+    assert provider._command_prefix() == ["cmd.exe", "/c", r"D:\tools\npm-global\codex.cmd"]
+
+
 def test_provider_timeout_maps_to_provider_timeout(monkeypatch):
     def fake_run(cmd, **kwargs):
         raise subprocess.TimeoutExpired(cmd=cmd, timeout=300)
@@ -127,6 +144,39 @@ def test_provider_timeout_maps_to_provider_timeout(monkeypatch):
         provider.generate(ProviderRequest("SYSTEM", "USER"))
 
     assert exc.value.error_code == "TIMEOUT"
+
+
+def test_claude_launch_failure_maps_to_provider_error(monkeypatch):
+    def fake_run(cmd, **kwargs):
+        raise FileNotFoundError("claude not found")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    provider = ClaudeCliProvider(provider_key="claude_sonnet", model="claude-sonnet-4-6")
+
+    with pytest.raises(ProviderError) as exc:
+        provider.generate(ProviderRequest("SYSTEM", "USER"))
+
+    assert exc.value.provider_key == "claude_sonnet"
+    assert "Failed to launch claude_sonnet" in str(exc.value)
+
+
+def test_codex_launch_failure_maps_to_provider_error(monkeypatch):
+    def fake_run(cmd, **kwargs):
+        raise PermissionError("access denied")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    provider = CodexCliProvider(
+        provider_key="codex_gpt55_high",
+        model="gpt-5.5",
+        reasoning_effort="high",
+        command="codex",
+    )
+
+    with pytest.raises(ProviderError) as exc:
+        provider.generate(ProviderRequest("SYSTEM", "USER"))
+
+    assert exc.value.provider_key == "codex_gpt55_high"
+    assert "Failed to launch codex_gpt55_high" in str(exc.value)
 
 
 def test_ollama_provider_posts_generate_json(monkeypatch):
@@ -162,6 +212,28 @@ def test_ollama_provider_posts_generate_json(monkeypatch):
     assert seen["json"]["format"] == "json"
     assert seen["timeout"] == 42
     assert response.text == "[{\"fit_score\": 5}]"
+
+
+def test_ollama_invalid_json_maps_to_provider_error(monkeypatch):
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            raise ValueError("invalid json")
+
+    monkeypatch.setattr("httpx.post", lambda url, json, timeout: FakeResponse())
+    provider = OllamaProvider(
+        provider_key="ollama_local",
+        model="llama3.1:8b",
+        url="http://localhost:11434",
+    )
+
+    with pytest.raises(ProviderError) as exc:
+        provider.generate(ProviderRequest("SYSTEM", "USER"))
+
+    assert exc.value.provider_key == "ollama_local"
+    assert "Invalid Ollama JSON response" in str(exc.value)
 
 
 def test_provider_from_key_defaults_and_env(monkeypatch):

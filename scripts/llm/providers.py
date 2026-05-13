@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -34,6 +35,13 @@ def _provider_timeout(provider_key: str, exc: subprocess.TimeoutExpired) -> Prov
         message=f"{provider_key} timed out after {exc.timeout} seconds",
         stderr=(exc.stderr or "") if isinstance(exc.stderr, str) else "",
         stdout=(exc.stdout or "") if isinstance(exc.stdout, str) else "",
+    )
+
+
+def _provider_launch_error(provider_key: str, command: list[str], exc: OSError) -> ProviderError:
+    return ProviderError(
+        provider_key=provider_key,
+        message=f"Failed to launch {provider_key} command {command[0]!r}: {exc}",
     )
 
 
@@ -72,6 +80,8 @@ class ClaudeCliProvider:
             )
         except subprocess.TimeoutExpired as exc:
             raise _provider_timeout(self.provider_key, exc) from exc
+        except OSError as exc:
+            raise _provider_launch_error(self.provider_key, cmd, exc) from exc
 
         if result.returncode != 0:
             raise ProviderError(
@@ -106,9 +116,11 @@ class CodexCliProvider:
         self.command = command
 
     def _command_prefix(self) -> list[str]:
-        suffix = Path(self.command).suffix.lower()
-        if os.name == "nt" and suffix in {".cmd", ".bat"}:
-            return ["cmd.exe", "/c", self.command]
+        if os.name == "nt":
+            resolved = shutil.which(self.command) or self.command
+            suffix = Path(resolved).suffix.lower()
+            if suffix in {".cmd", ".bat"}:
+                return ["cmd.exe", "/c", resolved]
         return [self.command]
 
     def _stdin_prompt(self, request: ProviderRequest) -> str:
@@ -132,6 +144,9 @@ class CodexCliProvider:
         cmd = [
             *self._command_prefix(),
             "exec",
+            "--ephemeral",
+            "--ignore-user-config",
+            "--ignore-rules",
             "-m",
             self.model,
             "-c",
@@ -156,6 +171,8 @@ class CodexCliProvider:
             )
         except subprocess.TimeoutExpired as exc:
             raise _provider_timeout(self.provider_key, exc) from exc
+        except OSError as exc:
+            raise _provider_launch_error(self.provider_key, cmd, exc) from exc
 
         if result.returncode != 0:
             raise ProviderError(
@@ -202,7 +219,10 @@ class OllamaProvider:
         except httpx.HTTPError as exc:
             raise ProviderError(self.provider_key, str(exc)) from exc
 
-        body = response.json()
+        try:
+            body = response.json()
+        except ValueError as exc:
+            raise ProviderError(self.provider_key, f"Invalid Ollama JSON response: {exc}") from exc
         text = body.get("response", "")
         if not isinstance(text, str):
             raise ProviderError(self.provider_key, "Ollama response field was not text")
