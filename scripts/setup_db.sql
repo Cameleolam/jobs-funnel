@@ -50,6 +50,10 @@ CREATE TABLE IF NOT EXISTS {{TABLE}} (
     base_fit_score   INTEGER,
     base_decision    TEXT,
     review_error     TEXT,
+    needs_human_review BOOLEAN NOT NULL DEFAULT FALSE,
+    explanation        TEXT,
+    confidence         TEXT,
+    critique_count     INTEGER NOT NULL DEFAULT 0,
 
     retry_count     INTEGER DEFAULT 0,
     sheet_synced    BOOLEAN DEFAULT FALSE,
@@ -73,6 +77,9 @@ CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_sheet_synced ON {{TABLE}}(sheet_synced)
 CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_decision ON {{TABLE}}(decision);
 CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_error_code ON {{TABLE}}(error_code) WHERE error_code IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_dead ON {{TABLE}}(status) WHERE status = 'dead';
+CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_needs_review
+    ON {{TABLE}}(needs_human_review)
+    WHERE needs_human_review = TRUE;
 
 -- pipeline_runs and job_raw_data are global (not per-profile) — kept literal.
 CREATE TABLE IF NOT EXISTS pipeline_runs (

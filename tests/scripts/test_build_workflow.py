@@ -476,3 +476,28 @@ def test_parse_update_persists_provider_metadata():
     assert "base_fit_score = 5" in query
     assert "base_decision = 'MAYBE'" in query
     assert "review_error = 'kept base'" in query
+
+
+def test_parse_update_persists_human_review_metadata():
+    wf = run_build("profile1")
+    code = parse_update_code(wf)
+    result = run_parse_update(code, {
+        "fit_score": 5,
+        "decision": "pending_review",
+        "cv_variant": "software",
+        "hard_blockers": [],
+        "soft_gaps": ["borderline seniority"],
+        "strong_matches": ["Python"],
+        "reasoning": "borderline after critique",
+        "priority_notes": None,
+        "needs_human_review": True,
+        "explanation": "Score stayed in the 4-6 review band after critique.",
+        "confidence": "medium",
+        "critique_count": 1,
+    })
+    query = result[0]["json"]["_updateQuery"]
+    assert "decision = 'pending_review'" in query
+    assert "needs_human_review = TRUE" in query
+    assert "explanation = 'Score stayed in the 4-6 review band after critique.'" in query
+    assert "confidence = 'medium'" in query
+    assert "critique_count = 1" in query

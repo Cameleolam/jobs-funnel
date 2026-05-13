@@ -73,8 +73,11 @@ for (let b = 0; b < $input.all().length; b++) {
       continue;
     }
 
-    const rawDecision = String(assessment.decision || 'SKIP').trim().toUpperCase();
-    const decision = ['PASS', 'MAYBE', 'SKIP'].includes(rawDecision) ? rawDecision : 'SKIP';
+    const rawDecisionText = String(assessment.decision || 'SKIP').trim();
+    const rawDecision = rawDecisionText.toUpperCase();
+    const decision = rawDecisionText.toLowerCase() === 'pending_review'
+      ? 'pending_review'
+      : (['PASS', 'MAYBE', 'SKIP'].includes(rawDecision) ? rawDecision : 'SKIP');
     const score = Number(assessment.fit_score) || 0;
 
     // Detect batch padding (job was never evaluated by Claude)
@@ -131,6 +134,10 @@ for (let b = 0; b < $input.all().length; b++) {
       : Number(assessment.base_fit_score);
     const baseDecision = assessment.base_decision || null;
     const reviewError = assessment.review_error || null;
+    const needsHumanReview = assessment.needs_human_review === true || decision === 'pending_review';
+    const explanation = assessment.explanation || null;
+    const confidence = assessment.confidence || null;
+    const critiqueCount = Number(assessment.critique_count || 0);
 
     // Conditional salary: only update if DB has no salary (don't overwrite API-provided values)
     const salaryClause = exSalMin
@@ -146,8 +153,13 @@ for (let b = 0; b < $input.all().length; b++) {
       `, base_fit_score = ${Number.isFinite(baseFitScore) ? baseFitScore : 'NULL'}` +
       `, base_decision = ${sqlStr(baseDecision)}` +
       `, review_error = ${sqlStr(reviewError)}`;
+    const graphMetadataClause =
+      `, needs_human_review = ${needsHumanReview ? 'TRUE' : 'FALSE'}` +
+      `, explanation = ${sqlStr(explanation)}` +
+      `, confidence = ${sqlStr(confidence)}` +
+      `, critique_count = ${Number.isFinite(critiqueCount) && critiqueCount >= 0 ? Math.floor(critiqueCount) : 0}`;
     results.push({ json: {
-      _updateQuery: `UPDATE ${table} SET status = 'analyzed', analyzed_at = NOW(), error = NULL, error_code = NULL, retry_count = 0, fit_score = ${score}, decision = '${decision}', cv_variant = '${cvVariant}', hard_blockers = ${jsonbLiteral(assessment.hard_blockers)}, soft_gaps = ${jsonbLiteral(assessment.soft_gaps)}, strong_matches = ${jsonbLiteral(assessment.strong_matches)}, reasoning = ${sqlStr(assessment.reasoning || '')}, priority_notes = ${sqlStr(assessment.priority_notes || null)}, employment_type = ${sqlStr(empType)}, seniority_level = ${sqlStr(senLevel)}, start_date = COALESCE(start_date, ${sqlStr(startDate)})${salaryClause}, scored_uncalibrated = ${uncalibrated ? 'TRUE' : 'FALSE'}${providerMetadataClause} WHERE id = ${orig.id}`
+      _updateQuery: `UPDATE ${table} SET status = 'analyzed', analyzed_at = NOW(), error = NULL, error_code = NULL, retry_count = 0, fit_score = ${score}, decision = '${decision}', cv_variant = '${cvVariant}', hard_blockers = ${jsonbLiteral(assessment.hard_blockers)}, soft_gaps = ${jsonbLiteral(assessment.soft_gaps)}, strong_matches = ${jsonbLiteral(assessment.strong_matches)}, reasoning = ${sqlStr(assessment.reasoning || '')}, priority_notes = ${sqlStr(assessment.priority_notes || null)}, employment_type = ${sqlStr(empType)}, seniority_level = ${sqlStr(senLevel)}, start_date = COALESCE(start_date, ${sqlStr(startDate)})${salaryClause}, scored_uncalibrated = ${uncalibrated ? 'TRUE' : 'FALSE'}${providerMetadataClause}${graphMetadataClause} WHERE id = ${orig.id}`
     }});
   }
 }
