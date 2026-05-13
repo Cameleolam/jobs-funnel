@@ -122,6 +122,15 @@ for (let b = 0; b < $input.all().length; b++) {
     const exSalMin = assessment.extracted_salary_min || null;
     const exSalMax = assessment.extracted_salary_max || null;
     const exSalCur = assessment.extracted_salary_currency || null;
+    const scoringProvider = assessment.scoring_provider || null;
+    const scoringModel = assessment.scoring_model || null;
+    const reviewProvider = assessment.review_provider || null;
+    const reviewModel = assessment.review_model || null;
+    const baseFitScore = assessment.base_fit_score === undefined || assessment.base_fit_score === null
+      ? null
+      : Number(assessment.base_fit_score);
+    const baseDecision = assessment.base_decision || null;
+    const reviewError = assessment.review_error || null;
 
     // Conditional salary: only update if DB has no salary (don't overwrite API-provided values)
     const salaryClause = exSalMin
@@ -129,8 +138,16 @@ for (let b = 0; b < $input.all().length; b++) {
       : '';
 
     const uncalibrated = assessment.scored_uncalibrated === true;
+    const providerMetadataClause =
+      `, scoring_provider = ${sqlStr(scoringProvider)}` +
+      `, scoring_model = ${sqlStr(scoringModel)}` +
+      `, review_provider = ${sqlStr(reviewProvider)}` +
+      `, review_model = ${sqlStr(reviewModel)}` +
+      `, base_fit_score = ${Number.isFinite(baseFitScore) ? baseFitScore : 'NULL'}` +
+      `, base_decision = ${sqlStr(baseDecision)}` +
+      `, review_error = ${sqlStr(reviewError)}`;
     results.push({ json: {
-      _updateQuery: `UPDATE ${table} SET status = 'analyzed', analyzed_at = NOW(), error = NULL, error_code = NULL, retry_count = 0, fit_score = ${score}, decision = '${decision}', cv_variant = '${cvVariant}', hard_blockers = ${jsonbLiteral(assessment.hard_blockers)}, soft_gaps = ${jsonbLiteral(assessment.soft_gaps)}, strong_matches = ${jsonbLiteral(assessment.strong_matches)}, reasoning = ${sqlStr(assessment.reasoning || '')}, priority_notes = ${sqlStr(assessment.priority_notes || null)}, employment_type = ${sqlStr(empType)}, seniority_level = ${sqlStr(senLevel)}, start_date = COALESCE(start_date, ${sqlStr(startDate)})${salaryClause}, scored_uncalibrated = ${uncalibrated ? 'TRUE' : 'FALSE'} WHERE id = ${orig.id}`
+      _updateQuery: `UPDATE ${table} SET status = 'analyzed', analyzed_at = NOW(), error = NULL, error_code = NULL, retry_count = 0, fit_score = ${score}, decision = '${decision}', cv_variant = '${cvVariant}', hard_blockers = ${jsonbLiteral(assessment.hard_blockers)}, soft_gaps = ${jsonbLiteral(assessment.soft_gaps)}, strong_matches = ${jsonbLiteral(assessment.strong_matches)}, reasoning = ${sqlStr(assessment.reasoning || '')}, priority_notes = ${sqlStr(assessment.priority_notes || null)}, employment_type = ${sqlStr(empType)}, seniority_level = ${sqlStr(senLevel)}, start_date = COALESCE(start_date, ${sqlStr(startDate)})${salaryClause}, scored_uncalibrated = ${uncalibrated ? 'TRUE' : 'FALSE'}${providerMetadataClause} WHERE id = ${orig.id}`
     }});
   }
 }

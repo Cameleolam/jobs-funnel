@@ -43,6 +43,13 @@ CREATE TABLE IF NOT EXISTS {{TABLE}} (
     strong_matches  JSONB DEFAULT '[]',
     reasoning       TEXT,
     priority_notes  TEXT,
+    scoring_provider TEXT,
+    scoring_model    TEXT,
+    review_provider  TEXT,
+    review_model     TEXT,
+    base_fit_score   INTEGER,
+    base_decision    TEXT,
+    review_error     TEXT,
 
     retry_count     INTEGER DEFAULT 0,
     sheet_synced    BOOLEAN DEFAULT FALSE,

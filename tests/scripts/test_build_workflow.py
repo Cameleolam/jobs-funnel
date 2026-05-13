@@ -26,6 +26,11 @@ def dedup_parse_code(wf):
     return parse["parameters"]["jsCode"]
 
 
+def parse_update_code(wf):
+    parse = next(n for n in wf["nodes"] if n["name"] == "Parse + Prep Update")
+    return parse["parameters"]["jsCode"]
+
+
 def run_dedup_parse(code: str, stdout: str, run_start_id=17):
     harness = """
 const fs = require('fs');
@@ -56,6 +61,56 @@ Promise.resolve(fn($input, $env, $)).then(
     result = subprocess.run(
         ["node", "-e", harness],
         input=json.dumps({"code": code, "stdout": stdout, "runStartId": run_start_id}),
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)
+
+
+def run_parse_update(code: str, assessment: dict):
+    harness = """
+const fs = require('fs');
+const input = JSON.parse(fs.readFileSync(0, 'utf8'));
+const fn = new Function('$input', '$env', '$', 'require', input.code);
+const $input = {
+  all() {
+    return [{ json: { stdout: JSON.stringify([input.assessment]) } }];
+  }
+};
+const $env = {
+  JOBS_FUNNEL_TABLE: 'jobs',
+  JOBS_FUNNEL_PROJECT_DIR: 'D:/projects/jobs_funnel',
+  JOBS_FUNNEL_PROFILE: 'profile1',
+};
+function $(name) {
+  if (name === 'Batch Items') {
+    return {
+      all() {
+        return [{ json: { _batchOriginals: [{ id: 42 }] } }];
+      }
+    };
+  }
+  throw new Error(`unexpected node ${name}`);
+}
+const fakeRequire = (name) => {
+  if (name === 'fs') {
+    return { readdirSync() { throw new Error('no cvs'); } };
+  }
+  throw new Error(`unexpected require ${name}`);
+};
+Promise.resolve(fn($input, $env, $, fakeRequire)).then(
+  result => process.stdout.write(JSON.stringify(result)),
+  error => {
+    console.error(error && error.stack ? error.stack : String(error));
+    process.exit(1);
+  }
+);
+"""
+    result = subprocess.run(
+        ["node", "-e", harness],
+        input=json.dumps({"code": code, "assessment": assessment}),
         cwd=REPO,
         capture_output=True,
         text=True,
@@ -391,3 +446,33 @@ def test_phase2_dedup_parse_executes_tiered_payloads_safely():
     assert "+ -" not in query
     assert "dedup_vector_resolved = dedup_vector_resolved + 0" in query
     assert "dedup_claude_calls = dedup_claude_calls + 0" in query
+
+
+def test_parse_update_persists_provider_metadata():
+    wf = run_build("profile1")
+    code = parse_update_code(wf)
+    result = run_parse_update(code, {
+        "fit_score": 4,
+        "decision": "SKIP",
+        "cv_variant": "software",
+        "hard_blockers": ["geo mismatch"],
+        "soft_gaps": [],
+        "strong_matches": [],
+        "reasoning": "reviewed skip",
+        "priority_notes": None,
+        "scoring_provider": "codex_gpt55_high",
+        "scoring_model": "gpt-5.5",
+        "review_provider": "claude_sonnet",
+        "review_model": "claude-sonnet-4-6",
+        "base_fit_score": 5,
+        "base_decision": "MAYBE",
+        "review_error": "kept base",
+    })
+    query = result[0]["json"]["_updateQuery"]
+    assert "scoring_provider = 'codex_gpt55_high'" in query
+    assert "scoring_model = 'gpt-5.5'" in query
+    assert "review_provider = 'claude_sonnet'" in query
+    assert "review_model = 'claude-sonnet-4-6'" in query
+    assert "base_fit_score = 5" in query
+    assert "base_decision = 'MAYBE'" in query
+    assert "review_error = 'kept base'" in query
