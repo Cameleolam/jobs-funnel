@@ -50,7 +50,7 @@ def _decode_base64(value: str) -> str:
     import base64
 
     try:
-        return base64.b64decode(value).decode("utf-8").strip()
+        return base64.b64decode(value, validate=True).decode("utf-8").strip()
     except Exception as exc:
         raise FilterInputError(f"Filter error: invalid base64 input: {exc}") from exc
 

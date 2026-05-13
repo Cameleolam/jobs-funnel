@@ -174,6 +174,38 @@ def test_filter_invalid_base64_returns_api_error_fallback_without_traceback(monk
     assert "Traceback" not in captured.err
 
 
+def test_filter_invalid_base64_punctuation_returns_api_error_fallback(monkeypatch, capsys):
+    fil = _load_filter(monkeypatch)
+
+    monkeypatch.setattr(sys, "argv", ["filter.py", "--base64", "!!!!"])
+
+    with pytest.raises(SystemExit) as raised:
+        fil.main()
+
+    captured = capsys.readouterr()
+    assert raised.value.code == 1
+    payload = json.loads(captured.out)
+    _assert_parse_update_fallback(payload, "API_ERROR")
+    assert "Filter error" in payload["hard_blockers"][0]
+    assert "Traceback" not in captured.err
+
+
+def test_filter_base64_file_chunk_mode_invalid_punctuation_returns_api_error_fallback(monkeypatch, capsys):
+    fil = _load_filter(monkeypatch)
+
+    monkeypatch.setattr(sys, "argv", ["filter.py", "--base64-file", "!!", "!!"])
+
+    with pytest.raises(SystemExit) as raised:
+        fil.main()
+
+    captured = capsys.readouterr()
+    assert raised.value.code == 1
+    payload = json.loads(captured.out)
+    _assert_parse_update_fallback(payload, "API_ERROR")
+    assert "Filter error" in payload["hard_blockers"][0]
+    assert "Traceback" not in captured.err
+
+
 def test_filter_base64_file_reads_base64_from_file_path(monkeypatch, capsys, tmp_path):
     fil = _load_filter(monkeypatch)
 
