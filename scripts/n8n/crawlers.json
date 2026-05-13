@@ -6,7 +6,7 @@
     "file": "scripts/n8n/aa-fetch.js",
     "countries": ["de"],
     "remote_only": false,
-    "position": [1100, 550]
+    "position": [1280, 600]
   },
   {
     "id": "arbeitnow",
@@ -15,7 +15,7 @@
     "file": "scripts/n8n/an-fetch.js",
     "countries": ["de", "at", "ch"],
     "remote_only": false,
-    "position": [1100, 150]
+    "position": [1280, 200]
   },
   {
     "id": "remotive",
@@ -24,7 +24,7 @@
     "file": "scripts/n8n/remotive-fetch.js",
     "countries": ["*"],
     "remote_only": true,
-    "position": [1100, 50]
+    "position": [1280, 0]
   },
   {
     "id": "arbeitnow_remote",
@@ -33,7 +33,7 @@
     "file": "scripts/n8n/an-remote-fetch.js",
     "countries": ["*"],
     "remote_only": true,
-    "position": [1100, 250]
+    "position": [1280, 400]
   },
   {
     "id": "himalayas",
@@ -42,6 +42,6 @@
     "file": "scripts/n8n/himalayas-fetch.js",
     "countries": ["*"],
     "remote_only": true,
-    "position": [1100, 700]
+    "position": [1280, 800]
   }
 ]

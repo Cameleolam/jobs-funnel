@@ -7,7 +7,7 @@
       "name": "Run Full Pipeline",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
-      "position": [0, 300]
+      "position": [0, 200]
     },
     {
       "parameters": {
@@ -19,7 +19,7 @@
       "name": "Cron Schedule",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [0, 450]
+      "position": [0, 400]
     },
     {
       "parameters": {
@@ -32,7 +32,7 @@
       "name": "Run Analyze Only",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [0, 800],
+      "position": [0, 1000],
       "webhookId": "analyze-only"
     },
     {
@@ -43,7 +43,7 @@
       "name": "Pre-Flight Check",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [300, 350],
+      "position": [320, 400],
       "executeOnce": true
     },
     {{crawler_nodes}},
@@ -57,7 +57,7 @@
       "name": "Merge Sources",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
-      "position": [1400, 350]
+      "position": [1600, 400]
     },
     {
       "parameters": {
@@ -67,26 +67,34 @@
       "name": "Dedup Merge",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1600, 350]
+      "position": [1920, 400]
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true },
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
           "conditions": [
             {
+              "id": "has-results-url-not-empty",
               "leftValue": "={{ $json.url }}",
               "rightValue": "",
-              "operator": { "type": "string", "operation": "isNotEmpty" }
+              "operator": { "type": "string", "operation": "notEmpty", "singleValue": true }
             }
-          ]
-        }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
       },
       "id": "has-results",
       "name": "Has Results?",
       "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [1850, 350]
+      "typeVersion": 2.2,
+      "position": [2240, 400]
     },
     {
       "parameters": {
@@ -98,7 +106,7 @@
       "name": "Dedup: Get Seen URLs",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [2100, 350],
+      "position": [2560, 400],
       "credentials": {
         "postgres": {
           "id": "CONFIGURE_ME",
@@ -116,26 +124,34 @@
       "name": "Dedup: Filter New",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2350, 350]
+      "position": [2880, 400]
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true },
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
           "conditions": [
             {
+              "id": "has-new-url-not-empty",
               "leftValue": "={{ $json.url }}",
               "rightValue": "",
-              "operator": { "type": "string", "operation": "isNotEmpty" }
+              "operator": { "type": "string", "operation": "notEmpty", "singleValue": true }
             }
-          ]
-        }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
       },
       "id": "has-new",
       "name": "Has New?",
       "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [2600, 350]
+      "typeVersion": 2.2,
+      "position": [3200, 400]
     },
     {
       "parameters": {
@@ -145,7 +161,7 @@
       "name": "AA: Fetch Descriptions",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2725, 350]
+      "position": [3520, 400]
     },
     {
       "parameters": {
@@ -155,7 +171,7 @@
       "name": "Prep Insert",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2950, 350]
+      "position": [3840, 400]
     },
     {
       "parameters": {
@@ -167,7 +183,7 @@
       "name": "DB: Insert Jobs",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [3100, 350],
+      "position": [4160, 400],
       "credentials": {
         "postgres": {
           "id": "CONFIGURE_ME",
@@ -183,7 +199,7 @@
       "name": "Start Analyze",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3350, 350],
+      "position": [4480, 400],
       "executeOnce": true
     },
     {
@@ -195,7 +211,7 @@
       "name": "Embed: Loop Control",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3350, 520]
+      "position": [5120, 560]
     },
     {
       "parameters": {
@@ -207,7 +223,7 @@
       "name": "Embed: Metrics Update",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [3500, 520],
+      "position": [5440, 560],
       "credentials": {
         "postgres": {
           "id": "CONFIGURE_ME",
@@ -219,21 +235,29 @@
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "typeValidation": "loose" },
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
           "conditions": [
             {
+              "id": "embed-more-flag-true",
               "leftValue": "={{ $(\"Embed: Loop Control\").first().json._embedMoreToDo }}",
               "rightValue": true,
-              "operator": { "type": "boolean", "operation": "true" }
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
             }
-          ]
-        }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
       },
       "id": "embed-more",
       "name": "Embed More?",
       "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [3650, 520]
+      "typeVersion": 2.2,
+      "position": [5760, 560]
     },
     {
       "parameters": {
@@ -243,7 +267,7 @@
       "name": "Embed: Next Batch",
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
-      "position": [3900, 430],
+      "position": [6080, 360],
       "continueOnFail": true,
       "retryOnFail": false,
       "maxTries": 1
@@ -258,7 +282,7 @@
       "name": "DB: Fetch Pending",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [3400, 650],
+      "position": [5120, 820],
       "credentials": {
         "postgres": {
           "id": "CONFIGURE_ME",
@@ -276,26 +300,34 @@
       "name": "Has Pending?",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3650, 650]
+      "position": [5440, 820]
     },
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "typeValidation": "loose" },
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
           "conditions": [
             {
+              "id": "analyze-done-flag-true",
               "leftValue": "={{ $json._done }}",
               "rightValue": true,
-              "operator": { "type": "boolean", "operation": "true" }
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
             }
-          ]
-        }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
       },
       "id": "analyze-done",
       "name": "Analyze Done?",
       "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [3850, 650]
+      "typeVersion": 2.2,
+      "position": [5760, 820]
     },
     {
       "parameters": {
@@ -305,7 +337,7 @@
       "name": "Batch Items",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [4050, 650]
+      "position": [6080, 820]
     },
     {
       "parameters": {
@@ -315,7 +347,7 @@
       "name": "Filter: Claude",
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
-      "position": [4400, 650],
+      "position": [6400, 820],
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 30000
@@ -328,7 +360,7 @@
       "name": "Parse + Prep Update",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [4650, 650]
+      "position": [6720, 820]
     },
     {
       "parameters": {
@@ -340,7 +372,7 @@
       "name": "DB: Update Jobs",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [4900, 650],
+      "position": [7040, 820],
       "credentials": {
         "postgres": {
           "id": "CONFIGURE_ME",
@@ -356,7 +388,7 @@
       "name": "Check More Pending",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [6400, 650],
+      "position": [8960, 820],
       "executeOnce": true
     },
     {
@@ -369,7 +401,7 @@
       "name": "Dedup: Fetch Recent",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [5150, 450],
+      "position": [7360, 620],
       "credentials": {
         "postgres": {
           "id": "CONFIGURE_ME",
@@ -387,7 +419,7 @@
       "name": "Dedup: Semantic Prep",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [5400, 450],
+      "position": [7680, 620],
       "executeOnce": true
     },
     {
@@ -398,7 +430,7 @@
       "name": "Dedup: Claude",
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
-      "position": [5650, 450],
+      "position": [8000, 620],
       "continueOnFail": true
     },
     {
@@ -409,7 +441,7 @@
       "name": "Dedup: Parse Results",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [5900, 450]
+      "position": [8320, 620]
     },
     {
       "parameters": {
@@ -421,7 +453,7 @@
       "name": "Dedup: Update Duplicates",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [6150, 450],
+      "position": [8640, 620],
       "credentials": {
         "postgres": {
           "id": "CONFIGURE_ME",
@@ -438,7 +470,7 @@
       "name": "Run Start",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [550, 350],
+      "position": [640, 400],
       "executeOnce": true
     },
     {
@@ -451,7 +483,7 @@
       "name": "DB: Run Start",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [800, 350],
+      "position": [960, 400],
       "credentials": {
         "postgres": {
           "id": "CONFIGURE_ME",
@@ -468,7 +500,7 @@
       "name": "Run Start (Analyze)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [300, 850],
+      "position": [320, 1000],
       "executeOnce": true
     },
     {
@@ -481,7 +513,7 @@
       "name": "DB: Run Start (Analyze)",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [550, 850],
+      "position": [640, 1000],
       "credentials": {
         "postgres": {
           "id": "CONFIGURE_ME",
@@ -498,7 +530,7 @@
       "name": "Rescore: Uncalibrated",
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
-      "position": [3050, 650],
+      "position": [4800, 820],
       "executeOnce": true,
       "continueOnFail": true,
       "alwaysOutputData": true
@@ -511,7 +543,7 @@
       "name": "Run End",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [4100, 950],
+      "position": [6080, 1120],
       "executeOnce": true
     },
     {
@@ -524,7 +556,7 @@
       "name": "DB: Run End",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [4350, 950],
+      "position": [6400, 1120],
       "credentials": {
         "postgres": {
           "id": "CONFIGURE_ME",

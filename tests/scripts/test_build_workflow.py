@@ -80,6 +80,101 @@ def test_merge_sources_number_inputs_matches_crawler_count():
     assert merge["parameters"]["numberInputs"] == 5
 
 
+def test_result_gate_if_nodes_use_current_n8n_not_empty_operator():
+    wf = run_build("profile1")
+
+    expected = {
+        "Has Results?": {
+            "typeValidation": "strict",
+            "leftValue": "={{ $json.url }}",
+            "rightValue": "",
+            "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": True,
+            },
+        },
+        "Has New?": {
+            "typeValidation": "strict",
+            "leftValue": "={{ $json.url }}",
+            "rightValue": "",
+            "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": True,
+            },
+        },
+        "Embed More?": {
+            "typeValidation": "loose",
+            "leftValue": '={{ $("Embed: Loop Control").first().json._embedMoreToDo }}',
+            "rightValue": True,
+            "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": True,
+            },
+        },
+        "Analyze Done?": {
+            "typeValidation": "loose",
+            "leftValue": "={{ $json._done }}",
+            "rightValue": True,
+            "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": True,
+            },
+        },
+    }
+
+    if_nodes = [n for n in wf["nodes"] if n["type"] == "n8n-nodes-base.if"]
+    assert {n["name"] for n in if_nodes} == set(expected)
+
+    for node in if_nodes:
+        node_name = node["name"]
+        expected_node = expected[node_name]
+        node = next(n for n in wf["nodes"] if n["name"] == node_name)
+        assert node["typeVersion"] == 2.2
+        assert node["parameters"]["options"] == {}
+
+        conditions = node["parameters"]["conditions"]
+        assert conditions["options"] == {
+            "caseSensitive": True,
+            "leftValue": "",
+            "typeValidation": expected_node["typeValidation"],
+            "version": 2,
+        }
+        assert conditions["combinator"] == "and"
+
+        condition = conditions["conditions"][0]
+        assert condition["leftValue"] == expected_node["leftValue"]
+        assert condition["rightValue"] == expected_node["rightValue"]
+        assert condition["operator"] == expected_node["operator"]
+
+
+def test_workflow_node_positions_do_not_overlap():
+    wf = run_build("profile1")
+    node_width = 300
+    node_height = 160
+    overlaps = []
+    nodes = wf["nodes"]
+
+    for i, left in enumerate(nodes):
+        left_x, left_y = left["position"]
+        for right in nodes[i + 1:]:
+            right_x, right_y = right["position"]
+            if abs(left_x - right_x) < node_width and abs(left_y - right_y) < node_height:
+                overlaps.append(
+                    (
+                        left["name"],
+                        tuple(left["position"]),
+                        right["name"],
+                        tuple(right["position"]),
+                    )
+                )
+
+    assert overlaps == []
+
+
 def test_db_run_start_fans_out_to_all_crawlers():
     wf = run_build("profile1")
     fanout = wf["connections"]["DB: Run Start"]["main"][0]
