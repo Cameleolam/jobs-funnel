@@ -9,6 +9,7 @@ from scripts.llm.providers import (
     ClaudeCliProvider,
     CodexCliProvider,
     OllamaProvider,
+    ScoringProvider,
     provider_from_key,
     review_band,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "ClaudeCliProvider",
     "CodexCliProvider",
     "OllamaProvider",
+    "ScoringProvider",
     "ProviderError",
     "ProviderRequest",
     "ProviderResponse",

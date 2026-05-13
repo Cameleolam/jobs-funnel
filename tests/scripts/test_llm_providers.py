@@ -12,6 +12,7 @@ from scripts.llm.providers import (
     provider_from_key,
     review_band,
 )
+from scripts.llm import ScoringProvider
 from scripts.llm.types import ProviderRequest, ProviderTimeout
 
 
@@ -103,6 +104,18 @@ def test_codex_provider_wraps_cmd_files_on_windows(monkeypatch):
     assert provider._command_prefix() == ["cmd.exe", "/c", r"D:\tools\npm-global\codex.cmd"]
 
 
+def test_codex_provider_wraps_bat_files_on_windows(monkeypatch):
+    monkeypatch.setattr("os.name", "nt")
+    provider = CodexCliProvider(
+        provider_key="codex_gpt55_high",
+        model="gpt-5.5",
+        reasoning_effort="high",
+        command=r"D:\tools\codex.bat",
+    )
+
+    assert provider._command_prefix() == ["cmd.exe", "/c", r"D:\tools\codex.bat"]
+
+
 def test_provider_timeout_maps_to_provider_timeout(monkeypatch):
     def fake_run(cmd, **kwargs):
         raise subprocess.TimeoutExpired(cmd=cmd, timeout=300)
@@ -153,13 +166,28 @@ def test_ollama_provider_posts_generate_json(monkeypatch):
 
 def test_provider_from_key_defaults_and_env(monkeypatch):
     monkeypatch.delenv("SCORING_CLAUDE_MODEL", raising=False)
+    monkeypatch.delenv("SCORING_CODEX_MODEL", raising=False)
     monkeypatch.setenv("SCORING_CODEX_CMD", r"D:\tools\npm-global\codex.cmd")
 
     claude = provider_from_key("claude_sonnet", {"model": "claude-sonnet-4-6"})
     codex = provider_from_key("codex_gpt55_high", {"model": "ignored"})
 
     assert claude.model == "claude-sonnet-4-6"
+    assert codex.model == "gpt-5.5"
+    assert codex.reasoning_effort == "high"
     assert codex.command == r"D:\tools\npm-global\codex.cmd"
+
+
+def test_provider_from_key_env_overrides_claude_sonnet_model(monkeypatch):
+    monkeypatch.setenv("SCORING_CLAUDE_MODEL", "claude-env-model")
+
+    claude = provider_from_key("claude_sonnet", {"model": "config-model"})
+
+    assert claude.model == "claude-env-model"
+
+
+def test_scoring_provider_is_exported_from_package():
+    assert ScoringProvider.__name__ == "ScoringProvider"
 
 
 def test_review_band_defaults_to_four_through_six(monkeypatch):
