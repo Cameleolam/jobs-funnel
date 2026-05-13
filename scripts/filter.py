@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Filter job postings using Claude Code headless mode.
+"""Filter job postings through the configured scoring provider.
 
 Supports single job or batch (JSON array) input.
 
@@ -13,10 +13,7 @@ Output: JSON assessment (object or array) with score, decision, cv_variant
 
 import json
 import os
-import re
-import subprocess
 import sys
-import time
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -24,82 +21,30 @@ PIPELINE_DIR = SCRIPT_DIR.parent
 if str(PIPELINE_DIR) not in sys.path:
     sys.path.insert(0, str(PIPELINE_DIR))
 
-from scripts import retrieval
-from scripts.lib.job_text import normalize_job_for_llm
+from scripts.llm.types import ProviderError, ProviderTimeout
+from scripts.scoring import score_input
 
 CONFIG = json.loads((PIPELINE_DIR / "config.json").read_text(encoding="utf-8"))
 PROFILE = os.environ["JOBS_FUNNEL_PROFILE"]
 PROMPT_FILE = PIPELINE_DIR / "profiles" / PROFILE / "filter_prompt.md"
-LOG_DIR = PIPELINE_DIR / "temp" / "filter_log"
 
 
-def _log_batch(input_data, raw_output, parsed_count, expected_count, error_label=None):
-    """Persist the raw Claude exchange when batch returns fewer items than expected,
-    or when explicitly flagged as an error. Helps diagnose batch-incompleteness issues."""
-    try:
-        if error_label is None and parsed_count >= expected_count:
-            return  # Healthy batch, don't log
-        LOG_DIR.mkdir(parents=True, exist_ok=True)
-        ts = time.strftime("%Y%m%d_%H%M%S")
-        label = error_label or f"short_{parsed_count}of{expected_count}"
-        path = LOG_DIR / f"{ts}_{label}.json"
-        path.write_text(json.dumps({
-            "expected_count": expected_count,
-            "parsed_count": parsed_count,
-            "error_label": error_label,
-            "input": input_data,
-            "raw_output": raw_output[:50000] if raw_output else "",
-        }, indent=2, ensure_ascii=False), encoding="utf-8")
-    except Exception:
-        pass  # Logging must never break the pipeline
+def _read_job_data(argv: list[str]) -> str:
+    if len(argv) > 2 and argv[1] == "--base64-file":
+        import base64
 
+        return base64.b64decode("".join(argv[2:])).decode("utf-8").strip()
+    if len(argv) > 2 and argv[1] == "--base64":
+        import base64
 
-def _has_calibration(j):
-    return j.get("_embedding_calibration_present", True)
-
-
-def _normalize_filter_input(parsed_input):
-    if isinstance(parsed_input, list):
-        return [
-            normalize_job_for_llm(job) if isinstance(job, dict) else job
-            for job in parsed_input
-        ]
-    if isinstance(parsed_input, dict):
-        return normalize_job_for_llm(parsed_input)
-    return parsed_input
-
-
-def _calibration_anchor_groups(parsed_input, is_batch):
-    jobs = parsed_input if is_batch else [parsed_input]
-    groups = []
-    for job in jobs:
-        if not isinstance(job, dict) or not _has_calibration(job):
-            continue
-        anchors = retrieval.retrieve_similar_decisions(job)
-        if anchors:
-            groups.append(anchors)
-    return groups
-
-
-def _system_prompt_with_calibration(system_prompt, parsed_input, is_batch):
-    groups = _calibration_anchor_groups(parsed_input, is_batch)
-    if not groups:
-        return system_prompt
-    anchors = retrieval.merge_batch_anchors(groups)
-    block = retrieval.format_calibration_block(anchors)
-    if not block:
-        return system_prompt
-    return system_prompt.rstrip() + "\n\n" + block
-
-
-def _loads_jsonish(text):
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        repaired = re.sub(r"([{\[,]\s*)'([A-Za-z_][A-Za-z0-9_]*)'\s*:", r'\1"\2":', text)
-        if repaired == text:
-            raise
-        return json.loads(repaired)
+        return base64.b64decode(argv[2]).decode("utf-8").strip()
+    if len(argv) > 1:
+        input_path = Path(argv[1])
+        if not input_path.exists():
+            print(json.dumps({"error": f"Input file not found: {input_path}"}))
+            sys.exit(1)
+        return input_path.read_text(encoding="utf-8").strip()
+    return sys.stdin.read().strip()
 
 
 def main():
@@ -108,172 +53,35 @@ def main():
         sys.exit(1)
 
     system_prompt = PROMPT_FILE.read_text(encoding="utf-8")
-
-    # Read from --base64-file (writes temp file from b64 chunks), --base64, file, or stdin
-    if len(sys.argv) > 2 and sys.argv[1] == "--base64-file":
-        import base64
-        b64_str = "".join(sys.argv[2:])
-        job_data = base64.b64decode(b64_str).decode("utf-8").strip()
-    elif len(sys.argv) > 2 and sys.argv[1] == "--base64":
-        import base64
-        job_data = base64.b64decode(sys.argv[2]).decode("utf-8").strip()
-    elif len(sys.argv) > 1:
-        input_path = Path(sys.argv[1])
-        if not input_path.exists():
-            print(json.dumps({"error": f"Input file not found: {input_path}"}))
-            sys.exit(1)
-        job_data = input_path.read_text(encoding="utf-8").strip()
-    else:
-        job_data = sys.stdin.read().strip()
+    job_data = _read_job_data(sys.argv)
 
     if not job_data:
         print(json.dumps({"error": "No input provided on stdin"}))
         sys.exit(1)
 
-    # Detect batch (array) vs single (object) input
     parsed_input = json.loads(job_data)
-    is_batch = isinstance(parsed_input, list)
-    prompt_input = _normalize_filter_input(parsed_input)
-    system_prompt = _system_prompt_with_calibration(system_prompt, prompt_input, is_batch)
-
-    if is_batch:
-        user_prompt = f"Evaluate these {len(prompt_input)} job postings:\n\n"
-        for i, job in enumerate(prompt_input):
-            user_prompt += f"--- JOB {i + 1} ---\n{json.dumps(job, ensure_ascii=False)}\n\n"
-    else:
-        user_prompt = f"Evaluate this job posting:\n\n{json.dumps(prompt_input, ensure_ascii=False)}"
 
     try:
-        result = subprocess.run(
-            [
-                "claude", "-p",
-                "--model", CONFIG.get("model", "claude-sonnet-4-6"),
-                "--output-format", "json",
-                "--append-system-prompt", system_prompt,
-                "--max-turns", "3",
-                # No tools — filter is pure scoring, doesn't need any.
-                # Required: user-level skills (job-scorer, jm-profile) were auto-triggering
-                # on job-description keywords and exhausting turns on denied Read calls,
-                # producing error_max_turns + non-zero exit. See temp/filter_log/.
-                "--tools", "",
-            ],
-            input=user_prompt,
-            capture_output=True,
-            text=True,
-            timeout=300,
-            encoding="utf-8",
-            errors="replace",
+        assessment = score_input(
+            parsed_input=parsed_input,
+            system_prompt=system_prompt,
+            config=CONFIG,
+            root=PIPELINE_DIR,
         )
-    except FileNotFoundError:
-        print(json.dumps({"error": "claude command not found. Is Claude Code installed?"}))
-        sys.exit(1)
-    except subprocess.TimeoutExpired:
-        print(json.dumps({"error": "Claude timed out after 300 seconds", "error_code": "TIMEOUT"}))
-        sys.exit(1)
-
-    if result.returncode != 0:
-        if is_batch:
-            _log_batch(parsed_input, result.stdout, 0, len(parsed_input), error_label="api_error")
+    except ProviderTimeout as exc:
         print(json.dumps({
-            "error": "claude -p returned non-zero",
-            "error_code": "API_ERROR",
-            "stderr": result.stderr[:500] if result.stderr else "",
-            "stdout": result.stdout[:500] if result.stdout else "",
+            "error": f"{exc.provider_key} timed out after 300 seconds",
+            "error_code": "TIMEOUT",
         }))
         sys.exit(1)
-
-    # Parse Claude's JSON wrapper to extract the result text
-    # claude -p --output-format json returns either {"result":...} or [{"result":...}]
-    raw_output = result.stdout.strip()
-    result_text = raw_output
-
-    try:
-        claude_json = json.loads(raw_output)
-        # Unwrap array if present (claude -p returns a list)
-        if isinstance(claude_json, list) and len(claude_json) > 0:
-            claude_json = claude_json[0]
-        if isinstance(claude_json, dict):
-            result_text = claude_json.get("result", raw_output)
-    except json.JSONDecodeError:
-        pass  # Not wrapped in Claude's JSON format, use raw
-
-    # Clean markdown code fences (robust - handles whitespace variations)
-    clean = result_text.strip()
-    # Try to find JSON array or object directly, ignoring any surrounding text/fences
-    # This handles cases where result_text has code fences, extra whitespace, etc.
-    json_start = -1
-    json_end = -1
-    for i, c in enumerate(clean):
-        if c in '[{':
-            json_start = i
-            break
-    if json_start >= 0:
-        # Find matching closing bracket
-        bracket = ']' if clean[json_start] == '[' else '}'
-        depth = 0
-        for i in range(len(clean) - 1, json_start - 1, -1):
-            if clean[i] == bracket:
-                json_end = i + 1
-                break
-        if json_end > json_start:
-            clean = clean[json_start:json_end]
-
-    # Validate and output
-    try:
-        assessment = _loads_jsonish(clean)
-    except json.JSONDecodeError:
-        if is_batch:
-            _log_batch(parsed_input, raw_output, 0, len(parsed_input), error_label="parse_fail")
-        # Output SKIP fallback instead of failing - let downstream nodes handle it
-        fallback = {
-            "fit_score": 0,
-            "decision": "SKIP",
-            "cv_variant": "default",
-            "hard_blockers": ["Claude response parse error"],
-            "soft_gaps": [],
-            "strong_matches": [],
-            "reasoning": f"Parse error: {result_text[:200]}",
-            "priority_notes": None,
-            "error_code": "PARSE_FAIL",
-        }
-        if is_batch:
-            print(json.dumps([fallback] * len(parsed_input), indent=2))
-        else:
-            print(json.dumps(fallback, indent=2))
-        sys.exit(0)
-
-    # Normalize batch shape BEFORE indexing. Claude occasionally returns a
-    # single object for a batch request; without this guard the loop below
-    # crashes with TypeError on `assessment[i]`.
-    if is_batch and not isinstance(assessment, list):
-        assessment = [assessment]
-
-    if is_batch:
-        for i, sub_input in enumerate(parsed_input):
-            if i < len(assessment) and not _has_calibration(sub_input):
-                assessment[i]["scored_uncalibrated"] = True
-    else:
-        if not _has_calibration(parsed_input):
-            assessment["scored_uncalibrated"] = True
-
-    # For batch input, log + pad short responses to match input length
-    if is_batch:
-        # Log if Claude returned fewer entries than expected (this is the AMBOSS-class bug)
-        if len(assessment) < len(parsed_input):
-            _log_batch(parsed_input, raw_output, len(assessment), len(parsed_input))
-        # Pad with SKIP entries if Claude returned fewer results
-        while len(assessment) < len(parsed_input):
-            assessment.append({
-                "fit_score": 0,
-                "decision": "SKIP",
-                "cv_variant": "default",
-                "hard_blockers": ["Batch evaluation incomplete"],
-                "soft_gaps": [],
-                "strong_matches": [],
-                "reasoning": f"Missing from batch response (job {len(assessment)+1} of {len(parsed_input)})",
-                "priority_notes": "BATCH_PADDING",
-                "error_code": "BATCH_PADDING",
-            })
+    except ProviderError as exc:
+        print(json.dumps({
+            "error": str(exc),
+            "error_code": exc.error_code,
+            "stderr": exc.stderr[:500] if exc.stderr else "",
+            "stdout": exc.stdout[:500] if exc.stdout else "",
+        }))
+        sys.exit(1)
 
     print(json.dumps(assessment, indent=2))
 
