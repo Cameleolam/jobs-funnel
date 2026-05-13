@@ -24,8 +24,9 @@ Your laptop (Windows)
 │   ├── workflow_template.json + scripts/n8n/*.js  ← edit these
 │   └── workflow.json     ← built output, import into n8n
 │
-├── Claude Code (Max subscription, authenticated)
-│   └── called via claude -p from Python scripts
+├── AI scoring CLI(s)
+│   ├── Claude Code via claude -p
+│   └── Codex CLI via codex exec
 │
 └── PostgreSQL (local)
     └── jobs, pipeline_runs, job_raw_data tables
@@ -53,7 +54,9 @@ your profile. See `countries/README.md` for details. After changing the crawler 
 1. **Python 3.9+**: `python --version`
 2. **Node.js 18+**: `node -v`
 3. **Docker**: `docker --version` (for PostgreSQL)
-4. **Claude Code**: installed and authenticated (`claude --version`)
+4. **AI scoring CLI**: install and authenticate at least one provider:
+   - Claude Code (`claude --version`)
+   - Codex CLI (`codex --version`)
 
 ## Step 1: Install n8n
 
@@ -83,6 +86,8 @@ Key variables:
 - `JOBS_FUNNEL_PROFILE` — profile name (whatever you named it in setup)
 - `JOBS_FUNNEL_TABLE` — Postgres table name (e.g., `jobs`)
 - `JOBS_FUNNEL_PG_*` — Postgres connection details
+- `SCORING_PROVIDER` — primary AI scorer (`claude_sonnet`, `claude_haiku`, `codex_gpt55_high`, `codex_gpt55_xhigh`, or `ollama_local`)
+- `SCORING_REVIEW_PROVIDER` — optional secondary reviewer for borderline scores
 
 ## Step 4: Start PostgreSQL
 
@@ -142,7 +147,7 @@ Click "Execute Workflow" (or trigger cron). The pipeline will:
 1. Validate environment (preflight)
 2. Crawl Arbeitsagentur + Arbeitnow APIs
 3. Deduplicate against Postgres, insert new jobs
-4. Score each job via `claude -p` (batches of 8)
+4. Score each job via the selected scoring provider (batches of 8)
 5. Run semantic duplicate detection
 6. Log run stats to `pipeline_runs`
 
@@ -185,6 +190,54 @@ Tunable pipeline constants. JS nodes read these at runtime.
 | `circuit_breaker_threshold` | 0.8 | Error rate threshold to trip circuit breaker |
 | `circuit_breaker_min_requests` | 5 | Min requests before circuit breaker can trip |
 
+## Scoring provider configuration (.env)
+
+Scoring is selected through environment variables, not `config.json`.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `SCORING_PROVIDER` | `claude_sonnet` | Primary scorer used for every job |
+| `SCORING_REVIEW_PROVIDER` | empty | Optional secondary reviewer |
+| `SCORING_REVIEW_LOW` | `4` | Lowest score that should be reviewed |
+| `SCORING_REVIEW_HIGH` | `6` | Highest score that should be reviewed |
+| `SCORING_REVIEW_MAX_PER_BATCH` | `8` | Max reviewer calls per filter batch |
+| `SCORING_WRAPPER_TIMEOUT_SECONDS` | `3600` | Timeout for the full `run_filter.py` wrapper |
+| `SCORING_CLAUDE_CMD` | `claude` | Claude CLI command |
+| `SCORING_CLAUDE_MODEL` | `claude-sonnet-4-6` | Claude Sonnet model name |
+| `SCORING_HAIKU_MODEL` | `haiku` | Claude Haiku model name |
+| `SCORING_CODEX_CMD` | `codex` | Codex CLI command, or full `.cmd` path on Windows |
+| `SCORING_CODEX_MODEL` | `gpt-5.5` | Codex model name |
+| `SCORING_OLLAMA_URL` | `http://localhost:11434` | Ollama base URL |
+| `SCORING_OLLAMA_MODEL` | empty | Local Ollama model name when using `ollama_local` |
+
+Available providers:
+
+- `claude_sonnet`: Claude CLI with Sonnet.
+- `claude_haiku`: Claude CLI with Haiku.
+- `codex_gpt55_high`: Codex CLI with GPT-5.5 and high reasoning.
+- `codex_gpt55_xhigh`: Codex CLI with GPT-5.5 and xhigh reasoning.
+- `ollama_local`: local Ollama model, only active when `SCORING_OLLAMA_MODEL` is set.
+
+Example: Codex as primary scorer, Claude as the secondary reviewer for borderline scores:
+
+```env
+SCORING_PROVIDER=codex_gpt55_high
+SCORING_REVIEW_PROVIDER=claude_sonnet
+SCORING_REVIEW_LOW=4
+SCORING_REVIEW_HIGH=6
+SCORING_REVIEW_MAX_PER_BATCH=8
+SCORING_CODEX_CMD=codex
+SCORING_CODEX_MODEL=gpt-5.5
+SCORING_CLAUDE_CMD=claude
+SCORING_CLAUDE_MODEL=claude-sonnet-4-6
+SCORING_WRAPPER_TIMEOUT_SECONDS=3600
+```
+
+With this setup, Codex scores every job. Claude only reviews Codex results whose `fit_score`
+is between 4 and 6 inclusive. Scores outside that band do not consume Claude usage. The
+secondary provider is a reviewer, not a failover path; if the primary provider fails, the
+job keeps the provider error instead of automatically retrying on the secondary provider.
+
 ## Scripts interface
 
 The core scripts follow the same pattern: JSON in (file arg or stdin), JSON out (stdout), errors as JSON with `"error"` field + non-zero exit code.
@@ -213,6 +266,8 @@ python scripts/build_workflow.py
 
 Common issues:
 - **Claude calls hanging**: check `claude --version` works, try `claude -p "hello"` to verify auth
+- **Codex calls failing on Windows**: set `SCORING_CODEX_CMD` to the full `.cmd` path, for example `C:\Users\<you>\AppData\Roaming\npm\codex.cmd`
+- **Review provider not running**: confirm `SCORING_REVIEW_PROVIDER` is set and the base `fit_score` is between `SCORING_REVIEW_LOW` and `SCORING_REVIEW_HIGH`
 - **Preflight failures**: read the error — usually a missing env var or profile file
 - **Dead letter jobs**: jobs that fail 3x get `status='dead'`. Fix the issue, then reset: `UPDATE jobs SET status='pending', error_count=0 WHERE status='dead';`
 
