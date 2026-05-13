@@ -5,9 +5,19 @@ from scripts.llm.parsing import (
     fallback_assessment,
     loads_jsonish,
 )
+from scripts.llm.providers import (
+    ClaudeCliProvider,
+    CodexCliProvider,
+    OllamaProvider,
+    provider_from_key,
+    review_band,
+)
 from scripts.llm.types import ProviderError, ProviderRequest, ProviderResponse, ProviderTimeout
 
 __all__ = [
+    "ClaudeCliProvider",
+    "CodexCliProvider",
+    "OllamaProvider",
     "ProviderError",
     "ProviderRequest",
     "ProviderResponse",
@@ -17,4 +27,6 @@ __all__ = [
     "extract_result_text",
     "fallback_assessment",
     "loads_jsonish",
+    "provider_from_key",
+    "review_band",
 ]
