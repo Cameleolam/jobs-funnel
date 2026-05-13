@@ -1,10 +1,9 @@
-"""Phase 1 stabilization: UI must tolerate DBs that haven't run 0003_pgvector.sql.
+"""Phase 1 stabilization: UI must tolerate DBs with optional columns.
 
-We exercise the detection function directly (mocking psycopg2.connect) and
-separately verify the ROW_COLS branching logic by replicating the conditional.
-We avoid `importlib.reload(ui.server)` because it rebinds module attributes
-and breaks other tests that patch them.
+We exercise the detection function directly (mocking psycopg2.connect) and use
+module reloads only for import-time ROW_COLS checks.
 """
+import importlib
 from unittest.mock import MagicMock, patch
 
 import ui.server as srv
@@ -22,26 +21,28 @@ def _fake_conn(present_cols):
     return conn
 
 
-def test_detect_returns_true_when_both_columns_present():
+def test_detect_returns_optional_columns_when_present():
     with patch("psycopg2.connect", return_value=_fake_conn(["embedding", "scored_uncalibrated"])):
-        assert srv._detect_embedding_schema() is True
+        assert srv._detect_optional_columns() == {"embedding", "scored_uncalibrated"}
 
 
-def test_detect_returns_false_when_columns_missing():
+def test_detect_returns_empty_set_when_columns_missing():
     with patch("psycopg2.connect", return_value=_fake_conn([])):
-        assert srv._detect_embedding_schema() is False
+        assert srv._detect_optional_columns() == set()
 
 
-def test_detect_returns_false_when_only_one_column_present():
+def test_has_embedding_columns_stays_false_when_only_one_column_present(monkeypatch):
     # Defensive: a half-applied migration shouldn't enable the embedding code path.
-    with patch("psycopg2.connect", return_value=_fake_conn(["embedding"])):
-        assert srv._detect_embedding_schema() is False
+    monkeypatch.setattr("psycopg2.connect", lambda **kwargs: _fake_conn(["embedding"]))
+    importlib.reload(srv)
+
+    assert srv.HAS_EMBEDDING_COLUMNS is False
 
 
-def test_detect_returns_false_when_db_unreachable():
+def test_detect_returns_empty_set_when_db_unreachable():
     import psycopg2
     with patch("psycopg2.connect", side_effect=psycopg2.OperationalError("nope")):
-        assert srv._detect_embedding_schema() is False
+        assert srv._detect_optional_columns() == set()
 
 
 def test_row_cols_at_module_load_matches_detection_flag():
@@ -53,3 +54,66 @@ def test_row_cols_at_module_load_matches_detection_flag():
         assert "FALSE AS awaiting_embedding" in srv.ROW_COLS
         assert "FALSE AS scored_uncalibrated" in srv.ROW_COLS
         assert "embedding IS NULL" not in srv.ROW_COLS
+
+    if srv.HAS_HUMAN_REVIEW_COLUMNS:
+        assert "needs_human_review" in srv.ROW_COLS
+        assert "explanation" in srv.ROW_COLS
+        assert "confidence" in srv.ROW_COLS
+        assert "critique_count" in srv.ROW_COLS
+    else:
+        assert "FALSE AS needs_human_review" in srv.ROW_COLS
+        assert "NULL AS explanation" in srv.ROW_COLS
+        assert "NULL AS confidence" in srv.ROW_COLS
+        assert "0 AS critique_count" in srv.ROW_COLS
+
+
+def test_row_cols_include_human_review_when_columns_exist(monkeypatch):
+    monkeypatch.setattr(
+        "psycopg2.connect",
+        lambda **kwargs: _fake_conn([
+            "embedding",
+            "scored_uncalibrated",
+            "needs_human_review",
+            "explanation",
+            "confidence",
+            "critique_count",
+        ]),
+    )
+    importlib.reload(srv)
+
+    assert "needs_human_review" in srv.ROW_COLS
+    assert "explanation" in srv.ROW_COLS
+    assert "confidence" in srv.ROW_COLS
+    assert "critique_count" in srv.ROW_COLS
+    assert "FALSE AS needs_human_review" not in srv.ROW_COLS
+
+
+def test_row_cols_alias_human_review_when_columns_missing(monkeypatch):
+    monkeypatch.setattr("psycopg2.connect", lambda **kwargs: _fake_conn([]))
+    importlib.reload(srv)
+
+    assert "FALSE AS needs_human_review" in srv.ROW_COLS
+    assert "NULL AS explanation" in srv.ROW_COLS
+    assert "NULL AS confidence" in srv.ROW_COLS
+    assert "0 AS critique_count" in srv.ROW_COLS
+
+
+def test_review_filter_uses_human_review_columns_when_available(monkeypatch):
+    monkeypatch.setattr(srv, "HAS_HUMAN_REVIEW_COLUMNS", True)
+
+    where, params = srv.build_job_filter(view="review")
+
+    assert where == (
+        "status = 'analyzed' AND "
+        "(needs_human_review = TRUE OR decision = 'pending_review')"
+    )
+    assert params == []
+
+
+def test_review_filter_falls_back_to_pending_review_decision(monkeypatch):
+    monkeypatch.setattr(srv, "HAS_HUMAN_REVIEW_COLUMNS", False)
+
+    where, params = srv.build_job_filter(view="review")
+
+    assert where == "status = 'analyzed' AND decision = 'pending_review'"
+    assert params == []

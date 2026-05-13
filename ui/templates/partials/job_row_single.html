@@ -68,6 +68,7 @@
     {% if job.possible_duplicate_of and job.duplicate_confirmed is none %}<span class="icon-badge icon-flag" title="Possible duplicate of #{{ job.possible_duplicate_of }}">DUP?</span>{% endif %}
     {% if job.awaiting_embedding %}<span class="icon-badge icon-flag" title="Awaiting embedding">EMB?</span>{% endif %}
     {% if job.scored_uncalibrated %}<span class="icon-badge icon-flag" title="Scored without calibration anchors; will be re-scored once embedding lands">UNCAL</span>{% endif %}
+    {% if job.needs_human_review or job.decision == "pending_review" %}<span class="icon-badge icon-flag" title="{{ (job.explanation or 'Needs human review')[:100] }}">REVIEW</span>{% endif %}
     {% if job.tracked_at %}
       <a href="/tracking#job-{{ job.id }}"
          class="icon-badge icon-tracking"

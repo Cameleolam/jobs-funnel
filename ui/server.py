@@ -46,29 +46,42 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 STATIC_DIR.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-# ── Embedding schema detection ───────────────────────────────────────
+# ── Optional schema detection ───────────────────────────────────────
 # The Phase 1 embedding migration (0003_pgvector.sql) is per-profile-table.
-# When the UI runs against a DB that hasn't applied it yet, we must avoid
-# referencing the embedding/scored_uncalibrated columns or the queries crash.
-def _detect_embedding_schema():
+# Human review columns are also optional while Phase 4 migrations roll out.
+def _detect_optional_columns():
+    wanted = {
+        "embedding",
+        "scored_uncalibrated",
+        "needs_human_review",
+        "explanation",
+        "confidence",
+        "critique_count",
+    }
     try:
         conn = psycopg2.connect(**DB_CONF)
     except psycopg2.OperationalError:
-        return False
+        return set()
     try:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT column_name FROM information_schema.columns "
-                "WHERE table_name = %s AND column_name IN ('embedding', 'scored_uncalibrated')",
-                (TABLE,),
+                "WHERE table_name = %s AND column_name = ANY(%s)",
+                (TABLE, list(wanted)),
             )
-            cols = {r[0] for r in cur.fetchall()}
-        return {"embedding", "scored_uncalibrated"}.issubset(cols)
+            return {r[0] for r in cur.fetchall()}
     finally:
         conn.close()
 
 
-HAS_EMBEDDING_COLUMNS = _detect_embedding_schema()
+OPTIONAL_COLUMNS = _detect_optional_columns()
+HAS_EMBEDDING_COLUMNS = {"embedding", "scored_uncalibrated"}.issubset(OPTIONAL_COLUMNS)
+HAS_HUMAN_REVIEW_COLUMNS = {
+    "needs_human_review",
+    "explanation",
+    "confidence",
+    "critique_count",
+}.issubset(OPTIONAL_COLUMNS)
 
 _BASE_ROW_COLS = (
     "id, url, title, company, location, source, fit_score, decision, "
@@ -91,6 +104,16 @@ else:
     ROW_COLS = (
         f"{_BASE_ROW_COLS}, "
         "FALSE AS awaiting_embedding, FALSE AS scored_uncalibrated"
+    )
+
+if HAS_HUMAN_REVIEW_COLUMNS:
+    ROW_COLS = (
+        f"{ROW_COLS}, needs_human_review, explanation, confidence, critique_count"
+    )
+else:
+    ROW_COLS = (
+        f"{ROW_COLS}, FALSE AS needs_human_review, NULL AS explanation, "
+        "NULL AS confidence, 0 AS critique_count"
     )
 
 
@@ -242,6 +265,11 @@ def build_job_filter(decision="", applied="", min_score=0, max_score=10, search=
         conditions = ["status IN ('error', 'dead')"]
     elif view == "duplicates":
         conditions = ["possible_duplicate_of IS NOT NULL AND duplicate_confirmed IS NULL"]
+    elif view == "review":
+        if HAS_HUMAN_REVIEW_COLUMNS:
+            conditions = ["status = 'analyzed' AND (needs_human_review = TRUE OR decision = 'pending_review')"]
+        else:
+            conditions = ["status = 'analyzed' AND decision = 'pending_review'"]
     else:
         conditions = ["status IN ('analyzed', 'pending')"]
         if decision:
