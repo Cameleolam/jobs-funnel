@@ -40,7 +40,9 @@ const query = `
   WITH stats AS (
     SELECT
       COUNT(*) FILTER (WHERE analyzed_at >= '${safeStarted}') AS analyzed,
-      COUNT(*) FILTER (WHERE error_code IS NOT NULL AND (analyzed_at >= '${safeStarted}' OR (status IN ('error','dead') AND crawled_at >= '${safeStarted}'))) AS errored
+      COUNT(*) FILTER (WHERE error_code IS NOT NULL AND (analyzed_at >= '${safeStarted}' OR (status IN ('error','dead') AND crawled_at >= '${safeStarted}'))) AS errored,
+      COALESCE(SUM(critique_count) FILTER (WHERE analyzed_at >= '${safeStarted}'), 0) AS critique_count,
+      COUNT(*) FILTER (WHERE analyzed_at >= '${safeStarted}' AND needs_human_review = TRUE) AS human_flagged
     FROM ${table}
   )
   UPDATE pipeline_runs SET
@@ -49,6 +51,8 @@ const query = `
     jobs_inserted = ${inserted},
     jobs_analyzed = stats.analyzed,
     jobs_errored = stats.errored,
+    score_critique_count = stats.critique_count,
+    score_human_flagged = stats.human_flagged,
     duration_ms = ${durationMs},
     status = CASE WHEN stats.errored > 0 THEN 'partial' ELSE 'success' END
   FROM stats

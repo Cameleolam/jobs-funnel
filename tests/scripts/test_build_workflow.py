@@ -391,6 +391,15 @@ def test_fresh_setup_schema_includes_pipeline_metric_columns():
         assert column in sql
 
 
+def test_run_end_counts_graph_review_metrics():
+    wf = run_build("profile1")
+    run_end = next(n for n in wf["nodes"] if n["name"] == "Run End")
+    code = run_end["parameters"]["jsCode"]
+
+    assert "score_critique_count" in code
+    assert "score_human_flagged" in code
+
+
 def test_phase2_dedup_parse_empty_stdout_returns_select_one_before_metrics():
     wf = run_build("profile1")
     code = dedup_parse_code(wf)
