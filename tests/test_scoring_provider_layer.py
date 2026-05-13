@@ -1,9 +1,11 @@
 import json
+from unittest.mock import MagicMock
 
 import pytest
 
 from scripts.llm.types import ProviderError, ProviderRequest, ProviderResponse
 from scripts.scoring import (
+    _system_prompt_with_calibration,
     build_review_prompt,
     build_user_prompt,
     provider_keys_from_env,
@@ -56,6 +58,21 @@ def _assessment(score=8, decision="PASS", reasoning="ok"):
     }
 
 
+def _anchor(title):
+    return {
+        "id": sum(ord(ch) for ch in title),
+        "title": title,
+        "company": "Acme",
+        "fit_score": 80,
+        "calibration_label": "applied",
+        "notes": "useful anchor",
+        "reasoning": "",
+        "reached_interview": False,
+        "received_offer": False,
+        "weighted_score": 0.9,
+    }
+
+
 def test_build_user_prompt_uses_normalized_descriptions_and_removes_arbeitnow_footer():
     jobs = [
         {
@@ -69,6 +86,78 @@ def test_build_user_prompt_uses_normalized_descriptions_and_removes_arbeitnow_fo
     assert "<p>" not in prompt
     assert "Python & APIs" in prompt
     assert "English Speaking Jobs in Germany" not in prompt
+
+
+def test_system_prompt_with_calibration_returns_original_prompt_when_no_anchors(monkeypatch):
+    monkeypatch.setattr("scripts.scoring.retrieval.retrieve_similar_decisions", lambda job: [])
+
+    prompt = "".join(["BASE", " PROMPT"])
+    job = {"title": "T", "_embedding_calibration_present": True}
+
+    assert _system_prompt_with_calibration(prompt, job, is_batch=False) is prompt
+
+
+def test_system_prompt_with_calibration_skips_retrieval_without_calibration_vector(monkeypatch):
+    retrieve = MagicMock(return_value=[_anchor("Should Not Be Used")])
+    monkeypatch.setattr("scripts.scoring.retrieval.retrieve_similar_decisions", retrieve)
+
+    prompt = "BASE PROMPT"
+    job = {"title": "T", "_embedding_calibration_present": False}
+
+    assert _system_prompt_with_calibration(prompt, job, is_batch=False) is prompt
+    retrieve.assert_not_called()
+
+
+def test_system_prompt_with_calibration_merges_batch_anchors(monkeypatch):
+    calls = []
+
+    def fake_retrieve(job):
+        calls.append(job["title"])
+        return [_anchor("Historical " + job["title"])]
+
+    monkeypatch.setattr("scripts.scoring.retrieval.retrieve_similar_decisions", fake_retrieve)
+    monkeypatch.setattr(
+        "scripts.scoring.retrieval.merge_batch_anchors",
+        lambda groups: [anchor for group in groups for anchor in group],
+    )
+
+    prompt = _system_prompt_with_calibration(
+        "BASE PROMPT",
+        [
+            {"title": "A", "_embedding_calibration_present": True},
+            {"title": "B", "_embedding_calibration_present": True},
+            {"title": "C", "_embedding_calibration_present": False},
+        ],
+        is_batch=True,
+    )
+
+    assert calls == ["A", "B"]
+    assert "BASE PROMPT" in prompt
+    assert "CALIBRATION - here's how you handled similar jobs in the past." in prompt
+    assert "Historical A @ Acme" in prompt
+    assert "Historical B @ Acme" in prompt
+    assert "Historical C @ Acme" not in prompt
+
+
+def test_score_input_passes_calibration_augmented_prompt_to_provider(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        "scripts.scoring.retrieval.retrieve_similar_decisions",
+        lambda job: [_anchor("Backend Engineer")],
+    )
+    base = FakeProvider("claude_sonnet", json.dumps(_assessment()))
+
+    score_input(
+        parsed_input={"title": "T", "description": "D", "_embedding_calibration_present": True},
+        system_prompt="BASE PROMPT",
+        config={},
+        root=tmp_path,
+        base_provider=base,
+    )
+
+    system_prompt = base.requests[0].system_prompt
+    assert "BASE PROMPT" in system_prompt
+    assert "CALIBRATION - here's how you handled similar jobs in the past." in system_prompt
+    assert "Backend Engineer @ Acme" in system_prompt
 
 
 def test_provider_keys_from_env_defaults_to_claude(monkeypatch):
