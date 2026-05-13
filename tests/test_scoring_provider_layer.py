@@ -718,6 +718,38 @@ def test_review_provider_skips_error_code_before_malformed_review_band(monkeypat
     assert result[0].get("review_provider") is None
 
 
+def test_single_review_skips_error_code_before_malformed_review_band(monkeypatch, tmp_path):
+    monkeypatch.setenv("SCORING_REVIEW_HIGH", "bad-high")
+    monkeypatch.setattr("scripts.scoring._system_prompt_with_calibration", lambda prompt, parsed, is_batch: prompt)
+    base_item = {
+        **_assessment(score=5, decision="MAYBE", reasoning="single parse fallback"),
+        "error_code": "PARSE_FAIL",
+    }
+    base = FakeProvider("claude_sonnet", json.dumps(base_item))
+    review = FakeProvider(
+        "codex_gpt55_high",
+        json.dumps(_assessment(score=7, decision="PASS", reasoning="should not run")),
+    )
+
+    result = score_input(
+        parsed_input={"title": "A", "description": "D"},
+        system_prompt="SYSTEM",
+        config={},
+        root=tmp_path,
+        base_provider=base,
+        review_provider=review,
+    )
+
+    assert len(review.requests) == 0
+    assert result == {
+        **base_item,
+        "scoring_provider": "claude_sonnet",
+        "scoring_model": "claude_sonnet-model",
+    }
+    assert result.get("review_error") is None
+    assert result.get("review_provider") is None
+
+
 def test_review_null_response_keeps_base_assessment_and_records_error(monkeypatch, tmp_path):
     monkeypatch.setattr("scripts.scoring._system_prompt_with_calibration", lambda prompt, parsed, is_batch: prompt)
     base = FakeProvider(
