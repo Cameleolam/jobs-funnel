@@ -1,4 +1,5 @@
 from scripts.llm.parsing import (
+    batch_padding_assessment,
     coerce_assessment_list,
     extract_result_text,
     fallback_assessment,
@@ -11,6 +12,7 @@ __all__ = [
     "ProviderRequest",
     "ProviderResponse",
     "ProviderTimeout",
+    "batch_padding_assessment",
     "coerce_assessment_list",
     "extract_result_text",
     "fallback_assessment",

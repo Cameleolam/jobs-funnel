@@ -1,5 +1,6 @@
 import json
 
+from scripts.llm import batch_padding_assessment
 from scripts.llm.parsing import (
     coerce_assessment_list,
     extract_result_text,
@@ -57,6 +58,13 @@ def test_coerce_assessment_list_wraps_single_object_for_batch():
     assert len(result) == 2
     assert result[0]["fit_score"] == 6
     assert result[1]["error_code"] == "BATCH_PADDING"
+
+
+def test_batch_padding_assessment_is_exported_from_package():
+    result = batch_padding_assessment(index=1, expected_count=2)
+
+    assert result["error_code"] == "BATCH_PADDING"
+    assert result["priority_notes"] == "BATCH_PADDING"
 
 
 def test_fallback_assessment_has_parse_update_compatible_shape():
