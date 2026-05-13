@@ -255,3 +255,31 @@ def test_score_input_uses_review_provider_for_borderline_preserving_base_metadat
     assert result["base_fit_score"] == 6
     assert result["base_decision"] == "MAYBE"
     assert len(review.requests) == 1
+
+
+def test_score_input_review_preserves_uncalibrated_stamp(monkeypatch, tmp_path):
+    monkeypatch.setattr("scripts.scoring._system_prompt_with_calibration", lambda prompt, parsed, is_batch: prompt)
+    base = FakeProvider(
+        "claude_sonnet",
+        json.dumps(_assessment(score=5, decision="MAYBE", reasoning="uncalibrated borderline")),
+    )
+    review = FakeProvider(
+        "codex_gpt55_high",
+        json.dumps(_assessment(score=7, decision="PASS", reasoning="reviewed pass")),
+    )
+
+    result = score_input(
+        parsed_input={"title": "T", "description": "D", "_embedding_calibration_present": False},
+        system_prompt="SYSTEM",
+        config={},
+        root=tmp_path,
+        base_provider=base,
+        review_provider=review,
+    )
+
+    assert result["fit_score"] == 7
+    assert result["scored_uncalibrated"] is True
+    assert result["review_provider"] == "codex_gpt55_high"
+    assert result["review_model"] == "codex_gpt55_high-model"
+    assert result["base_fit_score"] == 5
+    assert result["base_decision"] == "MAYBE"

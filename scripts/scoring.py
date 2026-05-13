@@ -90,6 +90,14 @@ def _apply_metadata(assessment: dict[str, Any], provider_key: str, model: str) -
     return out
 
 
+def _preserve_review_diagnostics(reviewed: dict[str, Any], base_assessment: dict[str, Any]) -> None:
+    for key in ("scored_uncalibrated", "error_code"):
+        if key in base_assessment:
+            reviewed[key] = base_assessment[key]
+    if base_assessment.get("error_code") == "BATCH_PADDING" and "priority_notes" in base_assessment:
+        reviewed["priority_notes"] = base_assessment["priority_notes"]
+
+
 def _stamp_uncalibrated(assessment: Any, parsed_input: Any, is_batch: bool) -> Any:
     if is_batch:
         rows = assessment if isinstance(assessment, list) else [assessment]
@@ -145,6 +153,7 @@ def _review_one(
     reviewed["review_model"] = review_provider.model
     reviewed["base_fit_score"] = base_assessment.get("fit_score")
     reviewed["base_decision"] = base_assessment.get("decision")
+    _preserve_review_diagnostics(reviewed, base_assessment)
     return reviewed
 
 
