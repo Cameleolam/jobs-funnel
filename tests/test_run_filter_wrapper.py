@@ -22,6 +22,12 @@ def _assert_timeout_fallbacks(payload, count):
         assert any("timed out" in blocker.lower() for blocker in item["hard_blockers"])
 
 
+def test_run_filter_default_wrapper_timeout_covers_hybrid_review(monkeypatch):
+    monkeypatch.delenv("SCORING_WRAPPER_TIMEOUT_SECONDS", raising=False)
+
+    assert run_filter._wrapper_timeout_seconds() == 3600
+
+
 def test_run_filter_file_timeout_returns_fallback_for_each_batch_item(monkeypatch, capsys, tmp_path):
     batch = _batch_payload(3)
     input_path = tmp_path / "batch.json"

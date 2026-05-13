@@ -16,7 +16,7 @@ import sys
 import tempfile
 import time
 
-DEFAULT_WRAPPER_TIMEOUT_SECONDS = 1800
+DEFAULT_WRAPPER_TIMEOUT_SECONDS = 3600
 
 
 def _wrapper_timeout_seconds():
