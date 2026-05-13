@@ -185,8 +185,10 @@ def _apply_review(
                 try:
                     out.append(_review_one(jobs[i], item, system_prompt, root, review_provider))
                     reviewed_count += 1
-                except Exception:
-                    out.append(item)
+                except Exception as exc:
+                    kept = dict(item)
+                    kept["review_error"] = str(exc)[:200]
+                    out.append(kept)
             else:
                 out.append(item)
         return out
@@ -199,8 +201,10 @@ def _apply_review(
     ):
         try:
             return _review_one(prompt_input, assessment, system_prompt, root, review_provider)
-        except Exception:
-            return assessment
+        except Exception as exc:
+            kept = dict(assessment)
+            kept["review_error"] = str(exc)[:200]
+            return kept
     return assessment
 
 

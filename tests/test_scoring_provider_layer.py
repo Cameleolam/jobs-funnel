@@ -434,3 +434,130 @@ def test_score_input_partial_review_preserves_required_base_fields(monkeypatch, 
     assert result["review_model"] == "codex_gpt55_high-model"
     assert result["base_fit_score"] == 5
     assert result["base_decision"] == "MAYBE"
+
+
+def test_review_provider_only_reviews_borderline_jobs(monkeypatch, tmp_path):
+    monkeypatch.setattr("scripts.scoring._system_prompt_with_calibration", lambda prompt, parsed, is_batch: prompt)
+    base = FakeProvider(
+        "claude_sonnet",
+        json.dumps(
+            [
+                _assessment(score=8, decision="PASS", reasoning="clear pass"),
+                _assessment(score=5, decision="MAYBE", reasoning="borderline"),
+                _assessment(score=2, decision="SKIP", reasoning="clear skip"),
+            ]
+        ),
+    )
+    review = FakeProvider(
+        "codex_gpt55_high",
+        json.dumps(_assessment(score=6, decision="MAYBE", reasoning="reviewed")),
+    )
+
+    result = score_input(
+        parsed_input=[
+            {"title": "A", "description": "D"},
+            {"title": "B", "description": "D"},
+            {"title": "C", "description": "D"},
+        ],
+        system_prompt="SYSTEM",
+        config={},
+        root=tmp_path,
+        base_provider=base,
+        review_provider=review,
+    )
+
+    assert result[0].get("review_provider") is None
+    assert result[1]["review_provider"] == "codex_gpt55_high"
+    assert result[2].get("review_provider") is None
+    assert len(review.requests) == 1
+
+
+def test_review_provider_respects_max_reviews(monkeypatch, tmp_path):
+    monkeypatch.setenv("SCORING_REVIEW_MAX_PER_BATCH", "1")
+    monkeypatch.setattr("scripts.scoring._system_prompt_with_calibration", lambda prompt, parsed, is_batch: prompt)
+    base = FakeProvider(
+        "claude_sonnet",
+        json.dumps(
+            [
+                _assessment(score=5, decision="MAYBE", reasoning="borderline one"),
+                _assessment(score=6, decision="MAYBE", reasoning="borderline two"),
+            ]
+        ),
+    )
+    review = FakeProvider(
+        "codex_gpt55_high",
+        json.dumps(_assessment(score=7, decision="PASS", reasoning="reviewed")),
+    )
+
+    result = score_input(
+        parsed_input=[
+            {"title": "A", "description": "D"},
+            {"title": "B", "description": "D"},
+        ],
+        system_prompt="SYSTEM",
+        config={},
+        root=tmp_path,
+        base_provider=base,
+        review_provider=review,
+    )
+
+    assert result[0]["review_provider"] == "codex_gpt55_high"
+    assert result[1].get("review_provider") is None
+    assert len(review.requests) == 1
+
+
+def test_review_failure_keeps_base_assessment_and_records_error(monkeypatch, tmp_path):
+    monkeypatch.setattr("scripts.scoring._system_prompt_with_calibration", lambda prompt, parsed, is_batch: prompt)
+    base = FakeProvider(
+        "claude_sonnet",
+        json.dumps(_assessment(score=5, decision="MAYBE", reasoning="borderline")),
+    )
+    review = FailingProvider(ProviderError("codex_gpt55_high", "review failed"))
+
+    result = score_input(
+        parsed_input={"title": "T", "description": "D"},
+        system_prompt="SYSTEM",
+        config={},
+        root=tmp_path,
+        base_provider=base,
+        review_provider=review,
+    )
+
+    assert result["fit_score"] == 5
+    assert result["decision"] == "MAYBE"
+    assert result["reasoning"] == "borderline"
+    assert result.get("review_provider") is None
+    assert result["review_error"] == "review failed"
+
+
+def test_batch_review_failure_keeps_base_assessment_and_records_error(monkeypatch, tmp_path):
+    monkeypatch.setattr("scripts.scoring._system_prompt_with_calibration", lambda prompt, parsed, is_batch: prompt)
+    base = FakeProvider(
+        "claude_sonnet",
+        json.dumps(
+            [
+                _assessment(score=5, decision="MAYBE", reasoning="borderline"),
+                _assessment(score=8, decision="PASS", reasoning="clear pass"),
+            ]
+        ),
+    )
+    review = FailingProvider(ProviderError("codex_gpt55_high", "batch review failed"))
+
+    result = score_input(
+        parsed_input=[
+            {"title": "A", "description": "D"},
+            {"title": "B", "description": "D"},
+        ],
+        system_prompt="SYSTEM",
+        config={},
+        root=tmp_path,
+        base_provider=base,
+        review_provider=review,
+    )
+
+    assert result[0]["fit_score"] == 5
+    assert result[0]["decision"] == "MAYBE"
+    assert result[0]["reasoning"] == "borderline"
+    assert result[0].get("review_provider") is None
+    assert result[0]["review_error"] == "batch review failed"
+    assert result[1].get("review_error") is None
