@@ -20,6 +20,13 @@ def _argv_for_payload(payload):
     return ["filter.py", "--base64", encoded]
 
 
+def _assert_parse_update_fallback(item, error_code):
+    assert item["fit_score"] == 0
+    assert item["decision"] == "SKIP"
+    assert isinstance(item["hard_blockers"], list)
+    assert item["error_code"] == error_code
+
+
 def _load_filter(monkeypatch):
     monkeypatch.setenv("JOBS_FUNNEL_PROFILE", "test")
     import importlib
@@ -85,34 +92,14 @@ def test_filter_prints_array_output_from_score_input(monkeypatch, capsys):
     assert json.loads(capsys.readouterr().out) == expected
 
 
-@pytest.mark.parametrize(
-    ("exc", "expected"),
-    [
-        (
-            ProviderTimeout("codex_gpt55_high", "timed out", stderr="slow", stdout="partial"),
-            {
-                "error": "codex_gpt55_high timed out after 300 seconds",
-                "error_code": "TIMEOUT",
-            },
-        ),
-        (
-            ProviderError("claude_sonnet", "provider failed", stderr="e" * 600, stdout="o" * 600),
-            {
-                "error": "provider failed",
-                "error_code": "API_ERROR",
-                "stderr": "e" * 500,
-                "stdout": "o" * 500,
-            },
-        ),
-    ],
-)
-def test_filter_translates_provider_errors(monkeypatch, capsys, exc, expected):
+def test_filter_timeout_on_batch_returns_parse_update_compatible_fallbacks(monkeypatch, capsys):
     fil = _load_filter(monkeypatch)
 
-    monkeypatch.setattr(sys, "argv", _argv_for_payload({"title": "T"}))
+    batch = [{"title": "A"}, {"title": "B"}]
+    monkeypatch.setattr(sys, "argv", _argv_for_payload(batch))
 
     def raise_error(**kwargs):
-        raise exc
+        raise ProviderTimeout("codex_gpt55_high", "timed out", stderr="slow", stdout="partial")
 
     monkeypatch.setattr(fil, "score_input", raise_error)
 
@@ -120,7 +107,130 @@ def test_filter_translates_provider_errors(monkeypatch, capsys, exc, expected):
         fil.main()
 
     assert raised.value.code == 1
-    assert json.loads(capsys.readouterr().out) == expected
+    payload = json.loads(capsys.readouterr().out)
+    assert isinstance(payload, list)
+    assert len(payload) == 2
+    for item in payload:
+        _assert_parse_update_fallback(item, "TIMEOUT")
+        assert any("timed out" in blocker for blocker in item["hard_blockers"])
+        assert item["reasoning"] == "codex_gpt55_high timed out after 300 seconds"
+
+
+def test_filter_provider_error_on_batch_returns_api_error_fallbacks(monkeypatch, capsys):
+    fil = _load_filter(monkeypatch)
+
+    batch = [{"title": "A"}, {"title": "B"}]
+    monkeypatch.setattr(sys, "argv", _argv_for_payload(batch))
+
+    def raise_error(**kwargs):
+        raise ProviderError("claude_sonnet", "scoring provider failed", stderr="e" * 600, stdout="o" * 600)
+
+    monkeypatch.setattr(fil, "score_input", raise_error)
+
+    with pytest.raises(SystemExit) as raised:
+        fil.main()
+
+    assert raised.value.code == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert len(payload) == 2
+    for item in payload:
+        _assert_parse_update_fallback(item, "API_ERROR")
+        assert any("Filter error" in blocker for blocker in item["hard_blockers"])
+        assert item["reasoning"] == "scoring provider failed"
+        assert item["stderr"] == "e" * 500
+        assert item["stdout"] == "o" * 500
+
+
+def test_filter_invalid_json_returns_parse_fail_fallback_without_traceback(monkeypatch, capsys):
+    fil = _load_filter(monkeypatch)
+
+    monkeypatch.setattr(sys, "argv", ["filter.py", "--base64", base64.b64encode(b"{not json").decode("ascii")])
+
+    with pytest.raises(SystemExit) as raised:
+        fil.main()
+
+    captured = capsys.readouterr()
+    assert raised.value.code == 1
+    payload = json.loads(captured.out)
+    _assert_parse_update_fallback(payload, "PARSE_FAIL")
+    assert "Parse error" in payload["hard_blockers"][0]
+    assert "Parse error" in payload["reasoning"]
+    assert "Traceback" not in captured.err
+
+
+def test_filter_invalid_base64_returns_api_error_fallback_without_traceback(monkeypatch, capsys):
+    fil = _load_filter(monkeypatch)
+
+    monkeypatch.setattr(sys, "argv", ["filter.py", "--base64", "not valid base64!"])
+
+    with pytest.raises(SystemExit) as raised:
+        fil.main()
+
+    captured = capsys.readouterr()
+    assert raised.value.code == 1
+    payload = json.loads(captured.out)
+    _assert_parse_update_fallback(payload, "API_ERROR")
+    assert "Filter error" in payload["hard_blockers"][0]
+    assert "Traceback" not in captured.err
+
+
+def test_filter_base64_file_reads_base64_from_file_path(monkeypatch, capsys, tmp_path):
+    fil = _load_filter(monkeypatch)
+
+    job = {"title": "From File"}
+    b64_path = tmp_path / "payload.b64"
+    b64_path.write_text(base64.b64encode(json.dumps(job).encode("utf-8")).decode("ascii"), encoding="utf-8")
+    calls = []
+    monkeypatch.setattr(sys, "argv", ["filter.py", "--base64-file", str(b64_path)])
+    monkeypatch.setattr(
+        fil,
+        "score_input",
+        lambda **kwargs: calls.append(kwargs["parsed_input"]) or {"fit_score": 9, "decision": "PASS"},
+    )
+
+    fil.main()
+
+    assert calls == [job]
+    assert json.loads(capsys.readouterr().out)["fit_score"] == 9
+
+
+def test_filter_stdin_input_calls_score_input(monkeypatch, capsys):
+    fil = _load_filter(monkeypatch)
+
+    job = {"title": "From Stdin"}
+    calls = []
+    monkeypatch.setattr(sys, "argv", ["filter.py"])
+    monkeypatch.setattr(sys, "stdin", type("FakeStdin", (), {"read": lambda self: json.dumps(job)})())
+    monkeypatch.setattr(
+        fil,
+        "score_input",
+        lambda **kwargs: calls.append(kwargs["parsed_input"]) or {"fit_score": 5, "decision": "MAYBE"},
+    )
+
+    fil.main()
+
+    assert calls == [job]
+    assert json.loads(capsys.readouterr().out)["decision"] == "MAYBE"
+
+
+def test_filter_file_path_input_calls_score_input(monkeypatch, capsys, tmp_path):
+    fil = _load_filter(monkeypatch)
+
+    job = {"title": "From Json File"}
+    input_path = tmp_path / "job.json"
+    input_path.write_text(json.dumps(job), encoding="utf-8")
+    calls = []
+    monkeypatch.setattr(sys, "argv", ["filter.py", str(input_path)])
+    monkeypatch.setattr(
+        fil,
+        "score_input",
+        lambda **kwargs: calls.append(kwargs["parsed_input"]) or {"fit_score": 6, "decision": "PASS"},
+    )
+
+    fil.main()
+
+    assert calls == [job]
+    assert json.loads(capsys.readouterr().out)["decision"] == "PASS"
 
 
 def test_filter_script_direct_invocation_keeps_package_import_working():

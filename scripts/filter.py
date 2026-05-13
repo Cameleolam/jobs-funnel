@@ -21,6 +21,7 @@ PIPELINE_DIR = SCRIPT_DIR.parent
 if str(PIPELINE_DIR) not in sys.path:
     sys.path.insert(0, str(PIPELINE_DIR))
 
+from scripts.llm.parsing import fallback_assessment
 from scripts.llm.types import ProviderError, ProviderTimeout
 from scripts.scoring import score_input
 
@@ -29,15 +30,41 @@ PROFILE = os.environ["JOBS_FUNNEL_PROFILE"]
 PROMPT_FILE = PIPELINE_DIR / "profiles" / PROFILE / "filter_prompt.md"
 
 
+class FilterInputError(Exception):
+    pass
+
+
+def _fallback_for_input(parsed_input, blocker: str, reasoning: str, error_code: str, **extra):
+    fallback = fallback_assessment(blocker=blocker, reasoning=reasoning, error_code=error_code)
+    fallback.update(extra)
+    if isinstance(parsed_input, list):
+        return [dict(fallback) for _ in parsed_input]
+    return fallback
+
+
+def _print_fallback(parsed_input, blocker: str, reasoning: str, error_code: str, **extra) -> None:
+    print(json.dumps(_fallback_for_input(parsed_input, blocker, reasoning, error_code, **extra), indent=2))
+
+
+def _decode_base64(value: str) -> str:
+    import base64
+
+    try:
+        return base64.b64decode(value).decode("utf-8").strip()
+    except Exception as exc:
+        raise FilterInputError(f"Filter error: invalid base64 input: {exc}") from exc
+
+
 def _read_job_data(argv: list[str]) -> str:
     if len(argv) > 2 and argv[1] == "--base64-file":
-        import base64
-
-        return base64.b64decode("".join(argv[2:])).decode("utf-8").strip()
+        b64_source = Path(argv[2])
+        if b64_source.exists():
+            b64_str = b64_source.read_text(encoding="utf-8").strip()
+        else:
+            b64_str = "".join(argv[2:])
+        return _decode_base64(b64_str)
     if len(argv) > 2 and argv[1] == "--base64":
-        import base64
-
-        return base64.b64decode(argv[2]).decode("utf-8").strip()
+        return _decode_base64(argv[2])
     if len(argv) > 1:
         input_path = Path(argv[1])
         if not input_path.exists():
@@ -53,13 +80,21 @@ def main():
         sys.exit(1)
 
     system_prompt = PROMPT_FILE.read_text(encoding="utf-8")
-    job_data = _read_job_data(sys.argv)
+    try:
+        job_data = _read_job_data(sys.argv)
+    except FilterInputError as exc:
+        _print_fallback(None, "Filter error: invalid input", str(exc), "API_ERROR")
+        sys.exit(1)
 
     if not job_data:
         print(json.dumps({"error": "No input provided on stdin"}))
         sys.exit(1)
 
-    parsed_input = json.loads(job_data)
+    try:
+        parsed_input = json.loads(job_data)
+    except json.JSONDecodeError as exc:
+        _print_fallback(None, "Parse error: invalid JSON input", f"Parse error: {exc}", "PARSE_FAIL")
+        sys.exit(1)
 
     try:
         assessment = score_input(
@@ -69,18 +104,18 @@ def main():
             root=PIPELINE_DIR,
         )
     except ProviderTimeout as exc:
-        print(json.dumps({
-            "error": f"{exc.provider_key} timed out after 300 seconds",
-            "error_code": "TIMEOUT",
-        }))
+        reasoning = f"{exc.provider_key} timed out after 300 seconds"
+        _print_fallback(parsed_input, "Scoring provider timed out", reasoning, "TIMEOUT")
         sys.exit(1)
     except ProviderError as exc:
-        print(json.dumps({
-            "error": str(exc),
-            "error_code": exc.error_code,
-            "stderr": exc.stderr[:500] if exc.stderr else "",
-            "stdout": exc.stdout[:500] if exc.stdout else "",
-        }))
+        _print_fallback(
+            parsed_input,
+            "Filter error: scoring provider failed",
+            str(exc),
+            exc.error_code,
+            stderr=exc.stderr[:500] if exc.stderr else "",
+            stdout=exc.stdout[:500] if exc.stdout else "",
+        )
         sys.exit(1)
 
     print(json.dumps(assessment, indent=2))
