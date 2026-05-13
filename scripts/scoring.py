@@ -146,7 +146,8 @@ def _review_one(
         parsed = parsed[0] if parsed else {}
     if not isinstance(parsed, dict):
         return base_assessment
-    reviewed = dict(parsed)
+    reviewed = dict(base_assessment)
+    reviewed.update(parsed)
     reviewed["scoring_provider"] = base_assessment.get("scoring_provider")
     reviewed["scoring_model"] = base_assessment.get("scoring_model")
     reviewed["review_provider"] = review_provider.provider_key
@@ -215,6 +216,14 @@ def _parse_failure(response: Any, parsed_input: Any, is_batch: bool) -> Any:
     return fallback
 
 
+def _invalid_single_item_fallback(item: Any) -> dict[str, Any]:
+    return fallback_assessment(
+        blocker="Scoring provider returned non-object assessment",
+        reasoning=f"Invalid assessment item: {repr(item)[:200]}",
+        error_code="PARSE_FAIL",
+    )
+
+
 def score_input(
     parsed_input: Any,
     system_prompt: str,
@@ -260,6 +269,8 @@ def score_input(
             reasoning="Provider returned [] for a single job",
             error_code="PARSE_FAIL",
         )
+        if not isinstance(item, dict):
+            item = _invalid_single_item_fallback(item)
         assessment = _apply_metadata(item, response.provider_key, response.model)
     elif isinstance(parsed, dict):
         assessment = _apply_metadata(parsed, response.provider_key, response.model)

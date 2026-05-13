@@ -192,6 +192,25 @@ def test_score_input_returns_parse_fail_fallback_per_batch_item(monkeypatch, tmp
     assert [item["scoring_provider"] for item in result] == ["codex_gpt55_high", "codex_gpt55_high"]
 
 
+@pytest.mark.parametrize("provider_text", ["[null]", '["bad"]'])
+def test_score_input_single_job_array_with_non_object_returns_parse_fail(provider_text, monkeypatch, tmp_path):
+    monkeypatch.setattr("scripts.scoring._system_prompt_with_calibration", lambda prompt, parsed, is_batch: prompt)
+    base = FakeProvider("codex_gpt55_high", provider_text)
+
+    result = score_input(
+        parsed_input={"title": "T", "description": "D"},
+        system_prompt="SYSTEM",
+        config={},
+        root=tmp_path,
+        base_provider=base,
+    )
+
+    assert result["fit_score"] == 0
+    assert result["error_code"] == "PARSE_FAIL"
+    assert result["scoring_provider"] == "codex_gpt55_high"
+    assert result["scoring_model"] == "codex_gpt55_high-model"
+
+
 def test_score_input_raises_provider_error_for_api_failure(tmp_path):
     base = FailingProvider(ProviderError("claude_sonnet", "boom", stderr="bad"))
 
@@ -279,6 +298,49 @@ def test_score_input_review_preserves_uncalibrated_stamp(monkeypatch, tmp_path):
 
     assert result["fit_score"] == 7
     assert result["scored_uncalibrated"] is True
+    assert result["review_provider"] == "codex_gpt55_high"
+    assert result["review_model"] == "codex_gpt55_high-model"
+    assert result["base_fit_score"] == 5
+    assert result["base_decision"] == "MAYBE"
+
+
+def test_score_input_partial_review_preserves_required_base_fields(monkeypatch, tmp_path):
+    monkeypatch.setattr("scripts.scoring._system_prompt_with_calibration", lambda prompt, parsed, is_batch: prompt)
+    base = FakeProvider(
+        "claude_sonnet",
+        json.dumps(
+            {
+                **_assessment(score=5, decision="MAYBE", reasoning="borderline"),
+                "cv_variant": "fullstack",
+                "hard_blockers": ["salary unclear"],
+                "soft_gaps": ["some React"],
+                "strong_matches": ["Python", "APIs"],
+                "priority_notes": "Needs review",
+            }
+        ),
+    )
+    review = FakeProvider(
+        "codex_gpt55_high",
+        json.dumps({"fit_score": 7, "decision": "PASS", "reasoning": "reviewed upward"}),
+    )
+
+    result = score_input(
+        parsed_input={"title": "T", "description": "D"},
+        system_prompt="SYSTEM",
+        config={},
+        root=tmp_path,
+        base_provider=base,
+        review_provider=review,
+    )
+
+    assert result["fit_score"] == 7
+    assert result["decision"] == "PASS"
+    assert result["reasoning"] == "reviewed upward"
+    assert result["cv_variant"] == "fullstack"
+    assert result["hard_blockers"] == ["salary unclear"]
+    assert result["soft_gaps"] == ["some React"]
+    assert result["strong_matches"] == ["Python", "APIs"]
+    assert result["priority_notes"] == "Needs review"
     assert result["review_provider"] == "codex_gpt55_high"
     assert result["review_model"] == "codex_gpt55_high-model"
     assert result["base_fit_score"] == 5
