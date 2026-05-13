@@ -23,7 +23,7 @@ if str(PIPELINE_DIR) not in sys.path:
 
 from scripts.llm.parsing import fallback_assessment
 from scripts.llm.types import ProviderError, ProviderTimeout
-from scripts.graph.build import run_filter_flow, run_filter_graph
+from scripts.scoring import score_input
 
 CONFIG = json.loads((PIPELINE_DIR / "config.json").read_text(encoding="utf-8"))
 PROFILE = os.environ["JOBS_FUNNEL_PROFILE"]
@@ -74,62 +74,7 @@ def _read_job_data(argv: list[str]) -> str:
     return sys.stdin.read().strip()
 
 
-def _use_legacy_filter() -> bool:
-    return os.environ.get("USE_LEGACY_FILTER", "0").strip().lower() in {"1", "true", "yes"}
-
-
-def _run_legacy_filter() -> None:
-    legacy = SCRIPT_DIR / "filter_legacy.py"
-    os.execv(sys.executable, [sys.executable, str(legacy), *sys.argv[1:]])
-
-
-def _review_max_per_batch() -> int:
-    raw = os.environ.get("SCORING_REVIEW_MAX_PER_BATCH", "8").strip()
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        return 8
-    return max(value, 0)
-
-
-def _score_with_graph(parsed_input, system_prompt):
-    runner = run_filter_graph
-    if os.environ.get("USE_PLAIN_FILTER_FLOW", "0").strip().lower() in {"1", "true", "yes"}:
-        runner = run_filter_flow
-    if isinstance(parsed_input, list):
-        results = []
-        reviews_used = 0
-        review_limit = _review_max_per_batch()
-        for job in parsed_input:
-            if not isinstance(job, dict):
-                results.append(
-                    fallback_assessment(
-                        blocker="Invalid batch item",
-                        reasoning=f"Expected object, got {type(job).__name__}",
-                        error_code="PARSE_FAIL",
-                    )
-                )
-                continue
-            assessment = runner(
-                job,
-                system_prompt=system_prompt,
-                config=CONFIG,
-                root=PIPELINE_DIR,
-                allow_review=reviews_used < review_limit,
-            )
-            try:
-                reviews_used += max(0, int(assessment.get("critique_count") or 0))
-            except (TypeError, ValueError):
-                pass
-            results.append(assessment)
-        return results
-    return runner(parsed_input, system_prompt=system_prompt, config=CONFIG, root=PIPELINE_DIR)
-
-
 def main():
-    if _use_legacy_filter():
-        _run_legacy_filter()
-
     if not PROMPT_FILE.exists():
         print(json.dumps({"error": f"filter_prompt.md not found at {PROMPT_FILE}"}), file=sys.stderr)
         sys.exit(1)
@@ -152,7 +97,12 @@ def main():
         sys.exit(1)
 
     try:
-        assessment = _score_with_graph(parsed_input, system_prompt)
+        assessment = score_input(
+            parsed_input=parsed_input,
+            system_prompt=system_prompt,
+            config=CONFIG,
+            root=PIPELINE_DIR,
+        )
     except ProviderTimeout as exc:
         reasoning = f"{exc.provider_key} timed out after 300 seconds"
         _print_fallback(parsed_input, "Scoring provider timed out", reasoning, "TIMEOUT")

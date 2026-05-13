@@ -65,9 +65,9 @@ def _parse_assessment(text: str) -> dict[str, Any]:
     )
 
 
-def _score_value(assessment: dict[str, Any]) -> int | None:
+def _score_value(assessment: dict[str, Any]) -> float | None:
     try:
-        return int(assessment.get("fit_score"))
+        return float(assessment.get("fit_score"))
     except (TypeError, ValueError):
         return None
 
@@ -115,6 +115,9 @@ def score_node(state: FilterState) -> FilterState:
 
 
 def grade_route(state: FilterState) -> str:
+    assessment = state.get("assessment") or {}
+    if state.get("needs_human_review") or assessment.get("decision") == "pending_review":
+        return "flag_human"
     score = state.get("raw_score")
     if score is None:
         return "flag_human"
@@ -132,24 +135,36 @@ def self_critique_node(state: FilterState) -> FilterState:
         return flag_human_node(state)
 
     base = dict(state["assessment"])
-    response = provider.generate(
-        ProviderRequest(
-            system_prompt=_system_prompt_with_state_context(state),
-            user_prompt=build_review_prompt(state["job"], base),
-            cwd=state["root"],
+    out = dict(state)
+    out["critique_count"] = int(state.get("critique_count", 0)) + 1
+
+    try:
+        response = provider.generate(
+            ProviderRequest(
+                system_prompt=_system_prompt_with_state_context(state),
+                user_prompt=build_review_prompt(state["job"], base),
+                cwd=state["root"],
+            )
         )
-    )
+        parsed = _parse_assessment(response.text)
+    except Exception as exc:
+        kept = dict(base)
+        kept["review_error"] = str(exc)[:200]
+        return _stamp_state_from_assessment(out, kept)
+
+    if parsed.get("needs_human_review") is True and parsed.get("fit_score") is None:
+        kept = dict(base)
+        kept["review_error"] = parsed.get("reasoning") or "Invalid review response"
+        return _stamp_state_from_assessment(out, kept)
+
     reviewed = dict(base)
-    reviewed.update(_parse_assessment(response.text))
+    reviewed.update(parsed)
     reviewed["scoring_provider"] = base.get("scoring_provider")
     reviewed["scoring_model"] = base.get("scoring_model")
     reviewed["review_provider"] = provider.provider_key
     reviewed["review_model"] = provider.model
     reviewed["base_fit_score"] = base.get("fit_score")
     reviewed["base_decision"] = base.get("decision")
-
-    out = dict(state)
-    out["critique_count"] = int(state.get("critique_count", 0)) + 1
     return _stamp_state_from_assessment(out, reviewed)
 
 

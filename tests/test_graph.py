@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from scripts.llm.types import ProviderRequest, ProviderResponse
+from scripts.llm.types import ProviderError, ProviderRequest, ProviderResponse
 
 
 class FakeProvider:
@@ -22,6 +22,18 @@ class FakeProvider:
             returncode=0,
             elapsed_seconds=0.01,
         )
+
+
+class FailingProvider:
+    provider_key = "claude_sonnet"
+    model = "claude_sonnet-model"
+
+    def __init__(self):
+        self.requests = []
+
+    def generate(self, request: ProviderRequest):
+        self.requests.append(request)
+        raise ProviderError(self.provider_key, "review failed")
 
 
 def assessment(score, decision="MAYBE"):
@@ -65,6 +77,14 @@ def test_grade_routes_first_borderline_to_critique():
     state = {"raw_score": 5, "critique_count": 0, "needs_human_review": False}
 
     assert grade_route(state) == "critique"
+
+
+def test_grade_routes_decimal_outside_band_without_truncation():
+    from scripts.graph.nodes import grade_route
+
+    state = {"raw_score": 6.9, "critique_count": 0, "needs_human_review": False}
+
+    assert grade_route(state) == "select_cv"
 
 
 def test_grade_routes_second_borderline_to_human():
@@ -189,3 +209,121 @@ def test_persist_node_preserves_assessment_human_review_flag():
     assert out["assessment"]["explanation"] == "r"
     assert out["assessment"]["confidence"] == "low"
     assert out["assessment"]["critique_count"] == 0
+
+
+def test_run_filter_flow_high_score_finishes_without_review():
+    from scripts.graph.build import run_filter_flow
+
+    base = FakeProvider("codex_gpt55_high", json.dumps(assessment(8, "PASS")))
+    result = run_filter_flow(
+        {"title": "Backend Engineer", "description": "Python APIs"},
+        system_prompt="SYSTEM",
+        config={},
+        root=Path.cwd(),
+        base_provider=base,
+    )
+
+    assert result["decision"] == "PASS"
+    assert result["needs_human_review"] is False
+    assert result["critique_count"] == 0
+    assert len(base.requests) == 1
+
+
+def test_run_filter_flow_borderline_without_review_provider_flags_human():
+    from scripts.graph.build import run_filter_flow
+
+    base = FakeProvider("codex_gpt55_high", json.dumps(assessment(5, "MAYBE")))
+    result = run_filter_flow(
+        {"title": "Backend Engineer", "description": "Python APIs"},
+        system_prompt="SYSTEM",
+        config={},
+        root=Path.cwd(),
+        base_provider=base,
+    )
+
+    assert result["decision"] == "pending_review"
+    assert result["needs_human_review"] is True
+    assert result["critique_count"] == 0
+    assert result["explanation"]
+
+
+def test_run_filter_flow_can_disable_review_provider_for_batch_cap():
+    from scripts.graph.build import run_filter_flow
+
+    base = FakeProvider("codex_gpt55_high", json.dumps(assessment(5, "MAYBE")))
+    review = FakeProvider("claude_sonnet", json.dumps(assessment(7, "PASS")))
+    result = run_filter_flow(
+        {"title": "Backend Engineer", "description": "Python APIs"},
+        system_prompt="SYSTEM",
+        config={},
+        root=Path.cwd(),
+        base_provider=base,
+        review_provider=review,
+        allow_review=False,
+    )
+
+    assert result["decision"] == "pending_review"
+    assert result["needs_human_review"] is True
+    assert result["critique_count"] == 0
+    assert review.requests == []
+
+
+def test_run_filter_flow_borderline_review_then_human_when_still_borderline():
+    from scripts.graph.build import run_filter_flow
+
+    base = FakeProvider("codex_gpt55_high", json.dumps(assessment(5, "MAYBE")))
+    review = FakeProvider("claude_sonnet", json.dumps(assessment(5, "MAYBE")))
+    result = run_filter_flow(
+        {"title": "Backend Engineer", "description": "Python APIs"},
+        system_prompt="SYSTEM",
+        config={},
+        root=Path.cwd(),
+        base_provider=base,
+        review_provider=review,
+    )
+
+    assert result["decision"] == "pending_review"
+    assert result["critique_count"] == 1
+    assert len(review.requests) == 1
+    assert result["base_fit_score"] == 5
+
+
+def test_run_filter_flow_review_provider_failure_keeps_base_assessment():
+    from scripts.graph.build import run_filter_flow
+
+    base = FakeProvider("codex_gpt55_high", json.dumps(assessment(5, "MAYBE")))
+    review = FailingProvider()
+    result = run_filter_flow(
+        {"title": "Backend Engineer", "description": "Python APIs"},
+        system_prompt="SYSTEM",
+        config={},
+        root=Path.cwd(),
+        base_provider=base,
+        review_provider=review,
+    )
+
+    assert result["decision"] == "pending_review"
+    assert result["needs_human_review"] is True
+    assert result["critique_count"] == 1
+    assert result["review_error"] == "review failed"
+    assert result["scoring_provider"] == "codex_gpt55_high"
+    assert result["strong_matches"] == ["Python"]
+    assert len(review.requests) == 1
+
+
+def test_run_filter_flow_parse_failure_flags_human():
+    from scripts.graph.build import run_filter_flow
+
+    base = FakeProvider("codex_gpt55_high", "not json")
+    result = run_filter_flow(
+        {"title": "Backend Engineer", "description": "Python APIs"},
+        system_prompt="SYSTEM",
+        config={},
+        root=Path.cwd(),
+        base_provider=base,
+    )
+
+    assert result["fit_score"] is None
+    assert result["decision"] == "pending_review"
+    assert result["needs_human_review"] is True
+    assert result["hard_blockers"] == ["Scoring provider returned unreadable assessment"]

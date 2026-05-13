@@ -14,7 +14,7 @@ class FilterState(TypedDict, total=False):
     similar_decisions: list[dict[str, Any]]
     relevant_cv_bullets: list[dict[str, Any]]
     assessment: dict[str, Any]
-    raw_score: Optional[int]
+    raw_score: Optional[float]
     confidence: Optional[Confidence]
     explanation: Optional[str]
     cv_variant: Optional[str]

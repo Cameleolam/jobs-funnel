@@ -27,8 +27,12 @@ def _assert_parse_update_fallback(item, error_code):
     assert item["error_code"] == error_code
 
 
-def _load_filter(monkeypatch):
+def _load_filter(monkeypatch, plain_flow=True):
     monkeypatch.setenv("JOBS_FUNNEL_PROFILE", "test")
+    if plain_flow:
+        monkeypatch.setenv("USE_PLAIN_FILTER_FLOW", "1")
+    else:
+        monkeypatch.delenv("USE_PLAIN_FILTER_FLOW", raising=False)
     import importlib
     import scripts.filter as fil
 
@@ -37,8 +41,9 @@ def _load_filter(monkeypatch):
     return fil
 
 
-def test_filter_uses_scoring_provider_env(monkeypatch, capsys):
+def test_filter_uses_graph_runner(monkeypatch, capsys):
     monkeypatch.setenv("SCORING_PROVIDER", "codex_gpt55_high")
+    monkeypatch.setenv("USE_PLAIN_FILTER_FLOW", "1")
     fil = _load_filter(monkeypatch)
 
     job = {"title": "T", "description": "D"}
@@ -48,13 +53,14 @@ def test_filter_uses_scoring_provider_env(monkeypatch, capsys):
         "decision": "PASS",
         "cv_variant": "software",
         "scoring_provider": "codex_gpt55_high",
+        "needs_human_review": False,
     }
     calls = []
 
-    def fake_score_input(*, parsed_input, system_prompt, config, root):
+    def fake_runner(job_arg, *, system_prompt, config, root):
         calls.append(
             {
-                "parsed_input": parsed_input,
+                "job": job_arg,
                 "system_prompt": system_prompt,
                 "config": config,
                 "root": root,
@@ -63,13 +69,13 @@ def test_filter_uses_scoring_provider_env(monkeypatch, capsys):
         )
         return expected
 
-    monkeypatch.setattr(fil, "score_input", fake_score_input)
+    monkeypatch.setattr(fil, "run_filter_flow", fake_runner)
 
     fil.main()
 
     assert calls == [
         {
-            "parsed_input": job,
+            "job": job,
             "system_prompt": FILTER_PROMPT.read_text(encoding="utf-8"),
             "config": fil.CONFIG,
             "root": fil.PIPELINE_DIR,
@@ -79,17 +85,81 @@ def test_filter_uses_scoring_provider_env(monkeypatch, capsys):
     assert json.loads(capsys.readouterr().out) == expected
 
 
-def test_filter_prints_array_output_from_score_input(monkeypatch, capsys):
+def test_filter_default_uses_langgraph_runner(monkeypatch, capsys):
+    fil = _load_filter(monkeypatch, plain_flow=False)
+
+    job = {"title": "T", "description": "D"}
+    monkeypatch.setattr(sys, "argv", _argv_for_payload(job))
+    expected = {"fit_score": 8, "decision": "PASS", "cv_variant": "software"}
+    calls = []
+
+    def fake_runner(job_arg, *, system_prompt, config, root):
+        calls.append({
+            "job": job_arg,
+            "system_prompt": system_prompt,
+            "config": config,
+            "root": root,
+        })
+        return expected
+
+    monkeypatch.setattr(fil, "run_filter_graph", fake_runner)
+
+    fil.main()
+
+    assert calls == [{
+        "job": job,
+        "system_prompt": FILTER_PROMPT.read_text(encoding="utf-8"),
+        "config": fil.CONFIG,
+        "root": fil.PIPELINE_DIR,
+    }]
+    assert json.loads(capsys.readouterr().out) == expected
+
+
+def test_filter_prints_array_output_from_graph_runner(monkeypatch, capsys):
     fil = _load_filter(monkeypatch)
 
     batch = [{"title": "A"}, {"title": "B"}]
     expected = [{"fit_score": 1}, {"fit_score": 9}]
     monkeypatch.setattr(sys, "argv", _argv_for_payload(batch))
-    monkeypatch.setattr(fil, "score_input", lambda **kwargs: expected)
+    calls = []
+
+    def fake_runner(job_arg, *, system_prompt, config, root, allow_review=True):
+        calls.append(job_arg)
+        return expected[len(calls) - 1]
+
+    monkeypatch.setattr(fil, "run_filter_flow", fake_runner)
 
     fil.main()
 
+    assert calls == batch
     assert json.loads(capsys.readouterr().out) == expected
+
+
+def test_filter_caps_review_attempts_across_batch(monkeypatch, capsys):
+    monkeypatch.setenv("SCORING_REVIEW_MAX_PER_BATCH", "2")
+    fil = _load_filter(monkeypatch)
+
+    batch = [{"title": f"Job {i}"} for i in range(4)]
+    monkeypatch.setattr(sys, "argv", _argv_for_payload(batch))
+    allow_review_values = []
+
+    def fake_runner(job_arg, *, system_prompt, config, root, allow_review=True):
+        allow_review_values.append(allow_review)
+        return {
+            "fit_score": 5,
+            "decision": "pending_review",
+            "cv_variant": "software",
+            "needs_human_review": True,
+            "critique_count": 1 if allow_review else 0,
+        }
+
+    monkeypatch.setattr(fil, "run_filter_flow", fake_runner)
+
+    fil.main()
+
+    assert allow_review_values == [True, True, False, False]
+    payload = json.loads(capsys.readouterr().out)
+    assert [item["critique_count"] for item in payload] == [1, 1, 0, 0]
 
 
 def test_filter_timeout_on_batch_returns_parse_update_compatible_fallbacks(monkeypatch, capsys):
@@ -98,10 +168,10 @@ def test_filter_timeout_on_batch_returns_parse_update_compatible_fallbacks(monke
     batch = [{"title": "A"}, {"title": "B"}]
     monkeypatch.setattr(sys, "argv", _argv_for_payload(batch))
 
-    def raise_error(**kwargs):
+    def raise_error(job_arg, *, system_prompt, config, root, allow_review=True):
         raise ProviderTimeout("codex_gpt55_high", "timed out", stderr="slow", stdout="partial")
 
-    monkeypatch.setattr(fil, "score_input", raise_error)
+    monkeypatch.setattr(fil, "run_filter_flow", raise_error)
 
     with pytest.raises(SystemExit) as raised:
         fil.main()
@@ -122,10 +192,10 @@ def test_filter_provider_error_on_batch_returns_api_error_fallbacks(monkeypatch,
     batch = [{"title": "A"}, {"title": "B"}]
     monkeypatch.setattr(sys, "argv", _argv_for_payload(batch))
 
-    def raise_error(**kwargs):
+    def raise_error(job_arg, *, system_prompt, config, root, allow_review=True):
         raise ProviderError("claude_sonnet", "scoring provider failed", stderr="e" * 600, stdout="o" * 600)
 
-    monkeypatch.setattr(fil, "score_input", raise_error)
+    monkeypatch.setattr(fil, "run_filter_flow", raise_error)
 
     with pytest.raises(SystemExit) as raised:
         fil.main()
@@ -206,18 +276,18 @@ def test_filter_base64_file_chunk_mode_invalid_punctuation_returns_api_error_fal
     assert "Traceback" not in captured.err
 
 
-def test_filter_base64_file_reads_base64_from_file_path(monkeypatch, capsys, tmp_path):
+def test_filter_base64_file_reads_base64_from_file_path(monkeypatch, capsys):
     fil = _load_filter(monkeypatch)
 
     job = {"title": "From File"}
-    b64_path = tmp_path / "payload.b64"
-    b64_path.write_text(base64.b64encode(json.dumps(job).encode("utf-8")).decode("ascii"), encoding="utf-8")
+    b64_path = FIXTURES / "_payload.b64"
     calls = []
     monkeypatch.setattr(sys, "argv", ["filter.py", "--base64-file", str(b64_path)])
     monkeypatch.setattr(
         fil,
-        "score_input",
-        lambda **kwargs: calls.append(kwargs["parsed_input"]) or {"fit_score": 9, "decision": "PASS"},
+        "run_filter_flow",
+        lambda job_arg, *, system_prompt, config, root: calls.append(job_arg)
+        or {"fit_score": 9, "decision": "PASS"},
     )
 
     fil.main()
@@ -226,7 +296,7 @@ def test_filter_base64_file_reads_base64_from_file_path(monkeypatch, capsys, tmp
     assert json.loads(capsys.readouterr().out)["fit_score"] == 9
 
 
-def test_filter_stdin_input_calls_score_input(monkeypatch, capsys):
+def test_filter_stdin_input_calls_graph_runner(monkeypatch, capsys):
     fil = _load_filter(monkeypatch)
 
     job = {"title": "From Stdin"}
@@ -235,8 +305,9 @@ def test_filter_stdin_input_calls_score_input(monkeypatch, capsys):
     monkeypatch.setattr(sys, "stdin", type("FakeStdin", (), {"read": lambda self: json.dumps(job)})())
     monkeypatch.setattr(
         fil,
-        "score_input",
-        lambda **kwargs: calls.append(kwargs["parsed_input"]) or {"fit_score": 5, "decision": "MAYBE"},
+        "run_filter_flow",
+        lambda job_arg, *, system_prompt, config, root: calls.append(job_arg)
+        or {"fit_score": 5, "decision": "MAYBE"},
     )
 
     fil.main()
@@ -245,18 +316,18 @@ def test_filter_stdin_input_calls_score_input(monkeypatch, capsys):
     assert json.loads(capsys.readouterr().out)["decision"] == "MAYBE"
 
 
-def test_filter_file_path_input_calls_score_input(monkeypatch, capsys, tmp_path):
+def test_filter_file_path_input_calls_graph_runner(monkeypatch, capsys):
     fil = _load_filter(monkeypatch)
 
     job = {"title": "From Json File"}
-    input_path = tmp_path / "job.json"
-    input_path.write_text(json.dumps(job), encoding="utf-8")
+    input_path = FIXTURES / "_job.json"
     calls = []
     monkeypatch.setattr(sys, "argv", ["filter.py", str(input_path)])
     monkeypatch.setattr(
         fil,
-        "score_input",
-        lambda **kwargs: calls.append(kwargs["parsed_input"]) or {"fit_score": 6, "decision": "PASS"},
+        "run_filter_flow",
+        lambda job_arg, *, system_prompt, config, root: calls.append(job_arg)
+        or {"fit_score": 6, "decision": "PASS"},
     )
 
     fil.main()
@@ -282,3 +353,23 @@ def test_filter_script_direct_invocation_keeps_package_import_working():
     assert result.returncode == 1
     assert "No input provided on stdin" in result.stdout
     assert "ModuleNotFoundError" not in result.stderr
+
+
+def test_filter_legacy_switch_execs_legacy_filter(monkeypatch):
+    monkeypatch.setenv("USE_LEGACY_FILTER", "1")
+    fil = _load_filter(monkeypatch)
+    calls = []
+
+    def fake_execv(executable, argv):
+        calls.append((executable, argv))
+        raise SystemExit(0)
+
+    monkeypatch.setattr(os, "execv", fake_execv)
+    monkeypatch.setattr(sys, "argv", ["filter.py", "input.json"])
+
+    with pytest.raises(SystemExit):
+        fil.main()
+
+    assert calls[0][0] == sys.executable
+    assert calls[0][1][1].endswith("filter_legacy.py")
+    assert calls[0][1][2:] == ["input.json"]
