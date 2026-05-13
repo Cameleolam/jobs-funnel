@@ -182,9 +182,9 @@ def _apply_review(
                 and should_review(item)
                 and not item.get("error_code")
             ):
+                reviewed_count += 1
                 try:
                     out.append(_review_one(jobs[i], item, system_prompt, root, review_provider))
-                    reviewed_count += 1
                 except Exception as exc:
                     kept = dict(item)
                     kept["review_error"] = str(exc)[:200]

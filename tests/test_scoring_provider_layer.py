@@ -40,8 +40,10 @@ class FailingProvider:
 
     def __init__(self, exc):
         self.exc = exc
+        self.requests = []
 
     def generate(self, request):
+        self.requests.append(request)
         raise self.exc
 
 
@@ -561,3 +563,68 @@ def test_batch_review_failure_keeps_base_assessment_and_records_error(monkeypatc
     assert result[0].get("review_provider") is None
     assert result[0]["review_error"] == "batch review failed"
     assert result[1].get("review_error") is None
+
+
+def test_review_max_counts_failed_attempts(monkeypatch, tmp_path):
+    monkeypatch.setenv("SCORING_REVIEW_MAX_PER_BATCH", "1")
+    monkeypatch.setattr("scripts.scoring._system_prompt_with_calibration", lambda prompt, parsed, is_batch: prompt)
+    base = FakeProvider(
+        "claude_sonnet",
+        json.dumps(
+            [
+                _assessment(score=5, decision="MAYBE", reasoning="borderline one"),
+                _assessment(score=6, decision="MAYBE", reasoning="borderline two"),
+            ]
+        ),
+    )
+    review = FailingProvider(ProviderError("codex_gpt55_high", "first review failed"))
+
+    result = score_input(
+        parsed_input=[
+            {"title": "A", "description": "D"},
+            {"title": "B", "description": "D"},
+        ],
+        system_prompt="SYSTEM",
+        config={},
+        root=tmp_path,
+        base_provider=base,
+        review_provider=review,
+    )
+
+    assert len(review.requests) == 1
+    assert result[0]["fit_score"] == 5
+    assert result[0]["decision"] == "MAYBE"
+    assert result[0]["review_error"] == "first review failed"
+    assert result[1]["fit_score"] == 6
+    assert result[1]["decision"] == "MAYBE"
+    assert result[1].get("review_provider") is None
+    assert result[1].get("review_error") is None
+
+
+def test_review_provider_skips_items_with_error_code(monkeypatch, tmp_path):
+    monkeypatch.setattr("scripts.scoring._system_prompt_with_calibration", lambda prompt, parsed, is_batch: prompt)
+    base_item = {
+        **_assessment(score=5, decision="MAYBE", reasoning="parse fallback"),
+        "error_code": "PARSE_FAIL",
+    }
+    base = FakeProvider("claude_sonnet", json.dumps([base_item]))
+    review = FakeProvider(
+        "codex_gpt55_high",
+        json.dumps(_assessment(score=7, decision="PASS", reasoning="should not run")),
+    )
+
+    result = score_input(
+        parsed_input=[{"title": "A", "description": "D"}],
+        system_prompt="SYSTEM",
+        config={},
+        root=tmp_path,
+        base_provider=base,
+        review_provider=review,
+    )
+
+    assert len(review.requests) == 0
+    assert result[0] == {
+        **base_item,
+        "scoring_provider": "claude_sonnet",
+        "scoring_model": "claude_sonnet-model",
+    }
