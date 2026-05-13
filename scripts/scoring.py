@@ -211,6 +211,7 @@ def _apply_review(
     if (
         isinstance(assessment, dict)
         and isinstance(prompt_input, dict)
+        and max_reviews > 0
         and not assessment.get("error_code")
         and should_review(assessment)
     ):

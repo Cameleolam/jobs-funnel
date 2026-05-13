@@ -16,6 +16,50 @@ import sys
 import tempfile
 import time
 
+DEFAULT_WRAPPER_TIMEOUT_SECONDS = 1800
+
+
+def _wrapper_timeout_seconds():
+    try:
+        value = int(os.environ.get("SCORING_WRAPPER_TIMEOUT_SECONDS", str(DEFAULT_WRAPPER_TIMEOUT_SECONDS)))
+    except ValueError:
+        return DEFAULT_WRAPPER_TIMEOUT_SECONDS
+    return value if value > 0 else DEFAULT_WRAPPER_TIMEOUT_SECONDS
+
+
+def _input_count(job_json):
+    try:
+        payload = json.loads(job_json)
+    except Exception:
+        return 1, False
+    if isinstance(payload, list):
+        return len(payload), True
+    return 1, False
+
+
+def _fallback_assessment(blocker, reasoning, error_code):
+    return {
+        "fit_score": 0,
+        "decision": "SKIP",
+        "cv_variant": "software",
+        "hard_blockers": [blocker],
+        "soft_gaps": [],
+        "strong_matches": [],
+        "reasoning": reasoning,
+        "priority_notes": None,
+        "error_code": error_code,
+    }
+
+
+def _fallback_payload(job_json, blocker, reasoning, error_code):
+    count, is_batch = _input_count(job_json)
+    if is_batch:
+        return [
+            _fallback_assessment(blocker, reasoning, error_code)
+            for _ in range(count)
+        ]
+    return _fallback_assessment(blocker, reasoning, error_code)
+
 
 def main():
     if len(sys.argv) < 3:
@@ -39,11 +83,15 @@ def main():
             print(json.dumps({"error": f"File not found: {file_path}"}))
             sys.exit(1)
         try:
+            job_json = open(file_path, encoding="utf-8").read()
+        except OSError:
+            job_json = "{}"
+        try:
             result = subprocess.run(
                 [sys.executable, filter_script, file_path],
                 capture_output=True,
                 text=True,
-                timeout=300,
+                timeout=_wrapper_timeout_seconds(),
                 encoding="utf-8",
                 errors="replace",
                 env=env,
@@ -53,23 +101,20 @@ def main():
             elif result.returncode != 0:
                 # filter.py failed without output - emit fallback SKIP
                 err_msg = (result.stderr or "Unknown error")[:200]
-                print(json.dumps([{
-                    "fit_score": 0, "decision": "SKIP", "cv_variant": "software",
-                    "hard_blockers": [f"Filter error: {err_msg}"],
-                    "soft_gaps": [], "strong_matches": [],
-                    "reasoning": f"filter.py failed: {err_msg}",
-                    "priority_notes": None,
-                    "error_code": "API_ERROR",
-                }]))
+                print(json.dumps(_fallback_payload(
+                    job_json,
+                    f"Filter error: {err_msg}",
+                    f"filter.py failed: {err_msg}",
+                    "API_ERROR",
+                )))
         except subprocess.TimeoutExpired:
-            print(json.dumps([{
-                "fit_score": 0, "decision": "SKIP", "cv_variant": "software",
-                "hard_blockers": ["Claude timed out"],
-                "soft_gaps": [], "strong_matches": [],
-                "reasoning": "filter.py timed out after 300 seconds",
-                "priority_notes": None,
-                "error_code": "TIMEOUT",
-            }]))
+            timeout = _wrapper_timeout_seconds()
+            print(json.dumps(_fallback_payload(
+                job_json,
+                "Filter timed out",
+                f"filter.py timed out after {timeout} seconds",
+                "TIMEOUT",
+            )))
         finally:
             # Clean up the batch temp file
             try:
@@ -98,7 +143,7 @@ def main():
             [sys.executable, filter_script, tmp.name],
             capture_output=True,
             text=True,
-            timeout=300,
+            timeout=_wrapper_timeout_seconds(),
             encoding="utf-8",
             errors="replace",
             env=env,
@@ -107,14 +152,20 @@ def main():
             print(result.stdout, end="")
         elif result.returncode != 0:
             err_msg = (result.stderr or "Unknown error")[:200]
-            print(json.dumps({
-                "fit_score": 0, "decision": "SKIP", "cv_variant": "software",
-                "hard_blockers": [f"Filter error: {err_msg}"],
-                "soft_gaps": [], "strong_matches": [],
-                "reasoning": f"filter.py failed: {err_msg}",
-                "priority_notes": None,
-                "error_code": "API_ERROR",
-            }))
+            print(json.dumps(_fallback_payload(
+                job_json,
+                f"Filter error: {err_msg}",
+                f"filter.py failed: {err_msg}",
+                "API_ERROR",
+            )))
+    except subprocess.TimeoutExpired:
+        timeout = _wrapper_timeout_seconds()
+        print(json.dumps(_fallback_payload(
+            job_json,
+            "Filter timed out",
+            f"filter.py timed out after {timeout} seconds",
+            "TIMEOUT",
+        )))
     finally:
         try:
             os.unlink(tmp.name)

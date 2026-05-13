@@ -569,6 +569,32 @@ def test_review_max_negative_env_disables_reviews(monkeypatch, tmp_path):
     assert len(review.requests) == 0
 
 
+def test_review_max_zero_env_disables_single_review(monkeypatch, tmp_path):
+    monkeypatch.setenv("SCORING_REVIEW_MAX_PER_BATCH", "0")
+    monkeypatch.setattr("scripts.scoring._system_prompt_with_calibration", lambda prompt, parsed, is_batch: prompt)
+    base = FakeProvider(
+        "claude_sonnet",
+        json.dumps(_assessment(score=5, decision="MAYBE", reasoning="borderline")),
+    )
+    review = FakeProvider(
+        "codex_gpt55_high",
+        json.dumps(_assessment(score=7, decision="PASS", reasoning="should not run")),
+    )
+
+    result = score_input(
+        parsed_input={"title": "A", "description": "D"},
+        system_prompt="SYSTEM",
+        config={},
+        root=tmp_path,
+        base_provider=base,
+        review_provider=review,
+    )
+
+    assert result["fit_score"] == 5
+    assert result.get("review_provider") is None
+    assert len(review.requests) == 0
+
+
 def test_review_failure_keeps_base_assessment_and_records_error(monkeypatch, tmp_path):
     monkeypatch.setattr("scripts.scoring._system_prompt_with_calibration", lambda prompt, parsed, is_batch: prompt)
     base = FakeProvider(
