@@ -28,14 +28,16 @@ def _strip_code_fence(text: str) -> str:
 
 def _slice_json_region(text: str) -> str:
     clean = _strip_code_fence(text)
-    starts = [idx for idx in (clean.find("["), clean.find("{")) if idx >= 0]
-    if not starts:
-        return clean
-    start = min(starts)
-    end = max(clean.rfind("]"), clean.rfind("}"))
-    if end < start:
-        return clean[start:]
-    return clean[start : end + 1]
+    decoder = json.JSONDecoder()
+    for start, char in enumerate(clean):
+        if char not in "[{":
+            continue
+        try:
+            _, end = decoder.raw_decode(clean, start)
+        except json.JSONDecodeError:
+            continue
+        return clean[start:end]
+    return clean
 
 
 def loads_jsonish(text: str) -> Any:
@@ -48,9 +50,8 @@ def loads_jsonish(text: str) -> Any:
             r'\1"\2":',
             candidate,
         )
-        if repaired == candidate:
-            raise
-        return json.loads(repaired)
+        candidate = _slice_json_region(repaired)
+        return json.loads(candidate)
 
 
 def fallback_assessment(blocker: str, reasoning: str, error_code: str) -> dict[str, Any]:

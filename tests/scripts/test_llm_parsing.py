@@ -50,6 +50,18 @@ def test_loads_jsonish_ignores_surrounding_text():
     assert loads_jsonish(text) == [{"fit_score": 5, "decision": "MAYBE"}]
 
 
+def test_loads_jsonish_ignores_bracketed_prose_before_json():
+    text = 'I evaluated [job A]. Result: {"fit_score": 5, "decision": "MAYBE"}'
+
+    assert loads_jsonish(text) == {"fit_score": 5, "decision": "MAYBE"}
+
+
+def test_loads_jsonish_ignores_bracketed_prose_after_json():
+    text = '{"fit_score": 5, "decision": "MAYBE"}\nNote: [done]'
+
+    assert loads_jsonish(text) == {"fit_score": 5, "decision": "MAYBE"}
+
+
 def test_coerce_assessment_list_wraps_single_object_for_batch():
     assessment = {"fit_score": 6, "decision": "MAYBE", "cv_variant": "software"}
 
