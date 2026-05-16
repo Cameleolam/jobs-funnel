@@ -1,3 +1,4 @@
+import json
 from datetime import date
 from unittest.mock import MagicMock
 
@@ -27,6 +28,10 @@ def _conn(cur):
 
 def _sql_text(cur):
     return "\n".join(call.args[0] for call in cur.execute.call_args_list)
+
+
+def _settings_row(**overrides):
+    return {**DEFAULT_SETTINGS, "source": "db", "active_proposal_id": None, **overrides}
 
 
 def test_fetch_analytics_rows_queries_expected_fields_and_tables(monkeypatch):
@@ -114,21 +119,52 @@ def test_apply_proposal_captures_previous_settings_and_upserts_active(monkeypatc
         "status": "proposed",
         "proposed_settings": {**DEFAULT_SETTINGS, "review_low": 3},
     }
-    current = {**DEFAULT_SETTINGS, "review_low": 4, "source": "env", "active_proposal_id": None}
-    cur = _cursor([proposed, {"id": 7, "status": "applied"}])
+    current = _settings_row(review_low=4)
+    cur = _cursor([proposed, current, {"id": 7, "status": "applied"}])
     monkeypatch.setattr(proposals.db, "get_conn", lambda: _conn(cur))
-    monkeypatch.setattr(proposals.settings, "load_active_settings", lambda force=False: current)
+    load_active = MagicMock(side_effect=AssertionError("apply must not load settings separately"))
+    monkeypatch.setattr(proposals.settings, "load_active_settings", load_active)
     reset_cache = MagicMock()
     monkeypatch.setattr(proposals.settings, "reset_cache", reset_cache)
 
     out = proposals.apply_proposal(7)
 
     assert out["status"] == "applied"
+    load_active.assert_not_called()
     sql_text = _sql_text(cur)
     assert "FOR UPDATE" in sql_text
     assert "previous_settings" in sql_text
     assert "ON CONFLICT (singleton)" in sql_text
+    lock_settings_sql = cur.execute.call_args_list[1].args[0]
+    assert "FROM jobs_calibration_settings" in lock_settings_sql
+    assert "FOR UPDATE" in lock_settings_sql
+    update_params = cur.execute.call_args_list[-1].args[1]
+    previous_settings = json.loads(update_params[0])
+    assert previous_settings["review_low"] == 4
+    assert previous_settings["source"] == "db"
+    assert previous_settings["active_proposal_id"] is None
     reset_cache.assert_called_once_with()
+
+
+def test_apply_proposal_rejects_missing_active_settings_row(monkeypatch):
+    proposed = {
+        "id": 7,
+        "status": "proposed",
+        "proposed_settings": {**DEFAULT_SETTINGS, "review_low": 3},
+    }
+    cur = _cursor([proposed, None])
+    monkeypatch.setattr(proposals.db, "get_conn", lambda: _conn(cur))
+    load_active = MagicMock(side_effect=AssertionError("apply must not fall back to env settings"))
+    monkeypatch.setattr(proposals.settings, "load_active_settings", load_active)
+    reset_cache = MagicMock()
+    monkeypatch.setattr(proposals.settings, "reset_cache", reset_cache)
+
+    with pytest.raises(proposals.ProposalStateError):
+        proposals.apply_proposal(7)
+
+    load_active.assert_not_called()
+    assert "ON CONFLICT (singleton)" not in _sql_text(cur)
+    reset_cache.assert_not_called()
 
 
 def test_apply_proposal_rejects_non_proposed_status(monkeypatch):
@@ -167,7 +203,7 @@ def test_rollback_restores_previous_settings(monkeypatch):
         "status": "applied",
         "previous_settings": {**DEFAULT_SETTINGS, "review_low": 4},
     }
-    cur = _cursor([applied, {"id": 7, "status": "rolled_back"}])
+    cur = _cursor([applied, _settings_row(active_proposal_id=7), {"id": 7, "status": "rolled_back"}])
     monkeypatch.setattr(proposals.db, "get_conn", lambda: _conn(cur))
     reset_cache = MagicMock()
     monkeypatch.setattr(proposals.settings, "reset_cache", reset_cache)
@@ -178,7 +214,28 @@ def test_rollback_restores_previous_settings(monkeypatch):
     sql_text = _sql_text(cur)
     assert "rolled_back_at = NOW()" in sql_text
     assert "ON CONFLICT (singleton)" in sql_text
+    lock_settings_sql = cur.execute.call_args_list[1].args[0]
+    assert "FROM jobs_calibration_settings" in lock_settings_sql
+    assert "FOR UPDATE" in lock_settings_sql
     reset_cache.assert_called_once_with()
+
+
+def test_rollback_rejects_when_proposal_is_not_active(monkeypatch):
+    applied = {
+        "id": 7,
+        "status": "applied",
+        "previous_settings": {**DEFAULT_SETTINGS, "review_low": 4},
+    }
+    cur = _cursor([applied, _settings_row(active_proposal_id=8)])
+    monkeypatch.setattr(proposals.db, "get_conn", lambda: _conn(cur))
+    reset_cache = MagicMock()
+    monkeypatch.setattr(proposals.settings, "reset_cache", reset_cache)
+
+    with pytest.raises(proposals.ProposalStateError):
+        proposals.rollback_proposal(7)
+
+    assert "ON CONFLICT (singleton)" not in _sql_text(cur)
+    reset_cache.assert_not_called()
 
 
 def test_rollback_rejects_missing_proposal(monkeypatch):
@@ -191,7 +248,7 @@ def test_rollback_rejects_missing_proposal(monkeypatch):
 
 def test_rollback_rejects_missing_previous_settings(monkeypatch):
     applied = {"id": 7, "status": "applied", "previous_settings": None}
-    cur = _cursor([applied])
+    cur = _cursor([applied, _settings_row(active_proposal_id=7)])
     monkeypatch.setattr(proposals.db, "get_conn", lambda: _conn(cur))
 
     with pytest.raises(proposals.ProposalStateError):

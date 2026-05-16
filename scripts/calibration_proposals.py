@@ -164,7 +164,7 @@ def apply_proposal(proposal_id: int) -> dict:
                     proposal.get("proposed_settings"),
                     "proposed_settings",
                 )
-                previous_settings = settings.load_active_settings(force=True)
+                previous_settings = _lock_active_settings(cur)
                 _upsert_settings(
                     cur,
                     proposed_settings,
@@ -202,6 +202,10 @@ def rollback_proposal(proposal_id: int) -> dict:
                 proposal = _lock_proposal(cur, proposal_id)
                 if proposal.get("status") != "applied":
                     raise ProposalStateError(f"Proposal {proposal_id} is not applied")
+
+                active_settings = _lock_active_settings(cur)
+                if active_settings.get("active_proposal_id") != proposal_id:
+                    raise ProposalStateError(f"Proposal {proposal_id} is not the active proposal")
 
                 previous_raw = _mapping_or_error(
                     proposal.get("previous_settings"),
@@ -269,6 +273,39 @@ def _lock_proposal(cur, proposal_id: int) -> dict:
     if row is None:
         raise ProposalStateError(f"Proposal {proposal_id} was not found")
     return dict(row)
+
+
+def _lock_active_settings(cur) -> dict[str, Any]:
+    cur.execute(
+        f"""
+        SELECT
+            active_proposal_id,
+            review_low,
+            review_high,
+            calibration_k,
+            calibration_k_batch,
+            calibration_min_pool,
+            weight_offer,
+            weight_interview,
+            weight_applied,
+            weight_dismiss_note,
+            weight_dismiss,
+            weight_interested,
+            source
+        FROM {db.calibration_settings_table_name()}
+        WHERE singleton = TRUE
+        FOR UPDATE
+        """
+    )
+    row = cur.fetchone()
+    if row is None:
+        raise ProposalStateError("Active calibration settings row was not found")
+
+    raw = dict(row)
+    locked = _normalize_settings(raw, "active_settings")
+    locked["source"] = str(raw.get("source") or "db")
+    locked["active_proposal_id"] = _optional_int(raw.get("active_proposal_id"))
+    return locked
 
 
 def _upsert_settings(
