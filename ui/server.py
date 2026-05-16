@@ -83,6 +83,31 @@ HAS_HUMAN_REVIEW_COLUMNS = {
     "critique_count",
 }.issubset(OPTIONAL_COLUMNS)
 
+REVIEW_ACTIONS = {
+    "apply_target": {
+        "decision": "PASS",
+        "user_status": "interested",
+        "label": "Reviewed: apply target",
+    },
+    "maybe": {
+        "decision": "MAYBE",
+        "user_status": "interested",
+        "label": "Reviewed: maybe",
+    },
+    "skip": {
+        "decision": "SKIP",
+        "user_status": "dismissed",
+        "label": "Reviewed: skip",
+    },
+}
+
+
+def _review_notes_value(existing_notes, submitted_notes):
+    submitted = (submitted_notes or "").strip()
+    if submitted:
+        return submitted
+    return existing_notes if existing_notes else None
+
 _BASE_ROW_COLS = (
     "id, url, title, company, location, source, fit_score, decision, "
     "cv_variant, reasoning, status, crawled_at, analyzed_at, "
@@ -253,6 +278,12 @@ def get_stats():
 
 
 # ── Query builder ────────────────────────────────────────────────────
+def build_order_clause(sort_col: str, sort_dir: str, view: str = "") -> str:
+    if view == "review":
+        return "COALESCE(fit_score, 0) DESC, analyzed_at DESC NULLS LAST, id DESC"
+    return f"{sort_col} {sort_dir}, id {sort_dir}"
+
+
 def build_job_filter(decision="", applied="", min_score=0, max_score=10, search="", view="",
                      hide_staffing=False, hide_geo=False, english_only=False,
                      hide_rejected=False, recent_only=True):
@@ -347,7 +378,7 @@ async def list_jobs(
         hide_rejected=hide_rejected, recent_only=recent_only,
     )
     # Add id as tiebreaker so pagination is stable (avoids duplicates on Load More)
-    order_clause = f"{sort_col} {sort_dir}, id {sort_dir}"
+    order_clause = build_order_clause(sort_col, sort_dir, view)
     query = (
         f"SELECT {ROW_COLS} FROM {TABLE} WHERE {where} "
         f"ORDER BY {order_clause} LIMIT %s OFFSET %s"
@@ -391,7 +422,7 @@ async def export_excel(
         hide_staffing=hide_staffing, hide_geo=hide_geo, english_only=english_only,
         hide_rejected=hide_rejected, recent_only=recent_only,
     )
-    order_clause = f"{sort_col} {sort_dir}, id {sort_dir}"
+    order_clause = build_order_clause(sort_col, sort_dir, view)
     query = (
         f"SELECT {ROW_COLS} FROM {TABLE} WHERE {where} "
         f"ORDER BY {order_clause}"
@@ -616,6 +647,55 @@ async def update_notes(request: Request, job_id: int, notes: str = Form("")):
         (notes if notes.strip() else None, job_id),
     )
     job = fetch_one(f"SELECT {ROW_COLS} FROM {TABLE} WHERE id = %s", (job_id,))
+    return render(request, "partials/job_row_single.html", {"job": job})
+
+
+@app.patch("/jobs/{job_id}/review", response_class=HTMLResponse)
+async def resolve_review(
+    request: Request,
+    job_id: int,
+    review_action: str = Form(...),
+    notes: str = Form(""),
+):
+    action = REVIEW_ACTIONS.get(review_action)
+    if not action:
+        return HTMLResponse("Invalid review action", status_code=400)
+
+    review_flag_clause = "needs_human_review = FALSE, " if HAS_HUMAN_REVIEW_COLUMNS else ""
+    event_notes = (notes or "").strip() or None
+
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                f"SELECT id, notes FROM {TABLE} WHERE id = %s",
+                (job_id,),
+            )
+            existing = cur.fetchone()
+            if not existing:
+                return HTMLResponse("Job not found", status_code=404)
+
+            next_notes = _review_notes_value(existing.get("notes"), notes)
+            cur.execute(
+                f"""
+                UPDATE {TABLE}
+                SET decision = %s,
+                    user_status = %s,
+                    {review_flag_clause}notes = %s,
+                    sheet_synced = FALSE
+                WHERE id = %s
+                """,
+                (action["decision"], action["user_status"], next_notes, job_id),
+            )
+            cur.execute(
+                f"""
+                INSERT INTO {EVENTS_TABLE} (job_id, occurred_at, kind, label, notes)
+                VALUES (%s, NOW(), 'decision', %s, %s)
+                """,
+                (job_id, action["label"], event_notes),
+            )
+            cur.execute(f"SELECT {ROW_COLS} FROM {TABLE} WHERE id = %s", (job_id,))
+            job = cur.fetchone()
+
     return render(request, "partials/job_row_single.html", {"job": job})
 
 
