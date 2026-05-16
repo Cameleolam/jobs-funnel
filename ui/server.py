@@ -255,7 +255,7 @@ def get_stats():
 # ── Query builder ────────────────────────────────────────────────────
 def build_job_filter(decision="", applied="", min_score=0, max_score=10, search="", view="",
                      hide_staffing=False, hide_geo=False, english_only=False,
-                     hide_rejected=False):
+                     hide_rejected=False, recent_only=True):
     params: list = []
     if view == "error":
         conditions = ["status = 'error'"]
@@ -272,6 +272,8 @@ def build_job_filter(decision="", applied="", min_score=0, max_score=10, search=
             conditions = ["status = 'analyzed' AND decision = 'pending_review'"]
     else:
         conditions = ["status IN ('analyzed', 'pending')"]
+        if recent_only:
+            conditions.append("crawled_at >= NOW() - INTERVAL '10 days'")
         if decision:
             conditions.append("decision = %s")
             params.append(decision)
@@ -326,6 +328,7 @@ async def list_jobs(
     hide_geo: bool = Query(False, alias="hide_geo"),
     english_only: bool = Query(False, alias="english_only"),
     hide_rejected: bool = Query(True, alias="hide_rejected"),
+    recent_only: bool = Query(True, alias="recent_only"),
     sort: str = Query("fit_score", alias="sort"),
     order: str = Query("desc", alias="order"),
     limit: int = Query(100, alias="limit"),
@@ -341,7 +344,7 @@ async def list_jobs(
     where, params = build_job_filter(
         decision, applied, min_score, max_score, search, view,
         hide_staffing=hide_staffing, hide_geo=hide_geo, english_only=english_only,
-        hide_rejected=hide_rejected,
+        hide_rejected=hide_rejected, recent_only=recent_only,
     )
     # Add id as tiebreaker so pagination is stable (avoids duplicates on Load More)
     order_clause = f"{sort_col} {sort_dir}, id {sort_dir}"
@@ -372,6 +375,7 @@ async def export_excel(
     hide_geo: bool = Query(False),
     english_only: bool = Query(False),
     hide_rejected: bool = Query(True),
+    recent_only: bool = Query(True),
     sort: str = Query("fit_score"),
     order: str = Query("desc"),
 ):
@@ -385,7 +389,7 @@ async def export_excel(
     where, params = build_job_filter(
         decision, applied, min_score, max_score, search, view,
         hide_staffing=hide_staffing, hide_geo=hide_geo, english_only=english_only,
-        hide_rejected=hide_rejected,
+        hide_rejected=hide_rejected, recent_only=recent_only,
     )
     order_clause = f"{sort_col} {sort_dir}, id {sort_dir}"
     query = (
