@@ -19,6 +19,9 @@ temp/
 # n8n local data (if running from this dir)
 .n8n/
 
+# Local git worktrees
+.worktrees/
+
 # OS files
 Thumbs.db
 .DS_Store
