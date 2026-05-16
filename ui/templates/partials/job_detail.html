@@ -4,6 +4,7 @@
   </div>
 
   {% set has_flag = job.priority_notes and ("manual check" in (job.priority_notes|lower) or "flag" in (job.priority_notes|lower) or "fetch full" in (job.priority_notes|lower) or "fetch the" in (job.priority_notes|lower)) %}
+  {% set needs_review = job.needs_human_review or job.decision == 'pending_review' %}
 
   {% if job.status in ('dead', 'error') %}
   <div class="error-banner">
@@ -49,6 +50,12 @@
   {% if has_flag %}
   <div class="flag-banner">
     <strong>Flagged for review:</strong> {{ job.priority_notes }}
+  </div>
+  {% endif %}
+
+  {% if needs_review %}
+  <div class="flag-banner review-banner">
+    <strong>Needs human review:</strong> {{ job.explanation or 'Resolve this scoring decision so future calibration can learn from it.' }}
   </div>
   {% endif %}
 
@@ -109,19 +116,32 @@
   <h4>Link</h4>
   <a class="job-link" href="{{ job.url }}" target="_blank" rel="noopener">{{ job.url }}</a>
 
-  <!-- Actions -->
-  <div class="detail-actions">
-    {% if job.decision == 'MAYBE' %}
-    <form hx-patch="/jobs/{{ job.id }}" hx-target="#row-{{ job.id }}" hx-swap="outerHTML settle:0.1s" style="display:inline">
-      <input type="hidden" name="decision" value="PASS">
-      <button type="submit" class="btn btn-pass">Accept (PASS)</button>
+  {% if job.status == 'analyzed' %}
+  <div class="review-resolution">
+    <h4>Human Review</h4>
+    <div class="review-context">
+      <span>Score: {{ job.fit_score if job.fit_score is not none else '?' }}</span>
+      {% if job.base_fit_score is not none or job.base_decision %}
+      <span>Base: {{ job.base_fit_score if job.base_fit_score is not none else '?' }} / {{ job.base_decision or '?' }}</span>
+      {% endif %}
+      {% if job.confidence %}<span>Confidence: {{ job.confidence }}</span>{% endif %}
+      {% if job.critique_count %}<span>Critiques: {{ job.critique_count }}</span>{% endif %}
+      {% if job.scoring_provider %}<span>Scorer: {{ job.scoring_provider }}{% if job.scoring_model %} / {{ job.scoring_model }}{% endif %}</span>{% endif %}
+      {% if job.review_provider %}<span>Reviewer: {{ job.review_provider }}{% if job.review_model %} / {{ job.review_model }}{% endif %}</span>{% endif %}
+      {% if job.review_error %}<span>Review error: {{ job.review_error }}</span>{% endif %}
+    </div>
+    <form hx-patch="/jobs/{{ job.id }}/review"
+          hx-target="#row-{{ job.id }}"
+          hx-swap="outerHTML settle:0.1s">
+      <textarea name="notes" class="review-notes" placeholder="Decision note for future calibration...">{{ job.notes or '' }}</textarea>
+      <div class="detail-actions">
+        <button type="submit" name="review_action" value="apply_target" class="btn btn-pass">Apply target</button>
+        <button type="submit" name="review_action" value="maybe" class="btn btn-warn">Maybe</button>
+        <button type="submit" name="review_action" value="skip" class="btn btn-skip">Skip</button>
+      </div>
     </form>
-    <form hx-patch="/jobs/{{ job.id }}" hx-target="#row-{{ job.id }}" hx-swap="outerHTML settle:0.1s" style="display:inline">
-      <input type="hidden" name="decision" value="SKIP">
-      <button type="submit" class="btn btn-skip">Reject (SKIP)</button>
-    </form>
-    {% endif %}
   </div>
+  {% endif %}
 
   <!-- Re-score section -->
   <div class="rescore-section">

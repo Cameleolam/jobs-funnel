@@ -177,3 +177,61 @@ def test_review_resolution_returns_404_for_missing_job(monkeypatch):
 def test_jobs_view_selector_exposes_review_queue():
     html = (srv.TEMPLATES_DIR / "jobs.html").read_text(encoding="utf-8")
     assert '<option value="review">Review queue</option>' in html
+
+
+def _review_job_row():
+    return {
+        "id": 42,
+        "url": "https://example.com/job/42",
+        "title": "Automation Engineer",
+        "company": "Acme",
+        "location": "Remote EU",
+        "source": "manual",
+        "status": "analyzed",
+        "decision": "pending_review",
+        "fit_score": 5,
+        "base_fit_score": 5,
+        "base_decision": "MAYBE",
+        "scoring_provider": "codex_gpt55_high",
+        "scoring_model": "gpt-5.5",
+        "review_provider": "claude_sonnet",
+        "review_model": "claude-sonnet-4-6",
+        "review_error": None,
+        "needs_human_review": True,
+        "explanation": "Score stayed in the review band after critique.",
+        "confidence": "medium",
+        "critique_count": 1,
+        "reasoning": "Good automation match but unclear location.",
+        "hard_blockers": [],
+        "strong_matches": ["Python", "automation"],
+        "soft_gaps": ["unclear location"],
+        "tags": [],
+        "priority_notes": None,
+        "notes": "Ask about EU remote.",
+        "possible_duplicate_of": None,
+        "duplicate_confirmed": None,
+        "crawled_at": None,
+        "analyzed_at": None,
+        "posted_at": None,
+        "employment_type": None,
+        "seniority_level": None,
+        "start_date": None,
+        "description": "Build internal automation.",
+    }
+
+
+def test_job_detail_renders_review_resolution_controls(monkeypatch):
+    client = TestClient(srv.app)
+    monkeypatch.setattr(srv, "fetch_one", lambda query, params=(): _review_job_row())
+
+    response = client.get("/jobs/42")
+
+    assert response.status_code == 200
+    assert 'hx-patch="/jobs/42/review"' in response.text
+    assert 'name="review_action" value="apply_target"' in response.text
+    assert 'name="review_action" value="maybe"' in response.text
+    assert 'name="review_action" value="skip"' in response.text
+    assert "Score stayed in the review band after critique." in response.text
+    assert "codex_gpt55_high" in response.text
+    assert "claude_sonnet" in response.text
+    assert "Ask about EU remote." in response.text
