@@ -1,12 +1,14 @@
 """Outcome analytics and conservative calibration proposal rules."""
 from __future__ import annotations
 
+import math
 from collections import Counter
 from typing import Any, Mapping
 
 
-BANDS = ("below_review", "review_band", "above_review")
+BANDS = ("below_review", "review_band", "above_review", "unscored")
 POSITIVE_STATUSES = {"applied", "in_process", "offer"}
+PURSUED_STATUSES = POSITIVE_STATUSES | {"rejected"}
 POSITIVE_WEIGHT_KEYS = (
     "weight_offer",
     "weight_interview",
@@ -21,10 +23,16 @@ REVIEW_VOLUME_CAP_RATE = 0.05
 
 def score_band(score: Any, settings: Mapping[str, Any]) -> str:
     """Return the active review-band bucket for a fit score."""
-    value = float(score)
+    value = _coerce_score(score)
     review_low = float(settings["review_low"])
     review_high = float(settings["review_high"])
 
+    return _score_band_for_value(value, review_low, review_high)
+
+
+def _score_band_for_value(value: float | None, review_low: float, review_high: float) -> str:
+    if value is None:
+        return "unscored"
     if value < review_low:
         return "below_review"
     if value <= review_high:
@@ -44,14 +52,24 @@ def build_metrics(rows: list[Mapping[str, Any]], settings: Mapping[str, Any]) ->
     providers: dict[str, dict[str, int]] = {}
     false_positives: list[dict[str, Any]] = []
     false_negatives: list[dict[str, Any]] = []
+    review_low = float(settings["review_low"])
+    review_high = float(settings["review_high"])
+    review_projection = {
+        "current_review_jobs": 0,
+        "lower_one_bucket_jobs": 0,
+        "raise_one_bucket_jobs": 0,
+        "cap_rate": REVIEW_VOLUME_CAP_RATE,
+    }
 
     for row in rows:
-        band = score_band(row.get("fit_score"), settings)
+        fit_score = _coerce_score(row.get("fit_score"))
+        band = _score_band_for_value(fit_score, review_low, review_high)
         status = _normalized_status(row)
         pursued = _is_pursued(row)
         dismissed = status == "dismissed"
         rejected = status == "rejected"
         reviewed = bool(row.get("has_review_decision"))
+        _update_review_projection(review_projection, fit_score, review_low, review_high)
 
         if reviewed:
             sample_counts["review_decisions"] += 1
@@ -97,6 +115,7 @@ def build_metrics(rows: list[Mapping[str, Any]], settings: Mapping[str, Any]) ->
             "false_positives": false_positives,
             "false_negatives": false_negatives,
         },
+        "review_projection": review_projection,
     }
 
 
@@ -125,20 +144,24 @@ def build_proposed_settings(
     false_negative_count = len(examples.get("false_negatives", []) or [])
     jobs = int(sample_counts.get("jobs", 0) or 0)
     score_bands = metrics.get("score_bands", {})
-    current_review_jobs = int(score_bands.get("review_band", {}).get("total", 0) or 0)
-    review_cap = jobs * REVIEW_VOLUME_CAP_RATE
+    current_review_jobs, lower_one_bucket_jobs, raise_one_bucket_jobs, cap_rate = _projection_values(
+        metrics,
+        score_bands,
+        jobs,
+    )
+    review_cap = jobs * cap_rate
     projected_review_jobs = current_review_jobs
     review_band_rationale = "kept current band because proposal guard did not justify expansion"
 
     if false_negative_count >= 3:
-        projected = projected_review_jobs + false_negative_count
+        projected = projected_review_jobs + lower_one_bucket_jobs
         if _within_review_cap(projected, review_cap):
             proposed["review_low"] = max(0, int(proposed["review_low"]) - 1)
             projected_review_jobs = projected
             review_band_rationale = "lowered review_low by 1 because false negatives reached threshold"
 
     if false_positive_count >= 5:
-        projected = projected_review_jobs + false_positive_count
+        projected = projected_review_jobs + raise_one_bucket_jobs
         if _within_review_cap(projected, review_cap):
             proposed["review_high"] = min(10, int(proposed["review_high"]) + 1)
             projected_review_jobs = projected
@@ -166,7 +189,7 @@ def build_proposed_settings(
         "guards": {
             "projected_review_jobs": projected_review_jobs,
             "projected_review_cap": review_cap,
-            "projected_review_cap_rate": REVIEW_VOLUME_CAP_RATE,
+            "projected_review_cap_rate": cap_rate,
         },
         "evidence": {
             "false_positives": false_positive_count,
@@ -202,7 +225,7 @@ def _normalized_status(row: Mapping[str, Any]) -> str | None:
 
 def _is_pursued(row: Mapping[str, Any]) -> bool:
     return (
-        _normalized_status(row) in POSITIVE_STATUSES
+        _normalized_status(row) in PURSUED_STATUSES
         or bool(row.get("has_application"))
         or bool(row.get("has_interview"))
         or bool(row.get("has_offer_event"))
@@ -228,6 +251,88 @@ def _example(row: Mapping[str, Any]) -> dict[str, Any]:
 
 def _within_review_cap(projected_review_jobs: int, review_cap: float) -> bool:
     return projected_review_jobs <= review_cap
+
+
+def _coerce_score(score: Any) -> float | None:
+    if score is None:
+        return None
+    try:
+        value = float(score)
+    except (TypeError, ValueError):
+        return None
+    return value if math.isfinite(value) else None
+
+
+def _update_review_projection(
+    review_projection: dict[str, float],
+    fit_score: float | None,
+    review_low: float,
+    review_high: float,
+) -> None:
+    if fit_score is None:
+        return
+    if review_low <= fit_score <= review_high:
+        review_projection["current_review_jobs"] += 1
+    elif review_low - 1 <= fit_score < review_low:
+        review_projection["lower_one_bucket_jobs"] += 1
+    elif review_high < fit_score <= review_high + 1:
+        review_projection["raise_one_bucket_jobs"] += 1
+
+
+def _projection_values(
+    metrics: Mapping[str, Any],
+    score_bands: Mapping[str, Any],
+    jobs: int,
+) -> tuple[int, int, int, float]:
+    review_projection = metrics.get("review_projection")
+    review_band_total = _counter_total(score_bands, "review_band")
+    below_total = _counter_total(score_bands, "below_review", default=jobs + 1)
+    above_total = _counter_total(score_bands, "above_review", default=jobs + 1)
+
+    if isinstance(review_projection, Mapping):
+        current_review_jobs = _nonnegative_int(
+            review_projection.get("current_review_jobs"),
+            review_band_total,
+        )
+        lower_one_bucket_jobs = _nonnegative_int(
+            review_projection.get("lower_one_bucket_jobs"),
+            below_total,
+        )
+        raise_one_bucket_jobs = _nonnegative_int(
+            review_projection.get("raise_one_bucket_jobs"),
+            above_total,
+        )
+        cap_rate = _positive_float(review_projection.get("cap_rate"), REVIEW_VOLUME_CAP_RATE)
+    else:
+        current_review_jobs = review_band_total
+        lower_one_bucket_jobs = below_total
+        raise_one_bucket_jobs = above_total
+        cap_rate = REVIEW_VOLUME_CAP_RATE
+
+    return current_review_jobs, lower_one_bucket_jobs, raise_one_bucket_jobs, cap_rate
+
+
+def _counter_total(score_bands: Mapping[str, Any], band: str, default: int = 0) -> int:
+    counts = score_bands.get(band, {})
+    if not isinstance(counts, Mapping):
+        return default
+    return _nonnegative_int(counts.get("total"), default)
+
+
+def _nonnegative_int(value: Any, default: int) -> int:
+    try:
+        out = int(value)
+    except (TypeError, ValueError):
+        return default
+    return out if out >= 0 else default
+
+
+def _positive_float(value: Any, default: float) -> float:
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return default
+    return out if math.isfinite(out) and out > 0 else default
 
 
 def _increment_weight(settings: dict[str, Any], key: str) -> None:
