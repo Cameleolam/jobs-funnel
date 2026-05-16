@@ -24,6 +24,9 @@ from fastapi.templating import Jinja2Templates
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
+from scripts import calibration_proposals
+from scripts import calibration_settings
+
 # ── Config ───────────────────────────────────────────────────────────
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
@@ -758,6 +761,52 @@ async def stats(request: Request):
 @app.get("/runs", response_class=HTMLResponse)
 async def runs_page(request: Request):
     return render(request, "runs.html")
+
+
+@app.get("/calibration", response_class=HTMLResponse)
+async def calibration_page(request: Request):
+    active = calibration_settings.load_active_settings(force=True)
+    proposals = calibration_proposals.list_proposals(limit=20)
+    return render(request, "calibration.html", {
+        "active": active,
+        "proposals": proposals,
+    })
+
+
+@app.post("/calibration/proposals", response_class=HTMLResponse)
+async def calibration_generate_proposal(
+    request: Request,
+    window_days: int = Form(90),
+):
+    calibration_proposals.generate_proposal(window_days=window_days)
+    proposals = calibration_proposals.list_proposals(limit=20)
+    return render(request, "partials/calibration_proposals.html", {
+        "proposals": proposals,
+    })
+
+
+@app.post("/calibration/proposals/{proposal_id}/apply", response_class=HTMLResponse)
+async def calibration_apply_proposal(request: Request, proposal_id: int):
+    try:
+        calibration_proposals.apply_proposal(proposal_id)
+    except calibration_proposals.ProposalStateError as exc:
+        return HTMLResponse(str(exc), status_code=400)
+    proposals = calibration_proposals.list_proposals(limit=20)
+    return render(request, "partials/calibration_proposals.html", {
+        "proposals": proposals,
+    })
+
+
+@app.post("/calibration/proposals/{proposal_id}/rollback", response_class=HTMLResponse)
+async def calibration_rollback_proposal(request: Request, proposal_id: int):
+    try:
+        calibration_proposals.rollback_proposal(proposal_id)
+    except calibration_proposals.ProposalStateError as exc:
+        return HTMLResponse(str(exc), status_code=400)
+    proposals = calibration_proposals.list_proposals(limit=20)
+    return render(request, "partials/calibration_proposals.html", {
+        "proposals": proposals,
+    })
 
 
 @app.get("/tracking", response_class=HTMLResponse)

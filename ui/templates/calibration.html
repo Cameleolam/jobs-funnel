@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="calibration-header">
+  <div>
+    <h2>Calibration</h2>
+    <p class="text-muted">Active scoring knobs and generated calibration proposals.</p>
+  </div>
+  <form hx-post="/calibration/proposals"
+        hx-target="#calibration-proposals"
+        hx-swap="innerHTML"
+        class="calibration-actions">
+    <label>Window</label>
+    <input type="number" name="window_days" value="90" min="7" max="365">
+    <button class="btn btn-primary btn-sm" type="submit">Generate proposal</button>
+  </form>
+</div>
+
+<section class="calibration-section">
+  <h3>Active Settings</h3>
+  <div class="calibration-grid">
+    <div><span>Review band</span><strong>{{ active.review_low }}-{{ active.review_high }}</strong></div>
+    <div><span>Calibration K</span><strong>{{ active.calibration_k }}</strong></div>
+    <div><span>Batch K</span><strong>{{ active.calibration_k_batch }}</strong></div>
+    <div><span>Min pool</span><strong>{{ active.calibration_min_pool }}</strong></div>
+    <div><span>Source</span><strong>{{ active.source }}</strong></div>
+    <div><span>Active proposal</span><strong>{{ active.active_proposal_id or '-' }}</strong></div>
+  </div>
+</section>
+
+<section class="calibration-section">
+  <h3>Weights</h3>
+  <table class="calibration-table">
+    <thead>
+      <tr>
+        <th>Offer</th>
+        <th>Interview</th>
+        <th>Applied</th>
+        <th>Dismiss Note</th>
+        <th>Dismiss</th>
+        <th>Interested</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>{{ active.weight_offer }}</td>
+        <td>{{ active.weight_interview }}</td>
+        <td>{{ active.weight_applied }}</td>
+        <td>{{ active.weight_dismiss_note }}</td>
+        <td>{{ active.weight_dismiss }}</td>
+        <td>{{ active.weight_interested }}</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section class="calibration-section">
+  <h3>Proposals</h3>
+  <div id="calibration-proposals">
+    {% include "partials/calibration_proposals.html" %}
+  </div>
+</section>
+
+{% endblock %}

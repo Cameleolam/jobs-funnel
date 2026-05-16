@@ -1,0 +1,55 @@
+<table class="calibration-table">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Status</th>
+      <th>Confidence</th>
+      <th>Samples</th>
+      <th>Review Band</th>
+      <th>Rationale</th>
+      <th>Action</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for proposal in proposals %}
+    {% set settings = proposal.proposed_settings or {} %}
+    {% set counts = proposal.sample_counts or {} %}
+    {% set rationale = proposal.rationale or {} %}
+    {% set review_low = settings.get("review_low") %}
+    {% set review_high = settings.get("review_high") %}
+    <tr id="proposal-{{ proposal.id }}">
+      <td>{{ proposal.id }}</td>
+      <td><span class="badge badge-{{ proposal.status }}">{{ proposal.status }}</span></td>
+      <td>{{ proposal.confidence or '-' }}</td>
+      <td>
+        {{ counts.jobs or 0 }} jobs,
+        {{ counts.review_decisions or 0 }} reviews,
+        {{ counts.downstream_outcomes or 0 }} outcomes
+      </td>
+      <td>
+        {{ review_low if review_low is not none else '-' }}-{{ review_high if review_high is not none else '-' }}
+      </td>
+      <td>{{ rationale.review_band or rationale.weights or '-' }}</td>
+      <td>
+        {% if proposal.status == 'proposed' %}
+        <button class="btn btn-primary btn-sm"
+                hx-post="/calibration/proposals/{{ proposal.id }}/apply"
+                hx-target="#calibration-proposals"
+                hx-swap="innerHTML">Apply</button>
+        {% elif proposal.status == 'applied' and proposal.previous_settings %}
+        <button class="btn btn-warn btn-sm"
+                hx-post="/calibration/proposals/{{ proposal.id }}/rollback"
+                hx-target="#calibration-proposals"
+                hx-swap="innerHTML">Rollback</button>
+        {% else %}
+        <span class="text-muted">-</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr>
+      <td colspan="7" class="text-muted">No calibration proposals yet.</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>

@@ -378,6 +378,97 @@
     }
     .nav-bar-inner a:hover { text-decoration: underline; }
 
+    /* Calibration */
+    .calibration-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      align-items: flex-start;
+      margin-bottom: 1rem;
+    }
+    .calibration-header h2 { font-size: 1.35rem; margin-bottom: 0.2rem; }
+    .calibration-actions {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      background: #fff;
+      border-radius: 8px;
+      padding: 0.6rem 0.75rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,.08);
+    }
+    .calibration-actions label {
+      color: #555;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+    .calibration-actions input {
+      width: 80px;
+      padding: 0.3rem 0.45rem;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 0.82rem;
+    }
+    .calibration-section {
+      margin-bottom: 1rem;
+      background: #fff;
+      border-radius: 8px;
+      padding: 1rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,.08);
+    }
+    .calibration-section h3 {
+      margin-bottom: 0.75rem;
+      font-size: 0.9rem;
+      color: #555;
+      text-transform: uppercase;
+    }
+    .calibration-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 0.75rem;
+    }
+    .calibration-grid div {
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 0.65rem;
+      background: #f9fafb;
+    }
+    .calibration-grid span {
+      display: block;
+      color: #6b7280;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+    }
+    .calibration-grid strong {
+      display: block;
+      margin-top: 0.15rem;
+      font-size: 1rem;
+    }
+    .calibration-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+    }
+    .calibration-table th {
+      background: #f9fafb;
+      padding: 0.55rem 0.7rem;
+      text-align: left;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      color: #666;
+      border-bottom: 2px solid #e5e7eb;
+      white-space: nowrap;
+    }
+    .calibration-table td {
+      padding: 0.55rem 0.7rem;
+      border-bottom: 1px solid #f0f0f0;
+      font-size: 0.84rem;
+      vertical-align: top;
+    }
+    .calibration-table tr:hover { background: #fafafa; }
+    .badge-proposed { background: #dbeafe; color: #1e40af; }
+    .badge-applied { background: #dcfce7; color: #166534; }
+    .badge-rolled_back { background: #f3f4f6; color: #6b7280; }
+
     /* ── Run status badges ───────────────────────── */
     .badge-success { background: #dcfce7; color: #166534; }
     .badge-partial { background: #fef9c3; color: #854d0e; }
@@ -427,6 +518,7 @@
       <strong style="font-size:1rem;">Jobs Funnel</strong>
       <a href="/">Jobs</a>
       <a href="/tracking">Tracking</a>
+      <a href="/calibration">Calibration</a>
       <a href="/runs">Pipeline Runs</a>
     </div>
   </nav>
