@@ -32,6 +32,16 @@ def events_table_name() -> str:
     return f"{table_name()}_events"
 
 
+def calibration_settings_table_name() -> str:
+    """Active calibration settings table for the current profile table."""
+    return f"{table_name()}_calibration_settings"
+
+
+def calibration_proposals_table_name() -> str:
+    """Calibration proposal history table for the current profile table."""
+    return f"{table_name()}_calibration_proposals"
+
+
 def get_conn():
     """Open a psycopg2 connection from JOBS_FUNNEL_PG_* env vars.
 

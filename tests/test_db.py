@@ -17,6 +17,13 @@ def test_table_name_reads_env(monkeypatch):
     assert db.table_name() == "jobs_test"
 
 
+def test_calibration_table_names_follow_active_jobs_table(monkeypatch):
+    monkeypatch.setenv("JOBS_FUNNEL_TABLE", "jobs_profile1")
+
+    assert db.calibration_settings_table_name() == "jobs_profile1_calibration_settings"
+    assert db.calibration_proposals_table_name() == "jobs_profile1_calibration_proposals"
+
+
 def test_get_conn_uses_env_vars(monkeypatch):
     captured = {}
 
