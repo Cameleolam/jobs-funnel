@@ -38,6 +38,10 @@ CREATE TABLE IF NOT EXISTS {{TABLE}}_calibration_settings (
     CHECK (review_low <= review_high)
 );
 
+INSERT INTO {{TABLE}}_calibration_settings (singleton)
+VALUES (TRUE)
+ON CONFLICT (singleton) DO NOTHING;
+
 CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_calibration_proposals_created
     ON {{TABLE}}_calibration_proposals(created_at DESC);
 

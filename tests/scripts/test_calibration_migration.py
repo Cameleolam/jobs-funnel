@@ -29,6 +29,15 @@ def test_settings_table_has_active_settings_columns():
     assert "review_low <= review_high" in SQL
 
 
+def test_settings_table_seeds_singleton_row_idempotently():
+    normalized_sql = " ".join(SQL.split())
+
+    assert (
+        "INSERT INTO {{TABLE}}_calibration_settings (singleton) "
+        "VALUES (TRUE) ON CONFLICT (singleton) DO NOTHING;"
+    ) in normalized_sql
+
+
 def test_proposals_table_has_audit_and_rollback_columns():
     for column in (
         "status",
