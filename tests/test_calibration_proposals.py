@@ -114,6 +114,7 @@ def test_generate_proposal_inserts_metrics_and_settings(monkeypatch):
 
 
 def test_apply_proposal_captures_previous_settings_and_upserts_active(monkeypatch):
+    settings_table = "sentinel_calibration_settings"
     proposed = {
         "id": 7,
         "status": "proposed",
@@ -122,6 +123,11 @@ def test_apply_proposal_captures_previous_settings_and_upserts_active(monkeypatc
     current = _settings_row(review_low=4)
     cur = _cursor([proposed, current, {"id": 7, "status": "applied"}])
     monkeypatch.setattr(proposals.db, "get_conn", lambda: _conn(cur))
+    monkeypatch.setattr(
+        proposals.db,
+        "calibration_settings_table_name",
+        lambda: settings_table,
+    )
     load_active = MagicMock(side_effect=AssertionError("apply must not load settings separately"))
     monkeypatch.setattr(proposals.settings, "load_active_settings", load_active)
     reset_cache = MagicMock()
@@ -136,7 +142,7 @@ def test_apply_proposal_captures_previous_settings_and_upserts_active(monkeypatc
     assert "previous_settings" in sql_text
     assert "ON CONFLICT (singleton)" in sql_text
     lock_settings_sql = cur.execute.call_args_list[1].args[0]
-    assert "FROM jobs_calibration_settings" in lock_settings_sql
+    assert f"FROM {settings_table}" in lock_settings_sql
     assert "FOR UPDATE" in lock_settings_sql
     update_params = cur.execute.call_args_list[-1].args[1]
     previous_settings = json.loads(update_params[0])
@@ -198,6 +204,7 @@ def test_apply_proposal_rejects_incomplete_proposed_settings(monkeypatch):
 
 
 def test_rollback_restores_previous_settings(monkeypatch):
+    settings_table = "sentinel_calibration_settings"
     applied = {
         "id": 7,
         "status": "applied",
@@ -205,6 +212,11 @@ def test_rollback_restores_previous_settings(monkeypatch):
     }
     cur = _cursor([applied, _settings_row(active_proposal_id=7), {"id": 7, "status": "rolled_back"}])
     monkeypatch.setattr(proposals.db, "get_conn", lambda: _conn(cur))
+    monkeypatch.setattr(
+        proposals.db,
+        "calibration_settings_table_name",
+        lambda: settings_table,
+    )
     reset_cache = MagicMock()
     monkeypatch.setattr(proposals.settings, "reset_cache", reset_cache)
 
@@ -215,7 +227,7 @@ def test_rollback_restores_previous_settings(monkeypatch):
     assert "rolled_back_at = NOW()" in sql_text
     assert "ON CONFLICT (singleton)" in sql_text
     lock_settings_sql = cur.execute.call_args_list[1].args[0]
-    assert "FROM jobs_calibration_settings" in lock_settings_sql
+    assert f"FROM {settings_table}" in lock_settings_sql
     assert "FOR UPDATE" in lock_settings_sql
     reset_cache.assert_called_once_with()
 
