@@ -1,5 +1,6 @@
 """Tests for Phase 5 human review resolution."""
 from contextlib import contextmanager
+from datetime import datetime
 from unittest.mock import MagicMock
 
 from fastapi.responses import HTMLResponse
@@ -235,3 +236,31 @@ def test_job_detail_renders_review_resolution_controls(monkeypatch):
     assert "codex_gpt55_high" in response.text
     assert "claude_sonnet" in response.text
     assert "Ask about EU remote." in response.text
+
+
+def test_job_row_renders_review_state():
+    html = srv.templates.get_template("partials/job_row_single.html").render(
+        request={},
+        now=datetime.now().astimezone(),
+        job={
+            **_review_job_row(),
+            "awaiting_embedding": False,
+            "scored_uncalibrated": False,
+            "tracked_at": None,
+            "error_code": None,
+            "error": None,
+            "retry_count": 0,
+            "salary_min": None,
+            "salary_max": None,
+            "salary_currency": "EUR",
+            "remote": True,
+            "likely_english": True,
+            "staffing_agency": False,
+            "geo_mismatch": False,
+            "user_status": None,
+        },
+    )
+
+    assert "status-review" in html
+    assert "badge-review" in html
+    assert ">REVIEW<" in html

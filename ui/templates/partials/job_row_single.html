@@ -2,6 +2,7 @@
 {% set score_class = "score-high" if score_val >= 7 else ("score-mid" if score_val > 5 else "score-low") %}
 {% set us = job.user_status or "" %}
 {% set has_flag = job.priority_notes and ("manual check" in (job.priority_notes|lower) or "flag" in (job.priority_notes|lower) or "fetch full" in (job.priority_notes|lower) or "fetch the" in (job.priority_notes|lower)) %}
+{% set needs_review = job.needs_human_review or job.decision == "pending_review" %}
 
 {% if job.status == "dead" %}
   {% set row_class = "status-dead" %}
@@ -9,6 +10,8 @@
   {% set row_class = "status-error" %}
 {% elif job.status != "analyzed" %}
   {% set row_class = "status-pending" %}
+{% elif needs_review %}
+  {% set row_class = "status-review" %}
 {% elif us == "rejected" %}
   {% set row_class = "status-rejected" %}
 {% elif us == "dismissed" %}
@@ -33,6 +36,9 @@
 {% elif job.status == "error" %}
   {% set badge_class = "badge-error" %}
   {% set badge_text = "ERROR" %}
+{% elif job.status == "analyzed" and needs_review %}
+  {% set badge_class = "badge-review" %}
+  {% set badge_text = "REVIEW" %}
 {% elif job.status == "analyzed" %}
   {% set badge_class = "badge-" ~ (job.decision or "skip")|lower %}
   {% set badge_text = job.decision %}
@@ -68,7 +74,7 @@
     {% if job.possible_duplicate_of and job.duplicate_confirmed is none %}<span class="icon-badge icon-flag" title="Possible duplicate of #{{ job.possible_duplicate_of }}">DUP?</span>{% endif %}
     {% if job.awaiting_embedding %}<span class="icon-badge icon-flag" title="Awaiting embedding">EMB?</span>{% endif %}
     {% if job.scored_uncalibrated %}<span class="icon-badge icon-flag" title="Scored without calibration anchors; will be re-scored once embedding lands">UNCAL</span>{% endif %}
-    {% if job.needs_human_review or job.decision == "pending_review" %}<span class="icon-badge icon-flag" title="{{ (job.explanation or 'Needs human review')[:100] }}">REVIEW</span>{% endif %}
+    {% if needs_review %}<span class="icon-badge icon-flag" title="{{ (job.explanation or 'Needs human review')[:100] }}">REVIEW</span>{% endif %}
     {% if job.tracked_at %}
       <a href="/tracking#job-{{ job.id }}"
          class="icon-badge icon-tracking"
