@@ -238,6 +238,35 @@ is between 4 and 6 inclusive. Scores outside that band do not consume Claude usa
 secondary provider is a reviewer, not a failover path; if the primary provider fails, the
 job keeps the provider error instead of automatically retrying on the secondary provider.
 
+## Calibration Proposals
+
+Calibration Proposals are DB-backed runtime overrides for scoring calibration.
+They do not fine-tune a model and they do not generate CVs or cover letters.
+
+Run the migration for the active profile table:
+
+```bash
+python scripts/run_migration.py scripts/migrations/0007_calibration_proposals.sql
+```
+
+Then open the UI and go to `/calibration`.
+
+The page can generate a proposal from local outcomes, apply it explicitly, and
+roll back to the previous active settings. Applying a proposal updates
+`<JOBS_FUNNEL_TABLE>_calibration_settings`; it does not edit `.env` and does
+not rewrite historical job scores.
+
+Runtime lookup order is:
+
+1. active DB-backed calibration settings
+2. `.env` values
+3. code defaults
+
+If the settings table is missing or unavailable, scoring falls back to the
+current env/default behavior. A failed settings lookup is bounded by
+`CALIBRATION_SETTINGS_DB_TIMEOUT_SECONDS` and retried after the fallback cache
+TTL (`CALIBRATION_SETTINGS_FALLBACK_CACHE_SECONDS`).
+
 ## Scripts interface
 
 The core scripts follow the same pattern: JSON in (file arg or stdin), JSON out (stdout), errors as JSON with `"error"` field + non-zero exit code.
