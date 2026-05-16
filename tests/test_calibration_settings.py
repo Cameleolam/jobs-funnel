@@ -1,6 +1,8 @@
 from decimal import Decimal
 from unittest.mock import MagicMock
 
+import pytest
+
 import scripts.calibration_settings as settings
 
 
@@ -58,6 +60,16 @@ def test_load_active_settings_falls_back_when_db_fails(monkeypatch):
 
     assert out["review_low"] == settings.DEFAULT_SETTINGS["review_low"]
     assert out["source"] == "env"
+
+
+def test_review_band_raises_for_malformed_env_when_db_fails(monkeypatch):
+    for key in settings.ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("SCORING_REVIEW_LOW", "bad-low")
+    monkeypatch.setattr(settings.db, "get_conn", MagicMock(side_effect=RuntimeError("db down")))
+
+    with pytest.raises(ValueError):
+        settings.review_band()
 
 
 def test_load_active_settings_reads_db_singleton(monkeypatch):

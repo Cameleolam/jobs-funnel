@@ -34,6 +34,8 @@ ENV_KEYS = tuple([*INT_ENV_KEYS.values(), *WEIGHT_ENV_KEYS.values()])
 
 INT_SETTINGS = tuple(INT_ENV_KEYS.keys())
 WEIGHT_SETTINGS = tuple(WEIGHT_ENV_KEYS.keys())
+REVIEW_BAND_SETTINGS = {"review_low", "review_high"}
+_REVIEW_BAND_ERROR_KEY = "_review_band_error"
 RETRIEVAL_WEIGHT_KEYS = {
     "offer": "weight_offer",
     "interview": "weight_interview",
@@ -104,15 +106,18 @@ def _coerce_weight(value: Any) -> float | None:
 def env_settings() -> dict[str, Any]:
     _load_env()
     out = dict(DEFAULT_SETTINGS)
+    review_band_error: str | None = None
 
     for key, env_key in INT_ENV_KEYS.items():
         raw = os.environ.get(env_key)
-        min_value = 0 if key in {"review_low", "review_high"} else 1
+        min_value = 0 if key in REVIEW_BAND_SETTINGS else 1
         parsed = _coerce_int(
             raw,
             min_value=min_value,
-            max_value=10 if key in {"review_low", "review_high"} else None,
+            max_value=10 if key in REVIEW_BAND_SETTINGS else None,
         )
+        if parsed is None and raw is not None and key in REVIEW_BAND_SETTINGS:
+            review_band_error = f"Invalid review band setting: {env_key}"
         out[key] = parsed if parsed is not None else DEFAULT_SETTINGS[key]
 
     for key, env_key in WEIGHT_ENV_KEYS.items():
@@ -120,25 +125,28 @@ def env_settings() -> dict[str, Any]:
         out[key] = parsed if parsed is not None else DEFAULT_SETTINGS[key]
 
     if out["review_low"] > out["review_high"]:
+        review_band_error = "Invalid review band: SCORING_REVIEW_LOW exceeds SCORING_REVIEW_HIGH"
         out["review_low"] = DEFAULT_SETTINGS["review_low"]
         out["review_high"] = DEFAULT_SETTINGS["review_high"]
 
     out["source"] = "env"
     out["active_proposal_id"] = None
+    if review_band_error:
+        out[_REVIEW_BAND_ERROR_KEY] = review_band_error
     return out
 
 
-def _normalize_db_settings(row: dict[str, Any] | None, fallback: dict[str, Any]) -> dict[str, Any] | None:
+def _normalize_db_settings(row: dict[str, Any] | None) -> dict[str, Any] | None:
     if not row:
         return None
 
-    out = dict(fallback)
+    out = dict(DEFAULT_SETTINGS)
     for key in INT_SETTINGS:
-        min_value = 0 if key in {"review_low", "review_high"} else 1
+        min_value = 0 if key in REVIEW_BAND_SETTINGS else 1
         parsed = _coerce_int(
             row.get(key),
             min_value=min_value,
-            max_value=10 if key in {"review_low", "review_high"} else None,
+            max_value=10 if key in REVIEW_BAND_SETTINGS else None,
         )
         if parsed is None:
             return None
@@ -186,7 +194,7 @@ def _load_db_settings(fallback: dict[str, Any]) -> dict[str, Any] | None:
                     LIMIT 1
                     """
                 )
-                return _normalize_db_settings(cur.fetchone(), fallback)
+                return _normalize_db_settings(cur.fetchone())
     except Exception:
         return None
     finally:
@@ -210,6 +218,8 @@ def load_active_settings(force: bool = False) -> dict[str, Any]:
 
 def review_band() -> tuple[int, int]:
     settings = load_active_settings()
+    if settings.get(_REVIEW_BAND_ERROR_KEY):
+        raise ValueError(settings[_REVIEW_BAND_ERROR_KEY])
     return int(settings["review_low"]), int(settings["review_high"])
 
 

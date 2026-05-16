@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import scripts.calibration_settings as calibration_settings
 from scripts.llm.types import ProviderError, ProviderRequest, ProviderResponse
 from scripts.scoring import (
     _system_prompt_with_calibration,
@@ -12,6 +13,18 @@ from scripts.scoring import (
     score_input,
     should_review,
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_calibration_settings(monkeypatch):
+    calibration_settings.reset_cache()
+    monkeypatch.setattr(
+        calibration_settings.db,
+        "get_conn",
+        MagicMock(side_effect=RuntimeError("no db")),
+    )
+    yield
+    calibration_settings.reset_cache()
 
 
 class FakeProvider:
@@ -193,6 +206,21 @@ def test_should_review_uses_float_scores_without_truncation(monkeypatch):
     assert should_review({"fit_score": 6.0}) is True
     assert should_review({"fit_score": 6.9}) is False
     assert should_review({"fit_score": 3.9}) is False
+
+
+@pytest.mark.parametrize(
+    ("env_key", "env_value"),
+    [
+        ("SCORING_REVIEW_LOW", "bad-low"),
+        ("SCORING_REVIEW_HIGH", "bad-high"),
+    ],
+)
+def test_should_review_returns_false_for_malformed_review_band_env(monkeypatch, env_key, env_value):
+    monkeypatch.delenv("SCORING_REVIEW_LOW", raising=False)
+    monkeypatch.delenv("SCORING_REVIEW_HIGH", raising=False)
+    monkeypatch.setenv(env_key, env_value)
+
+    assert should_review({"fit_score": 5}) is False
 
 
 def test_score_input_single_provider_returns_same_json_shape_with_metadata(monkeypatch, tmp_path):
