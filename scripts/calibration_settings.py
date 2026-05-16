@@ -1,6 +1,7 @@
 """Runtime accessors for active calibration settings."""
 from __future__ import annotations
 
+import math
 import os
 from pathlib import Path
 from typing import Any
@@ -95,7 +96,7 @@ def _coerce_weight(value: Any) -> float | None:
         out = float(value)
     except (TypeError, ValueError):
         return None
-    if out <= 0:
+    if not math.isfinite(out) or out <= 0:
         return None
     return out
 

@@ -37,6 +37,20 @@ def test_env_settings_parse_valid_overrides(monkeypatch):
     assert out["weight_offer"] == 1.8
 
 
+def test_env_settings_reject_non_finite_weight_overrides(monkeypatch):
+    for key in settings.ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("WEIGHT_OFFER", "nan")
+    monkeypatch.setenv("WEIGHT_INTERVIEW", "inf")
+    monkeypatch.setenv("WEIGHT_APPLIED", "-inf")
+
+    out = settings.env_settings()
+
+    assert out["weight_offer"] == settings.DEFAULT_SETTINGS["weight_offer"]
+    assert out["weight_interview"] == settings.DEFAULT_SETTINGS["weight_interview"]
+    assert out["weight_applied"] == settings.DEFAULT_SETTINGS["weight_applied"]
+
+
 def test_load_active_settings_falls_back_when_db_fails(monkeypatch):
     monkeypatch.setattr(settings.db, "get_conn", MagicMock(side_effect=RuntimeError("db down")))
 
