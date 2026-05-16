@@ -6,6 +6,7 @@
       <th>Confidence</th>
       <th>Samples</th>
       <th>Review Band</th>
+      <th>Analytics</th>
       <th>Rationale</th>
       <th>Action</th>
     </tr>
@@ -14,6 +15,14 @@
     {% for proposal in proposals %}
     {% set settings = proposal.proposed_settings or {} %}
     {% set counts = proposal.sample_counts or {} %}
+    {% set metrics = proposal.metrics or {} %}
+    {% set score_bands = metrics.get("score_bands") or {} %}
+    {% set below = score_bands.get("below_review") or {} %}
+    {% set review = score_bands.get("review_band") or {} %}
+    {% set above = score_bands.get("above_review") or {} %}
+    {% set proposal_metrics = metrics.get("proposal") or {} %}
+    {% set guards = proposal_metrics.get("guards") or {} %}
+    {% set evidence = proposal_metrics.get("evidence") or {} %}
     {% set rationale = proposal.rationale or {} %}
     {% set review_low = settings.get("review_low") %}
     {% set review_high = settings.get("review_high") %}
@@ -28,6 +37,21 @@
       </td>
       <td>
         {{ review_low if review_low is not none else '-' }}-{{ review_high if review_high is not none else '-' }}
+      </td>
+      <td>
+        {% if score_bands %}
+        <div>below {{ below.get("total", 0) }} / pursued {{ below.get("pursued", 0) }} / dismissed {{ below.get("dismissed", 0) }}</div>
+        <div>review {{ review.get("total", 0) }} / pursued {{ review.get("pursued", 0) }} / dismissed {{ review.get("dismissed", 0) }}</div>
+        <div>above {{ above.get("total", 0) }} / pursued {{ above.get("pursued", 0) }} / dismissed {{ above.get("dismissed", 0) }}</div>
+        {% else %}
+        <div class="text-muted">Analytics unavailable</div>
+        {% endif %}
+        {% if evidence %}
+        <div>false positives {{ evidence.get("false_positives", 0) }} / false negatives {{ evidence.get("false_negatives", 0) }}</div>
+        {% endif %}
+        {% if guards %}
+        <div>projected review {{ guards.get("projected_review_jobs", 0) }} / cap {{ guards.get("projected_review_cap", 0) }}</div>
+        {% endif %}
       </td>
       <td>{{ rationale.review_band or rationale.weights or '-' }}</td>
       <td>
@@ -48,7 +72,7 @@
     </tr>
     {% else %}
     <tr>
-      <td colspan="7" class="text-muted">No calibration proposals yet.</td>
+      <td colspan="8" class="text-muted">No calibration proposals yet.</td>
     </tr>
     {% endfor %}
   </tbody>

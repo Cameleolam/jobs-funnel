@@ -113,6 +113,63 @@ def test_generate_proposal_inserts_metrics_and_settings(monkeypatch):
     conn.close.assert_called_once()
 
 
+def test_generate_proposal_persists_explainability_in_metrics(monkeypatch):
+    inserted = {"id": 10, "status": "proposed"}
+    cur = _cursor([[{"id": 1, "fit_score": 8}], inserted])
+    conn = _conn(cur)
+    monkeypatch.setattr(proposals.db, "get_conn", lambda: conn)
+    monkeypatch.setattr(
+        proposals.settings,
+        "load_active_settings",
+        MagicMock(return_value=DEFAULT_SETTINGS),
+    )
+    monkeypatch.setattr(
+        proposals.analytics,
+        "build_metrics",
+        lambda rows, active: {
+            "sample_counts": {"jobs": 1, "review_decisions": 1, "downstream_outcomes": 1},
+            "score_bands": {"above_review": {"total": 1, "dismissed": 1}},
+        },
+    )
+    monkeypatch.setattr(
+        proposals.analytics,
+        "build_proposed_settings",
+        lambda metrics, active: {
+            "confidence": "medium",
+            "proposed_settings": active,
+            "rationale": {"review_band": "kept"},
+            "guards": {
+                "projected_review_jobs": 4,
+                "projected_review_cap": 5.0,
+                "projected_review_cap_rate": 0.05,
+            },
+            "evidence": {"false_positives": 2, "false_negatives": 1},
+        },
+    )
+
+    proposals.generate_proposal(window_days=90)
+
+    insert_params = cur.execute.call_args_list[-1].args[1]
+    stored_metrics = json.loads(insert_params[3])
+    assert stored_metrics["proposal"]["guards"]["projected_review_jobs"] == 4
+    assert stored_metrics["proposal"]["evidence"] == {
+        "false_positives": 2,
+        "false_negatives": 1,
+    }
+
+
+@pytest.mark.parametrize(
+    ("call", "args"),
+    [
+        ("fetch_analytics_rows", (MagicMock(), 366)),
+        ("generate_proposal", (366,)),
+    ],
+)
+def test_window_days_rejects_values_above_ui_max(call, args):
+    with pytest.raises(proposals.ProposalStateError, match="window_days must be at most 365"):
+        getattr(proposals, call)(*args)
+
+
 def test_apply_proposal_captures_previous_settings_and_upserts_active(monkeypatch):
     settings_table = "sentinel_calibration_settings"
     proposed = {

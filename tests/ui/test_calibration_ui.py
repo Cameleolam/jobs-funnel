@@ -272,6 +272,68 @@ def test_rollback_button_only_renders_for_active_applied_proposal():
     assert 'hx-post="/calibration/proposals/2/rollback"' in html
 
 
+def test_proposals_template_renders_compact_analytics_summary():
+    html = srv.templates.get_template("partials/calibration_proposals.html").render(
+        request={},
+        active=_active_settings(),
+        proposals=[
+            {
+                "id": 9,
+                "status": "proposed",
+                "confidence": "medium",
+                "sample_counts": {
+                    "jobs": 40,
+                    "review_decisions": 12,
+                    "downstream_outcomes": 8,
+                },
+                "metrics": {
+                    "score_bands": {
+                        "below_review": {"total": 6, "pursued": 2, "dismissed": 1},
+                        "review_band": {"total": 20, "pursued": 5, "dismissed": 4},
+                        "above_review": {"total": 14, "pursued": 9, "dismissed": 3},
+                    },
+                    "proposal": {
+                        "guards": {
+                            "projected_review_jobs": 22,
+                            "projected_review_cap": 25.0,
+                        },
+                        "evidence": {"false_positives": 3, "false_negatives": 2},
+                    },
+                },
+                "proposed_settings": {"review_low": 3, "review_high": 7},
+                "rationale": {"review_band": "expanded", "weights": "adjusted"},
+            }
+        ],
+    )
+
+    assert "below 6 / pursued 2 / dismissed 1" in html
+    assert "review 20 / pursued 5 / dismissed 4" in html
+    assert "above 14 / pursued 9 / dismissed 3" in html
+    assert "false positives 3" in html
+    assert "false negatives 2" in html
+    assert "projected review 22 / cap 25.0" in html
+
+
+def test_proposals_template_handles_older_rows_without_metrics_summary():
+    html = srv.templates.get_template("partials/calibration_proposals.html").render(
+        request={},
+        active=_active_settings(),
+        proposals=[
+            {
+                "id": 10,
+                "status": "proposed",
+                "confidence": "low",
+                "sample_counts": {"jobs": 5},
+                "proposed_settings": {},
+                "rationale": {},
+            }
+        ],
+    )
+
+    assert "proposal-10" in html
+    assert "Analytics unavailable" in html
+
+
 def test_nav_exposes_calibration_page():
     html = (srv.TEMPLATES_DIR / "base.html").read_text(encoding="utf-8")
 

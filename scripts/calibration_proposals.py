@@ -33,11 +33,12 @@ _WEIGHT_SETTING_KEYS = (
     "weight_interested",
 )
 _SETTING_KEYS = (*_INT_SETTING_KEYS, *_WEIGHT_SETTING_KEYS)
+MAX_WINDOW_DAYS = 365
 
 
 def fetch_analytics_rows(conn, window_days: int) -> list[dict]:
     """Fetch recent scored jobs with event-derived outcome/review flags."""
-    window = _positive_int(window_days, "window_days")
+    window = _window_days(window_days)
     jobs_table = db.table_name()
     events_table = db.events_table_name()
 
@@ -104,7 +105,7 @@ def fetch_analytics_rows(conn, window_days: int) -> list[dict]:
 
 def generate_proposal(window_days: int = 90) -> dict:
     """Build analytics for the current window and persist a proposed setting set."""
-    window = _positive_int(window_days, "window_days")
+    window = _window_days(window_days)
     conn = None
     try:
         conn = db.get_conn()
@@ -115,6 +116,7 @@ def generate_proposal(window_days: int = 90) -> dict:
             proposal = analytics.build_proposed_settings(metrics, active_settings)
             proposed_settings = proposal.get("proposed_settings")
             _normalize_settings(proposed_settings, "proposed_settings")
+            metrics = _metrics_with_explainability(metrics, proposal)
 
             sample_counts = metrics.get("sample_counts", {})
             if not isinstance(sample_counts, Mapping):
@@ -446,6 +448,27 @@ def _positive_int(value: Any, label: str) -> int:
         raise ProposalStateError(f"{label} must be an integer") from exc
     if out <= 0:
         raise ProposalStateError(f"{label} must be positive")
+    return out
+
+
+def _window_days(value: Any) -> int:
+    out = _positive_int(value, "window_days")
+    if out > MAX_WINDOW_DAYS:
+        raise ProposalStateError(f"window_days must be at most {MAX_WINDOW_DAYS}")
+    return out
+
+
+def _metrics_with_explainability(metrics: Any, proposal: Mapping[str, Any]) -> dict[str, Any]:
+    out = dict(metrics) if isinstance(metrics, Mapping) else {}
+    explainability = {}
+    guards = proposal.get("guards")
+    evidence = proposal.get("evidence")
+    if isinstance(guards, Mapping):
+        explainability["guards"] = dict(guards)
+    if isinstance(evidence, Mapping):
+        explainability["evidence"] = dict(evidence)
+    if explainability:
+        out["proposal"] = explainability
     return out
 
 
