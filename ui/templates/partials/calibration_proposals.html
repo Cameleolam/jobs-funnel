@@ -34,12 +34,12 @@
         {% if proposal.status == 'proposed' %}
         <button class="btn btn-primary btn-sm"
                 hx-post="/calibration/proposals/{{ proposal.id }}/apply"
-                hx-target="#calibration-proposals"
+                hx-target="#calibration-content"
                 hx-swap="innerHTML">Apply</button>
-        {% elif proposal.status == 'applied' and proposal.previous_settings %}
+        {% elif proposal.status == 'applied' and proposal.previous_settings and active.active_proposal_id == proposal.id %}
         <button class="btn btn-warn btn-sm"
                 hx-post="/calibration/proposals/{{ proposal.id }}/rollback"
-                hx-target="#calibration-proposals"
+                hx-target="#calibration-content"
                 hx-swap="innerHTML">Rollback</button>
         {% else %}
         <span class="text-muted">-</span>

@@ -201,6 +201,20 @@ def render(request: Request, name: str, ctx: dict | None = None):
     return templates.TemplateResponse(request=request, name=name, context=context)
 
 
+def _calibration_context(error: str | None = None):
+    active = calibration_settings.load_active_settings(force=True)
+    proposals = calibration_proposals.list_proposals(limit=20)
+    return {
+        "active": active,
+        "proposals": proposals,
+        "error": error,
+    }
+
+
+def _render_calibration_content(request: Request, error: str | None = None):
+    return render(request, "partials/calibration_content.html", _calibration_context(error))
+
+
 # ── DB helpers ───────────────────────────────────────────────────────
 @contextmanager
 def get_db():
@@ -765,12 +779,7 @@ async def runs_page(request: Request):
 
 @app.get("/calibration", response_class=HTMLResponse)
 async def calibration_page(request: Request):
-    active = calibration_settings.load_active_settings(force=True)
-    proposals = calibration_proposals.list_proposals(limit=20)
-    return render(request, "calibration.html", {
-        "active": active,
-        "proposals": proposals,
-    })
+    return render(request, "calibration.html", _calibration_context())
 
 
 @app.post("/calibration/proposals", response_class=HTMLResponse)
@@ -778,11 +787,11 @@ async def calibration_generate_proposal(
     request: Request,
     window_days: int = Form(90),
 ):
-    calibration_proposals.generate_proposal(window_days=window_days)
-    proposals = calibration_proposals.list_proposals(limit=20)
-    return render(request, "partials/calibration_proposals.html", {
-        "proposals": proposals,
-    })
+    try:
+        calibration_proposals.generate_proposal(window_days=window_days)
+    except calibration_proposals.ProposalStateError as exc:
+        return _render_calibration_content(request, str(exc))
+    return _render_calibration_content(request)
 
 
 @app.post("/calibration/proposals/{proposal_id}/apply", response_class=HTMLResponse)
@@ -790,11 +799,8 @@ async def calibration_apply_proposal(request: Request, proposal_id: int):
     try:
         calibration_proposals.apply_proposal(proposal_id)
     except calibration_proposals.ProposalStateError as exc:
-        return HTMLResponse(str(exc), status_code=400)
-    proposals = calibration_proposals.list_proposals(limit=20)
-    return render(request, "partials/calibration_proposals.html", {
-        "proposals": proposals,
-    })
+        return _render_calibration_content(request, str(exc))
+    return _render_calibration_content(request)
 
 
 @app.post("/calibration/proposals/{proposal_id}/rollback", response_class=HTMLResponse)
@@ -802,11 +808,8 @@ async def calibration_rollback_proposal(request: Request, proposal_id: int):
     try:
         calibration_proposals.rollback_proposal(proposal_id)
     except calibration_proposals.ProposalStateError as exc:
-        return HTMLResponse(str(exc), status_code=400)
-    proposals = calibration_proposals.list_proposals(limit=20)
-    return render(request, "partials/calibration_proposals.html", {
-        "proposals": proposals,
-    })
+        return _render_calibration_content(request, str(exc))
+    return _render_calibration_content(request)
 
 
 @app.get("/tracking", response_class=HTMLResponse)
