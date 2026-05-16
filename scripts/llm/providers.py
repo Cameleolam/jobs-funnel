@@ -9,6 +9,7 @@ from typing import Protocol
 
 import httpx
 
+from scripts import calibration_settings
 from scripts.llm.parsing import extract_result_text
 from scripts.llm.types import ProviderError, ProviderRequest, ProviderResponse, ProviderTimeout
 
@@ -239,10 +240,7 @@ class OllamaProvider:
 
 
 def review_band() -> tuple[int, int]:
-    return (
-        int(os.getenv("SCORING_REVIEW_LOW", "4")),
-        int(os.getenv("SCORING_REVIEW_HIGH", "6")),
-    )
+    return calibration_settings.review_band()
 
 
 def provider_from_key(key: str, config: dict) -> ScoringProvider:

@@ -2,68 +2,29 @@
 """Few-shot calibration retrieval for scoring."""
 from __future__ import annotations
 
-import os
-from pathlib import Path
 from typing import Any
 
 import psycopg2.extras
-from dotenv import load_dotenv
 
+from scripts import calibration_settings
 from scripts import db
 from scripts import embed as embed_mod
 
 
-ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
-_DOTENV_LOADED = False
-
-
-def _load_env() -> None:
-    global _DOTENV_LOADED
-    if _DOTENV_LOADED:
-        return
-    load_dotenv(ENV_PATH)
-    _DOTENV_LOADED = True
-
-
-def _env_int(name: str, default: int) -> int:
-    _load_env()
-    try:
-        value = int(os.environ.get(name, str(default)))
-    except ValueError:
-        return default
-    return value if value > 0 else default
-
-
-def _env_float(name: str, default: float) -> float:
-    _load_env()
-    try:
-        value = float(os.environ.get(name, str(default)))
-    except ValueError:
-        return default
-    return value if value > 0 else default
-
-
 def calibration_k() -> int:
-    return _env_int("CALIBRATION_K", 3)
+    return calibration_settings.calibration_k()
 
 
 def calibration_min_pool() -> int:
-    return _env_int("CALIBRATION_MIN_POOL", 3)
+    return calibration_settings.calibration_min_pool()
 
 
 def calibration_k_batch() -> int:
-    return _env_int("CALIBRATION_K_BATCH", 6)
+    return calibration_settings.calibration_k_batch()
 
 
 def weights() -> dict[str, float]:
-    return {
-        "offer": _env_float("WEIGHT_OFFER", 1.5),
-        "interview": _env_float("WEIGHT_INTERVIEW", 1.4),
-        "applied": _env_float("WEIGHT_APPLIED", 1.2),
-        "dismiss_note": _env_float("WEIGHT_DISMISS_NOTE", 1.2),
-        "dismiss": _env_float("WEIGHT_DISMISS", 0.8),
-        "interested": _env_float("WEIGHT_INTERESTED", 0.7),
-    }
+    return calibration_settings.retrieval_weights()
 
 
 def _short_text(value: Any, limit: int = 200) -> str:

@@ -77,6 +77,24 @@ def test_merge_batch_anchors_dedupes_and_caps_by_weighted_score(monkeypatch):
     assert merged[1]["weighted_score"] == 0.8
 
 
+def test_retrieval_weight_accessor_uses_active_settings(monkeypatch):
+    monkeypatch.setattr(
+        retrieval.calibration_settings,
+        "retrieval_weights",
+        lambda: {
+            "offer": 2.0,
+            "interview": 1.8,
+            "applied": 1.4,
+            "dismiss_note": 1.3,
+            "dismiss": 0.9,
+            "interested": 0.5,
+        },
+    )
+
+    assert retrieval.weights()["offer"] == 2.0
+    assert retrieval.weights()["interested"] == 0.5
+
+
 def _fake_conn(fetchone_rows=None, fetchall_rows=None):
     cur = MagicMock()
     one_rows = list(fetchone_rows or [])

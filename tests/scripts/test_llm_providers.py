@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import scripts.calibration_settings as calibration_settings
 from scripts.llm.providers import (
     ClaudeCliProvider,
     CodexCliProvider,
@@ -263,7 +264,9 @@ def test_scoring_provider_is_exported_from_package():
 
 
 def test_review_band_defaults_to_four_through_six(monkeypatch):
+    calibration_settings.reset_cache()
     monkeypatch.delenv("SCORING_REVIEW_LOW", raising=False)
     monkeypatch.delenv("SCORING_REVIEW_HIGH", raising=False)
+    monkeypatch.setattr(calibration_settings.db, "get_conn", MagicMock(side_effect=RuntimeError("no db")))
 
     assert review_band() == (4, 6)
