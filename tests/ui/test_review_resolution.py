@@ -172,3 +172,8 @@ def test_review_resolution_returns_404_for_missing_job(monkeypatch):
     assert response.status_code == 404
     assert response.text == "Job not found"
     assert cur.execute.call_count == 1
+
+
+def test_jobs_view_selector_exposes_review_queue():
+    html = (srv.TEMPLATES_DIR / "jobs.html").read_text(encoding="utf-8")
+    assert '<option value="review">Review queue</option>' in html
