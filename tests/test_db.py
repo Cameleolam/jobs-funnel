@@ -46,6 +46,35 @@ def test_get_conn_uses_env_vars(monkeypatch):
     assert captured == {"host": "h", "port": "1234", "dbname": "d", "user": "u", "password": "p"}
 
 
+def test_get_conn_passes_optional_connect_timeout(monkeypatch):
+    captured = {}
+
+    class FakeConn:
+        pass
+
+    def fake_connect(**kwargs):
+        captured.update(kwargs)
+        return FakeConn()
+
+    monkeypatch.setenv("JOBS_FUNNEL_PG_HOST", "h")
+    monkeypatch.setenv("JOBS_FUNNEL_PG_PORT", "1234")
+    monkeypatch.setenv("JOBS_FUNNEL_PG_DATABASE", "d")
+    monkeypatch.setenv("JOBS_FUNNEL_PG_USER", "u")
+    monkeypatch.setenv("JOBS_FUNNEL_PG_PASSWORD", "p")
+
+    with patch("psycopg2.connect", side_effect=fake_connect):
+        db.get_conn(connect_timeout=2)
+
+    assert captured == {
+        "host": "h",
+        "port": "1234",
+        "dbname": "d",
+        "user": "u",
+        "password": "p",
+        "connect_timeout": 2,
+    }
+
+
 def test_register_vector_calls_pgvector(monkeypatch):
     fake_conn = MagicMock()
     with patch("pgvector.psycopg2.register_vector") as reg:

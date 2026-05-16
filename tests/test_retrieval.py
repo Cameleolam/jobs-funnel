@@ -1,7 +1,21 @@
 """Tests for Phase 3 calibration retrieval."""
 from unittest.mock import MagicMock
 
+import pytest
+
 import scripts.retrieval as retrieval
+
+
+@pytest.fixture(autouse=True)
+def _isolate_calibration_settings(monkeypatch):
+    retrieval.calibration_settings.reset_cache()
+    monkeypatch.setattr(
+        retrieval.calibration_settings.db,
+        "get_conn",
+        MagicMock(side_effect=RuntimeError("no settings db")),
+    )
+    yield
+    retrieval.calibration_settings.reset_cache()
 
 
 def test_format_anchor_prefers_user_note_and_marks_interview():

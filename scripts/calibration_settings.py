@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -62,6 +63,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
 }
 
 _db_settings: dict[str, Any] | None = None
+_cache_expires_at: float | None = None
 
 
 def _load_env() -> None:
@@ -73,8 +75,37 @@ def _load_env() -> None:
 
 
 def reset_cache() -> None:
-    global _db_settings
+    global _cache_expires_at, _db_settings
     _db_settings = None
+    _cache_expires_at = None
+
+
+def _env_positive_int(name: str, default: int) -> int:
+    _load_env()
+    raw = os.environ.get(name, str(default)).strip()
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
+def _env_positive_float(name: str, default: float) -> float:
+    _load_env()
+    raw = os.environ.get(name, str(default)).strip()
+    try:
+        value = float(raw)
+    except ValueError:
+        return default
+    return value if math.isfinite(value) and value > 0 else default
+
+
+def _db_connect_timeout_seconds() -> int:
+    return _env_positive_int("CALIBRATION_SETTINGS_DB_TIMEOUT_SECONDS", 1)
+
+
+def _fallback_cache_seconds() -> float:
+    return _env_positive_float("CALIBRATION_SETTINGS_FALLBACK_CACHE_SECONDS", 30.0)
 
 
 def _coerce_int(value: Any, *, min_value: int = 1, max_value: int | None = None) -> int | None:
@@ -166,11 +197,11 @@ def _normalize_db_settings(row: dict[str, Any] | None) -> dict[str, Any] | None:
     return out
 
 
-def _load_db_settings(fallback: dict[str, Any]) -> dict[str, Any] | None:
+def _load_db_settings() -> dict[str, Any] | None:
     conn = None
     try:
         table = db.calibration_settings_table_name()
-        conn = db.get_conn()
+        conn = db.get_conn(connect_timeout=_db_connect_timeout_seconds())
         with conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute(
@@ -206,12 +237,18 @@ def _load_db_settings(fallback: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def load_active_settings(force: bool = False) -> dict[str, Any]:
-    global _db_settings
+    global _cache_expires_at, _db_settings
     if _db_settings is not None and not force:
-        return dict(_db_settings)
+        if _cache_expires_at is None or time.monotonic() < _cache_expires_at:
+            return dict(_db_settings)
 
     fallback = env_settings()
-    active = _load_db_settings(fallback) or fallback
+    active = _load_db_settings()
+    if active is None:
+        active = fallback
+        _cache_expires_at = time.monotonic() + _fallback_cache_seconds()
+    else:
+        _cache_expires_at = None
     _db_settings = dict(active)
     return dict(active)
 

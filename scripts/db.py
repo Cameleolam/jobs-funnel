@@ -42,19 +42,22 @@ def calibration_proposals_table_name() -> str:
     return f"{table_name()}_calibration_proposals"
 
 
-def get_conn():
+def get_conn(connect_timeout: int | None = None):
     """Open a psycopg2 connection from JOBS_FUNNEL_PG_* env vars.
 
     Caller owns the connection (use `with get_conn() as conn: ...`).
     """
     _load_env()
-    return psycopg2.connect(
-        host=os.environ.get("JOBS_FUNNEL_PG_HOST", "localhost"),
-        port=os.environ.get("JOBS_FUNNEL_PG_PORT", "5432"),
-        dbname=os.environ.get("JOBS_FUNNEL_PG_DATABASE", "jobs_funnel"),
-        user=os.environ.get("JOBS_FUNNEL_PG_USER", "postgres"),
-        password=os.environ.get("JOBS_FUNNEL_PG_PASSWORD", ""),
-    )
+    kwargs = {
+        "host": os.environ.get("JOBS_FUNNEL_PG_HOST", "localhost"),
+        "port": os.environ.get("JOBS_FUNNEL_PG_PORT", "5432"),
+        "dbname": os.environ.get("JOBS_FUNNEL_PG_DATABASE", "jobs_funnel"),
+        "user": os.environ.get("JOBS_FUNNEL_PG_USER", "postgres"),
+        "password": os.environ.get("JOBS_FUNNEL_PG_PASSWORD", ""),
+    }
+    if connect_timeout is not None:
+        kwargs["connect_timeout"] = connect_timeout
+    return psycopg2.connect(**kwargs)
 
 
 def register_vector(conn) -> None:
