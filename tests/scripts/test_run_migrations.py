@@ -34,12 +34,15 @@ def test_apply_setup_runs_without_schema_migration_skip(monkeypatch, tmp_path):
     setup = tmp_path / "setup_db.sql"
     setup.write_text("SELECT '{{TABLE}}';", encoding="utf-8")
     cur = MagicMock()
+    already_applied = MagicMock(side_effect=AssertionError("already_applied called"))
+    monkeypatch.setattr(rms.run_migration, "already_applied", already_applied)
 
     rms.apply_sql_file(cur, setup, "jobs_profile1", track=False)
 
     sql = cur.execute.call_args.args[0]
     assert "jobs_profile1" in sql
     assert "{{TABLE}}" not in sql
+    already_applied.assert_not_called()
 
 
 def test_apply_tracked_migration_skips_when_already_applied(monkeypatch, tmp_path):
