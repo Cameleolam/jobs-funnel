@@ -32,6 +32,16 @@ def test_sql_plan_allows_missing_migrations_dir(tmp_path):
     assert [p.name for p in paths] == ["setup_db.sql"]
 
 
+def test_default_plan_does_not_require_migrations_directory(tmp_path):
+    setup = tmp_path / "setup_db.sql"
+    setup.write_text("SELECT 1;", encoding="utf-8")
+    missing = tmp_path / "migrations"
+
+    paths = rms.sql_plan(setup_path=setup, migrations_dir=missing)
+
+    assert [path.name for path in paths] == ["setup_db.sql"]
+
+
 def test_apply_setup_runs_without_schema_migration_skip(monkeypatch, tmp_path):
     setup = tmp_path / "setup_db.sql"
     setup.write_text("SELECT '{{TABLE}}';", encoding="utf-8")
