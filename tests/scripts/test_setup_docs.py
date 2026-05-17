@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -13,6 +14,19 @@ SETUP_FACING_TEXTS = {
     "scripts/setup_profile.py": SETUP_PROFILE,
     "scripts/setup_db.sql": SETUP_DB,
 }
+
+
+def _direct_schema_setup_commands(text):
+    normalized = text.replace("\\", "/")
+    patterns = (
+        r"\bpsql\b[^\n`|;&]*\s-f\s+(?:\./)?scripts/setup_db\.sql\b",
+        r"(?:\bcat\b[^\n`|;&]*\s+)?(?:\./)?scripts/setup_db\.sql[^\n`|;&]*\|\s*\bpsql\b",
+        r"\bpython(?:\d(?:\.\d+)?)?\s+scripts/run_migration\.py\s+(?:\./)?scripts/setup_db\.sql\b",
+    )
+    matches = []
+    for pattern in patterns:
+        matches.extend(match.group(0) for match in re.finditer(pattern, normalized))
+    return matches
 
 
 def test_env_template_defaults_to_codex_without_review_provider():
@@ -48,17 +62,30 @@ def test_profile_setup_docs_use_migration_runner():
     assert "python scripts/run_migrations.py" in SETUP_PROFILE
 
 
-def test_setup_facing_docs_do_not_use_direct_schema_setup_paths():
-    forbidden_patterns = (
+def test_direct_schema_setup_command_detector_examples():
+    unsafe_examples = [
+        "psql -f scripts/setup_db.sql",
+        'psql "$DATABASE_URL" -f scripts/setup_db.sql',
+        "cat scripts/setup_db.sql | psql",
         "python scripts/run_migration.py scripts/setup_db.sql",
-        "psql -h localhost -U postgres -d jobs_funnel -f scripts/setup_db.sql",
-        "psql -U postgres -d jobs_funnel -f scripts/setup_db.sql",
-        "scripts/setup_db.sql | psql",
-    )
+        r"python scripts\run_migration.py .\scripts\setup_db.sql",
+    ]
+    safe_examples = [
+        "scripts/setup_db.sql defines the baseline schema.",
+        "Do not run scripts/setup_db.sql directly.",
+        "python scripts/run_migrations.py",
+    ]
 
+    for example in unsafe_examples:
+        assert _direct_schema_setup_commands(example), example
+    for example in safe_examples:
+        assert not _direct_schema_setup_commands(example), example
+
+
+def test_setup_facing_docs_do_not_use_direct_schema_setup_paths():
     for path, text in SETUP_FACING_TEXTS.items():
-        for pattern in forbidden_patterns:
-            assert pattern not in text, f"{path} contains direct schema setup path: {pattern}"
+        matches = _direct_schema_setup_commands(text)
+        assert not matches, f"{path} contains direct schema setup path: {matches}"
 
 
 def test_setup_db_header_points_to_migration_runner():
