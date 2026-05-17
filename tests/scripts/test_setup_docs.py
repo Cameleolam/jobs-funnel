@@ -35,11 +35,36 @@ def test_readme_points_to_doctor_troubleshooting_command():
 
 
 def test_start_bat_points_to_doctor_and_ui():
-    assert "python scripts\\doctor.py" in START or "python scripts/doctor.py" in START
-    assert "http://localhost:8080" in START
+    docker_command = "docker compose up -d"
+    doctor_command = "python scripts\\doctor.py"
+    ui_command = "python -m uvicorn ui.server:app --port 8080 --reload"
+    ui_url = "http://localhost:8080"
+    n8n_command = "npx dotenv -e .env -- n8n start"
+
+    assert doctor_command in START or "python scripts/doctor.py" in START
+    assert ui_url in START
     assert "Docker startup failed." in START
     assert "Doctor checks failed." in START
     assert START.count("exit /b %ERRORLEVEL%") >= 2
-    assert "docker compose up -d" in START
-    assert "npx dotenv -e .env -- n8n start" in START
-    assert START.index("python scripts\\doctor.py") < START.index("npx dotenv -e .env -- n8n start")
+    assert docker_command in START
+    assert ui_command in START
+    assert n8n_command in START
+
+    docker_index = START.index(docker_command)
+    doctor_index = START.index(doctor_command)
+    ui_command_index = START.index(ui_command)
+    ui_url_index = START.index(ui_url)
+    n8n_index = START.index(n8n_command)
+
+    assert docker_index < doctor_index
+    assert doctor_index < ui_command_index
+    assert doctor_index < ui_url_index
+    assert ui_command_index < n8n_index
+    assert ui_url_index < n8n_index
+
+    docker_failure_block = START[docker_index:doctor_index]
+    doctor_failure_block = START[doctor_index:ui_command_index]
+    assert "Docker startup failed." in docker_failure_block
+    assert "exit /b %ERRORLEVEL%" in docker_failure_block
+    assert "Doctor checks failed." in doctor_failure_block
+    assert "exit /b %ERRORLEVEL%" in doctor_failure_block
