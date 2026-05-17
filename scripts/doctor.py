@@ -91,18 +91,20 @@ def collect_checks() -> list[CheckResult]:
     ollama_url = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
     scoring_provider = os.environ.get("SCORING_PROVIDER", "codex_gpt55_high")
     review_provider = os.environ.get("SCORING_REVIEW_PROVIDER", "")
+    codex_command = os.environ.get("SCORING_CODEX_CMD", "codex")
+    claude_command = os.environ.get("SCORING_CLAUDE_CMD", "claude")
     checks = [
         check_env_file(),
         check_workflow_file(),
         check_command_available("docker", required=True),
         check_command_available("n8n", required=True),
-        check_command_available("codex", required=scoring_provider.startswith("codex")),
+        check_command_available(codex_command, required=scoring_provider.startswith("codex")),
         check_url("n8n", n8n_url),
     ]
     if os.environ.get("EMBEDDING_MODEL"):
         checks.append(check_url("ollama", ollama_url))
     if review_provider.startswith("claude") or scoring_provider.startswith("claude"):
-        checks.append(check_command_available("claude", required=True))
+        checks.append(check_command_available(claude_command, required=True))
     return checks
 
 
