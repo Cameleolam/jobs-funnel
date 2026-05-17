@@ -369,20 +369,6 @@ tr.status-review:hover { background: #fef3c7; }
   font-size: 0.9rem;
 }
 .nav-bar-inner a:hover { text-decoration: underline; }
-.top-nav {
-  background: #fff;
-  border-bottom: 2px solid #e5e7eb;
-  padding: 0.5rem 1rem;
-  display: flex;
-  gap: 1.5rem;
-  align-items: center;
-}
-.top-nav a {
-  text-decoration: none;
-  color: #2563eb;
-  font-size: 0.9rem;
-}
-.top-nav a:hover { text-decoration: underline; }
 
 /* Calibration */
 .calibration-header {
