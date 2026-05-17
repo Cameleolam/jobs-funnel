@@ -53,9 +53,9 @@ def test_nav_exposes_system_page():
 
 
 def test_base_template_has_system_health_styles():
-    html = (srv.TEMPLATES_DIR / "base.html").read_text(encoding="utf-8")
+    styles = (srv.STATIC_DIR / "styles.css").read_text(encoding="utf-8")
 
-    assert ".health-row" in html
-    assert ".badge-ok" in html
-    assert ".badge-warn" in html
-    assert ".badge-fail" in html
+    assert ".health-row" in styles
+    assert ".badge-ok" in styles
+    assert ".badge-warn" in styles
+    assert ".badge-fail" in styles
