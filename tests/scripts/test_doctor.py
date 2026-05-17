@@ -3,6 +3,22 @@ from unittest.mock import MagicMock
 import scripts.doctor as doctor
 
 
+DOCTOR_ENV_VARS = [
+    "JOBS_FUNNEL_N8N_BASE",
+    "OLLAMA_URL",
+    "EMBEDDING_MODEL",
+    "SCORING_PROVIDER",
+    "SCORING_REVIEW_PROVIDER",
+    "SCORING_CODEX_CMD",
+    "SCORING_CLAUDE_CMD",
+]
+
+
+def clear_doctor_env(monkeypatch):
+    for name in DOCTOR_ENV_VARS:
+        monkeypatch.delenv(name, raising=False)
+
+
 def test_check_result_lines_include_next_action():
     check = doctor.CheckResult(
         name="n8n",
@@ -44,10 +60,12 @@ def test_check_command_available_reports_missing(monkeypatch):
 
 def test_check_url_uses_get_and_reports_ok(monkeypatch):
     response = MagicMock(status_code=200)
-    monkeypatch.setattr(doctor.httpx, "get", lambda url, timeout: response)
+    get = MagicMock(return_value=response)
+    monkeypatch.setattr(doctor.httpx, "get", get)
 
     result = doctor.check_url("n8n", "http://localhost:5678")
 
+    get.assert_called_once_with("http://localhost:5678", timeout=2.0)
     assert result.status == "ok"
     assert result.message == "n8n reachable at http://localhost:5678"
 
@@ -79,6 +97,7 @@ def test_check_url_reports_server_error_as_fail(monkeypatch):
 def test_collect_checks_default_provider_uses_codex_command_env(monkeypatch):
     commands = []
     urls = []
+    clear_doctor_env(monkeypatch)
     monkeypatch.setattr(doctor, "load_dotenv", lambda path: None)
     monkeypatch.setattr(doctor, "check_env_file", lambda: doctor.CheckResult(".env", "ok", ".env exists"))
     monkeypatch.setattr(
@@ -86,10 +105,10 @@ def test_collect_checks_default_provider_uses_codex_command_env(monkeypatch):
         "check_workflow_file",
         lambda: doctor.CheckResult("workflow", "ok", "workflow.json exists"),
     )
+    monkeypatch.setenv("JOBS_FUNNEL_N8N_BASE", "http://n8n.local:5678")
+    monkeypatch.setenv("OLLAMA_URL", "http://ollama.local:11434/")
     monkeypatch.setenv("SCORING_CODEX_CMD", "codex-local")
-    monkeypatch.delenv("SCORING_PROVIDER", raising=False)
-    monkeypatch.delenv("SCORING_REVIEW_PROVIDER", raising=False)
-    monkeypatch.delenv("EMBEDDING_MODEL", raising=False)
+    monkeypatch.setenv("SCORING_CLAUDE_CMD", "claude-local")
 
     def record_command(command, *, required):
         commands.append((command, required))
@@ -105,12 +124,13 @@ def test_collect_checks_default_provider_uses_codex_command_env(monkeypatch):
     doctor.collect_checks()
 
     assert ("codex-local", True) in commands
-    assert ("claude", True) not in commands
-    assert urls == [("n8n", "http://localhost:5678")]
+    assert ("claude-local", True) not in commands
+    assert urls == [("n8n", "http://n8n.local:5678")]
 
 
 def test_collect_checks_claude_provider_uses_claude_command_env(monkeypatch):
     commands = []
+    clear_doctor_env(monkeypatch)
     monkeypatch.setattr(doctor, "load_dotenv", lambda path: None)
     monkeypatch.setattr(doctor, "check_env_file", lambda: doctor.CheckResult(".env", "ok", ".env exists"))
     monkeypatch.setattr(
@@ -118,10 +138,12 @@ def test_collect_checks_claude_provider_uses_claude_command_env(monkeypatch):
         "check_workflow_file",
         lambda: doctor.CheckResult("workflow", "ok", "workflow.json exists"),
     )
+    monkeypatch.setenv("JOBS_FUNNEL_N8N_BASE", "http://n8n.local:5678")
+    monkeypatch.setenv("OLLAMA_URL", "http://ollama.local:11434/")
     monkeypatch.setenv("SCORING_PROVIDER", "claude_sonnet")
+    monkeypatch.setenv("SCORING_REVIEW_PROVIDER", "")
+    monkeypatch.setenv("SCORING_CODEX_CMD", "codex-local")
     monkeypatch.setenv("SCORING_CLAUDE_CMD", "claude-local")
-    monkeypatch.delenv("SCORING_REVIEW_PROVIDER", raising=False)
-    monkeypatch.delenv("EMBEDDING_MODEL", raising=False)
     monkeypatch.setattr(doctor, "check_url", lambda name, url: doctor.CheckResult(name, "ok", "reachable"))
 
     def record_command(command, *, required):
@@ -132,12 +154,13 @@ def test_collect_checks_claude_provider_uses_claude_command_env(monkeypatch):
 
     doctor.collect_checks()
 
-    assert ("codex", False) in commands
+    assert ("codex-local", False) in commands
     assert ("claude-local", True) in commands
 
 
 def test_collect_checks_embedding_model_adds_ollama_url_check(monkeypatch):
     urls = []
+    clear_doctor_env(monkeypatch)
     monkeypatch.setattr(doctor, "load_dotenv", lambda path: None)
     monkeypatch.setattr(doctor, "check_env_file", lambda: doctor.CheckResult(".env", "ok", ".env exists"))
     monkeypatch.setattr(
@@ -150,10 +173,13 @@ def test_collect_checks_embedding_model_adds_ollama_url_check(monkeypatch):
         "check_command_available",
         lambda command, *, required: doctor.CheckResult(command, "ok", f"{command} is available"),
     )
+    monkeypatch.setenv("JOBS_FUNNEL_N8N_BASE", "http://n8n.local:5678")
     monkeypatch.setenv("EMBEDDING_MODEL", "nomic-embed-text")
-    monkeypatch.setenv("OLLAMA_URL", "http://localhost:11434/")
-    monkeypatch.delenv("SCORING_PROVIDER", raising=False)
-    monkeypatch.delenv("SCORING_REVIEW_PROVIDER", raising=False)
+    monkeypatch.setenv("OLLAMA_URL", "http://ollama.local:11434/")
+    monkeypatch.setenv("SCORING_PROVIDER", "codex_gpt55_high")
+    monkeypatch.setenv("SCORING_REVIEW_PROVIDER", "")
+    monkeypatch.setenv("SCORING_CODEX_CMD", "codex-local")
+    monkeypatch.setenv("SCORING_CLAUDE_CMD", "claude-local")
 
     def record_url(name, url):
         urls.append((name, url))
@@ -163,5 +189,5 @@ def test_collect_checks_embedding_model_adds_ollama_url_check(monkeypatch):
 
     doctor.collect_checks()
 
-    assert ("n8n", "http://localhost:5678") in urls
-    assert ("ollama", "http://localhost:11434") in urls
+    assert ("n8n", "http://n8n.local:5678") in urls
+    assert ("ollama", "http://ollama.local:11434") in urls
