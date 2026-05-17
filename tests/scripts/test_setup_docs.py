@@ -8,11 +8,16 @@ START = Path("start.bat").read_text(encoding="utf-8")
 PROFILES_README = Path("profiles/README.md").read_text(encoding="utf-8")
 SETUP_PROFILE = Path("scripts/setup_profile.py").read_text(encoding="utf-8")
 SETUP_DB = Path("scripts/setup_db.sql").read_text(encoding="utf-8")
+TEMPLATE_FILTER_PROMPT = Path("templates/profile/filter_prompt.md").read_text(encoding="utf-8")
 SETUP_FACING_TEXTS = {
     "README.md": README,
     "profiles/README.md": PROFILES_README,
     "scripts/setup_profile.py": SETUP_PROFILE,
     "scripts/setup_db.sql": SETUP_DB,
+}
+TRACKED_PROFILE_GUIDANCE_TEXTS = {
+    "profiles/README.md": PROFILES_README,
+    "templates/profile/filter_prompt.md": TEMPLATE_FILTER_PROMPT,
 }
 
 
@@ -95,8 +100,16 @@ def test_setup_db_header_points_to_migration_runner():
 def test_profile_prompt_docs_use_generic_scorer_wording():
     assert "filter_prompt.md     # Candidate profile + scoring rubric for AI scorer" in PROFILES_README
     assert "scoring provider uses to score jobs" in PROFILES_README
-    assert "for Claude" not in PROFILES_README
-    assert "Claude uses" not in PROFILES_README
+
+    stale_phrases = (
+        "for Claude",
+        "Claude uses",
+        "Claude headless",
+        "runs each posting through Claude",
+    )
+    for path, text in TRACKED_PROFILE_GUIDANCE_TEXTS.items():
+        for phrase in stale_phrases:
+            assert phrase not in text, f"{path} contains stale provider wording: {phrase}"
 
 
 def test_readme_selects_profile_before_running_migrations():
