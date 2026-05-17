@@ -26,6 +26,7 @@
     <option value="failed">All failed</option>
     <option value="duplicates">Duplicates</option>
   </select>
+  <a class="btn btn-warn btn-sm" href="/?view=review">Review Queue</a>
 
   <label>Decision</label>
   <select name="decision">
@@ -55,22 +56,24 @@
   <label>Search</label>
   <input type="search" name="search" placeholder="Company or title...">
 
-  <label title="Hide staffing-agency postings">
-    <input type="checkbox" name="hide_staffing" value="true"> Hide staffing
-  </label>
-  <label title="Hide on-site jobs outside your country pack's allowlist">
-    <input type="checkbox" name="hide_geo" value="true"> Hide off-country
-  </label>
-  <label title="Only show jobs in English">
-    <input type="checkbox" name="english_only" value="true"> English only
-  </label>
-  <label title="Only show jobs crawled in the last 10 days">
-    <input type="hidden" name="recent_only" value="false">
-    <input type="checkbox" name="recent_only" value="true" checked> Last 10 days
-  </label>
-  <label title="Hide jobs marked rejected or nope">
-    <input type="checkbox" name="hide_rejected" value="true" checked> Hide rejected/nope
-  </label>
+  <div class="filter-secondary">
+    <label title="Hide staffing-agency postings">
+      <input type="checkbox" name="hide_staffing" value="true"> Hide staffing
+    </label>
+    <label title="Hide on-site jobs outside your country pack's allowlist">
+      <input type="checkbox" name="hide_geo" value="true"> Hide off-country
+    </label>
+    <label title="Only show jobs in English">
+      <input type="checkbox" name="english_only" value="true"> English only
+    </label>
+    <label title="Only show jobs crawled in the last 10 days">
+      <input type="hidden" name="recent_only" value="false">
+      <input type="checkbox" name="recent_only" value="true" checked> Last 10 days
+    </label>
+    <label title="Hide jobs marked rejected or nope">
+      <input type="checkbox" name="hide_rejected" value="true" checked> Hide rejected/nope
+    </label>
+  </div>
 
   <span class="htmx-indicator" id="filter-spinner"><span class="spinner"></span></span>
 
