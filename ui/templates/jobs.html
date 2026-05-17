@@ -14,64 +14,64 @@
       hx-include="[name]"
       hx-indicator="#filter-spinner">
 
-  <input type="hidden" name="sort" value="fit_score">
-  <input type="hidden" name="order" value="desc">
+  <input type="hidden" name="sort" value="{{ filters.sort }}">
+  <input type="hidden" name="order" value="{{ filters.order }}">
 
   <label>View</label>
   <select name="view">
-    <option value="">Jobs</option>
-    <option value="review">Review queue</option>
-    <option value="error">Errors (retrying)</option>
-    <option value="dead">Dead letters</option>
-    <option value="failed">All failed</option>
-    <option value="duplicates">Duplicates</option>
+    <option value="" {% if filters.view == "" %}selected{% endif %}>Jobs</option>
+    <option value="review" {% if filters.view == "review" %}selected{% endif %}>Review queue</option>
+    <option value="error" {% if filters.view == "error" %}selected{% endif %}>Errors (retrying)</option>
+    <option value="dead" {% if filters.view == "dead" %}selected{% endif %}>Dead letters</option>
+    <option value="failed" {% if filters.view == "failed" %}selected{% endif %}>All failed</option>
+    <option value="duplicates" {% if filters.view == "duplicates" %}selected{% endif %}>Duplicates</option>
   </select>
   <a class="btn btn-warn btn-sm" href="/?view=review">Review Queue</a>
 
   <label>Decision</label>
   <select name="decision">
-    <option value="">All</option>
-    <option value="PASS">PASS</option>
-    <option value="MAYBE">MAYBE</option>
-    <option value="SKIP">SKIP</option>
+    <option value="" {% if filters.decision == "" %}selected{% endif %}>All</option>
+    <option value="PASS" {% if filters.decision == "PASS" %}selected{% endif %}>PASS</option>
+    <option value="MAYBE" {% if filters.decision == "MAYBE" %}selected{% endif %}>MAYBE</option>
+    <option value="SKIP" {% if filters.decision == "SKIP" %}selected{% endif %}>SKIP</option>
   </select>
 
   <label>Status</label>
   <select name="applied">
-    <option value="">All</option>
-    <option value="pending">Not reviewed</option>
-    <option value="interested">Interested</option>
-    <option value="applied">Applied</option>
-    <option value="in_process">In Process</option>
-    <option value="offer">Offer</option>
-    <option value="rejected">Rejected</option>
-    <option value="dismissed">Dismissed</option>
+    <option value="" {% if filters.applied == "" %}selected{% endif %}>All</option>
+    <option value="pending" {% if filters.applied == "pending" %}selected{% endif %}>Not reviewed</option>
+    <option value="interested" {% if filters.applied == "interested" %}selected{% endif %}>Interested</option>
+    <option value="applied" {% if filters.applied == "applied" %}selected{% endif %}>Applied</option>
+    <option value="in_process" {% if filters.applied == "in_process" %}selected{% endif %}>In Process</option>
+    <option value="offer" {% if filters.applied == "offer" %}selected{% endif %}>Offer</option>
+    <option value="rejected" {% if filters.applied == "rejected" %}selected{% endif %}>Rejected</option>
+    <option value="dismissed" {% if filters.applied == "dismissed" %}selected{% endif %}>Dismissed</option>
   </select>
 
   <label>Score</label>
-  <input type="number" name="min_score" value="0" min="0" max="10" title="Min score">
+  <input type="number" name="min_score" value="{{ filters.min_score }}" min="0" max="10" title="Min score">
   <span>-</span>
-  <input type="number" name="max_score" value="10" min="0" max="10" title="Max score">
+  <input type="number" name="max_score" value="{{ filters.max_score }}" min="0" max="10" title="Max score">
 
   <label>Search</label>
-  <input type="search" name="search" placeholder="Company or title...">
+  <input type="search" name="search" value="{{ filters.search }}" placeholder="Company or title...">
 
   <div class="filter-secondary">
     <label title="Hide staffing-agency postings">
-      <input type="checkbox" name="hide_staffing" value="true"> Hide staffing
+      <input type="checkbox" name="hide_staffing" value="true" {% if filters.hide_staffing %}checked{% endif %}> Hide staffing
     </label>
     <label title="Hide on-site jobs outside your country pack's allowlist">
-      <input type="checkbox" name="hide_geo" value="true"> Hide off-country
+      <input type="checkbox" name="hide_geo" value="true" {% if filters.hide_geo %}checked{% endif %}> Hide off-country
     </label>
     <label title="Only show jobs in English">
-      <input type="checkbox" name="english_only" value="true"> English only
+      <input type="checkbox" name="english_only" value="true" {% if filters.english_only %}checked{% endif %}> English only
     </label>
     <label title="Only show jobs crawled in the last 10 days">
       <input type="hidden" name="recent_only" value="false">
-      <input type="checkbox" name="recent_only" value="true" checked> Last 10 days
+      <input type="checkbox" name="recent_only" value="true" {% if filters.recent_only %}checked{% endif %}> Last 10 days
     </label>
     <label title="Hide jobs marked rejected or nope">
-      <input type="checkbox" name="hide_rejected" value="true" checked> Hide rejected/nope
+      <input type="checkbox" name="hide_rejected" value="true" {% if filters.hide_rejected %}checked{% endif %}> Hide rejected/nope
     </label>
   </div>
 
@@ -99,7 +99,7 @@
     </tr>
   </thead>
   <tbody id="job-table-body"
-         hx-get="/jobs"
+         hx-get="/jobs{% if jobs_query_string %}?{{ jobs_query_string }}{% endif %}"
          hx-trigger="load"
          hx-swap="innerHTML"
          hx-indicator="#filter-spinner">

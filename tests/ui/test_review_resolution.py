@@ -177,7 +177,8 @@ def test_review_resolution_returns_404_for_missing_job(monkeypatch):
 
 def test_jobs_view_selector_exposes_review_queue():
     html = (srv.TEMPLATES_DIR / "jobs.html").read_text(encoding="utf-8")
-    assert '<option value="review">Review queue</option>' in html
+    assert 'value="review"' in html
+    assert "Review queue</option>" in html
 
 
 def _review_job_row():

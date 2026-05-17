@@ -12,6 +12,7 @@ import re
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlencode
 
 import psycopg2
 import psycopg2.extras
@@ -203,6 +204,37 @@ def render(request: Request, name: str, ctx: dict | None = None):
     return templates.TemplateResponse(request=request, name=name, context=context)
 
 
+def _query_bool(request: Request, name: str, default: bool = False) -> bool:
+    value = request.query_params.get(name)
+    if value is None:
+        return default
+    return value.lower() in {"1", "true", "yes", "on"}
+
+
+def _jobs_filter_context(request: Request):
+    filters = {
+        "view": request.query_params.get("view", ""),
+        "decision": request.query_params.get("decision", ""),
+        "applied": request.query_params.get("applied", ""),
+        "min_score": request.query_params.get("min_score", "0"),
+        "max_score": request.query_params.get("max_score", "10"),
+        "search": request.query_params.get("search", ""),
+        "hide_staffing": _query_bool(request, "hide_staffing"),
+        "hide_geo": _query_bool(request, "hide_geo"),
+        "english_only": _query_bool(request, "english_only"),
+        "recent_only": _query_bool(request, "recent_only", True),
+        "hide_rejected": _query_bool(request, "hide_rejected", True),
+        "sort": request.query_params.get("sort", "fit_score"),
+        "order": request.query_params.get("order", "desc"),
+    }
+    query = urlencode({
+        key: str(value).lower() if isinstance(value, bool) else value
+        for key, value in filters.items()
+        if value not in ("", None)
+    })
+    return {"filters": filters, "jobs_query_string": query}
+
+
 def _calibration_context(error: str | None = None):
     active = calibration_settings.load_active_settings(force=True)
     proposals = calibration_proposals.list_proposals(limit=20)
@@ -366,7 +398,10 @@ def build_job_filter(decision="", applied="", min_score=0, max_score=10, search=
 # ── Routes ───────────────────────────────────────────────────────────
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    return render(request, "jobs.html", {"stats": get_stats()})
+    return render(request, "jobs.html", {
+        "stats": get_stats(),
+        **_jobs_filter_context(request),
+    })
 
 
 @app.get("/jobs", response_class=HTMLResponse)

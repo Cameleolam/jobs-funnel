@@ -1,9 +1,31 @@
 """Tests for the default recent-jobs filter."""
 
+from fastapi.testclient import TestClient
+
 import ui.server as srv
 
 
 RECENT_CLAUSE = "crawled_at >= NOW() - INTERVAL '10 days'"
+
+
+def _stub_stats(monkeypatch):
+    monkeypatch.setattr(
+        srv,
+        "get_stats",
+        lambda: {
+            "total": 0,
+            "PASS": 0,
+            "MAYBE": 0,
+            "SKIP": 0,
+            "pending": 0,
+            "interested": 0,
+            "applied": 0,
+            "dismissed": 0,
+            "error": 0,
+            "dead": 0,
+            "awaiting_embedding": 0,
+        },
+    )
 
 
 def test_default_jobs_filter_limits_to_last_10_days():
@@ -34,3 +56,34 @@ def test_jobs_template_has_recent_only_checked_by_default():
     assert 'name="recent_only"' in html
     assert "Last 10 days" in html
     assert "checked" in html
+
+
+def test_review_queue_shortcut_state_loads_review_jobs(monkeypatch):
+    _stub_stats(monkeypatch)
+
+    response = TestClient(srv.app).get("/?view=review")
+
+    assert response.status_code == 200
+    assert '<option value="review" selected>Review queue</option>' in response.text
+    assert 'hx-get="/jobs?' in response.text
+    assert "view=review" in response.text
+
+
+def test_jobs_page_defaults_recent_and_hide_rejected_on(monkeypatch):
+    _stub_stats(monkeypatch)
+
+    response = TestClient(srv.app).get("/")
+
+    assert response.status_code == 200
+    assert 'name="recent_only" value="true" checked' in response.text
+    assert 'name="hide_rejected" value="true" checked' in response.text
+
+
+def test_jobs_page_preserves_false_checkbox_state(monkeypatch):
+    _stub_stats(monkeypatch)
+
+    response = TestClient(srv.app).get("/?recent_only=false&hide_rejected=false")
+
+    assert response.status_code == 200
+    assert 'name="recent_only" value="true" checked' not in response.text
+    assert 'name="hide_rejected" value="true" checked' not in response.text
