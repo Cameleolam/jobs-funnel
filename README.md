@@ -132,7 +132,7 @@ start.bat
 
 Or manually:
 ```bash
-n8n start
+npx dotenv -e .env -- n8n start
 ```
 
 Open http://localhost:5678
@@ -176,7 +176,7 @@ Tunable pipeline constants. JS nodes read these at runtime.
 
 | Key | Default | Purpose |
 |-----|---------|---------|
-| `model` | `claude-sonnet-4-6` | Claude model for scoring and dedup. Alternatives: `claude-haiku-4-5-20251001` (faster/cheaper), `claude-opus-4-6` (best quality) |
+| `model` | `claude-sonnet-4-6` | Legacy Claude-backed paths only; primary scoring provider/model are controlled by `SCORING_*` env vars |
 | `aa_max_pages` | 3 | Max pagination pages per AA search |
 | `aa_max_fetches` | 200 | Max AA description fetches per run |
 | `aa_fetch_delay_ms` | 300 | Delay between AA description fetches |

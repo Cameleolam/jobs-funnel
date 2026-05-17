@@ -22,6 +22,18 @@ def test_readme_uses_apply_all_migration_command():
     assert "Jobs per Claude filter batch" not in README
 
 
+def test_readme_config_model_is_not_primary_scoring_config():
+    assert "Claude model for scoring and dedup" not in README
+    assert "Scoring is selected through environment variables, not `config.json`." in README
+    assert "legacy" in README.lower()
+    assert "SCORING_*" in README
+
+
+def test_readme_manual_n8n_start_uses_dotenv():
+    assert "npx dotenv -e .env -- n8n start" in README
+    assert "```bash\nn8n start\n```" not in README
+
+
 def test_profile_setup_docs_use_migration_runner():
     assert "python scripts/run_migrations.py" in PROFILES_README
     assert "JOBS_FUNNEL_TABLE" in PROFILES_README
