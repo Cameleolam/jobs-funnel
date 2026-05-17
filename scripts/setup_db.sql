@@ -9,6 +9,8 @@
 -- Create database (run this separately if needed):
 -- CREATE DATABASE jobs_funnel;
 
+CREATE EXTENSION IF NOT EXISTS vector;
+
 CREATE TABLE IF NOT EXISTS {{TABLE}} (
     id              SERIAL PRIMARY KEY,
     url             TEXT NOT NULL UNIQUE,
@@ -69,7 +71,13 @@ CREATE TABLE IF NOT EXISTS {{TABLE}} (
     start_date      TEXT,              -- extracted start date (e.g. "sofort", "01.05.2026")
 
     possible_duplicate_of  INTEGER REFERENCES {{TABLE}}(id),
-    duplicate_confirmed    BOOLEAN            -- null=unreviewed, true=confirmed dup, false=not a dup
+    duplicate_confirmed    BOOLEAN,           -- null=unreviewed, true=confirmed dup, false=not a dup
+    embedding              vector(1024),
+    embedding_calibration  vector(1024),
+    embedded_at            TIMESTAMPTZ,
+    embed_model            TEXT,
+    embed_attempts         INTEGER NOT NULL DEFAULT 0,
+    scored_uncalibrated    BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_status ON {{TABLE}}(status);
@@ -80,6 +88,21 @@ CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_dead ON {{TABLE}}(status) WHERE status 
 CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_needs_review
     ON {{TABLE}}(needs_human_review)
     WHERE needs_human_review = TRUE;
+CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_embedding
+    ON {{TABLE}} USING hnsw (embedding vector_cosine_ops)
+    WITH (m = 16, ef_construction = 64);
+CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_embedding_calibration
+    ON {{TABLE}} USING hnsw (embedding_calibration vector_cosine_ops)
+    WITH (m = 16, ef_construction = 64);
+CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_calibration_pool
+    ON {{TABLE}} (user_status)
+    WHERE embedding_calibration IS NOT NULL
+      AND user_status IN ('interested','applied','in_process','offer','dismissed','rejected');
+CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_rescore
+    ON {{TABLE}} (status)
+    WHERE scored_uncalibrated = TRUE AND embedding_calibration IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_embed_failed
+    ON {{TABLE}} (id) WHERE error_code = 'EMBED_FAILED';
 
 -- pipeline_runs and job_raw_data are global (not per-profile) — kept literal.
 CREATE TABLE IF NOT EXISTS pipeline_runs (
@@ -140,3 +163,48 @@ CREATE INDEX IF NOT EXISTS idx_{{EVENTS_TABLE}}_occurred_at ON {{EVENTS_TABLE}}(
 ALTER TABLE {{TABLE}} ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_closed_at
     ON {{TABLE}}(closed_at) WHERE closed_at IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS {{TABLE}}_calibration_proposals (
+    id                   BIGSERIAL PRIMARY KEY,
+    status               TEXT NOT NULL DEFAULT 'proposed'
+                         CHECK (status IN ('proposed', 'applied', 'rolled_back', 'rejected')),
+    window_days          INTEGER NOT NULL DEFAULT 90,
+    confidence           TEXT NOT NULL DEFAULT 'low',
+    sample_counts        JSONB NOT NULL DEFAULT '{}'::jsonb,
+    metrics              JSONB NOT NULL DEFAULT '{}'::jsonb,
+    proposed_settings    JSONB NOT NULL,
+    previous_settings    JSONB,
+    rationale            JSONB NOT NULL DEFAULT '{}'::jsonb,
+    error                TEXT,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    applied_at           TIMESTAMPTZ,
+    rolled_back_at       TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS {{TABLE}}_calibration_settings (
+    singleton              BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+    active_proposal_id    BIGINT REFERENCES {{TABLE}}_calibration_proposals(id),
+    review_low             INTEGER NOT NULL DEFAULT 4,
+    review_high            INTEGER NOT NULL DEFAULT 6,
+    calibration_k          INTEGER NOT NULL DEFAULT 3,
+    calibration_k_batch    INTEGER NOT NULL DEFAULT 6,
+    calibration_min_pool   INTEGER NOT NULL DEFAULT 3,
+    weight_offer           DOUBLE PRECISION NOT NULL DEFAULT 1.5,
+    weight_interview       DOUBLE PRECISION NOT NULL DEFAULT 1.4,
+    weight_applied         DOUBLE PRECISION NOT NULL DEFAULT 1.2,
+    weight_dismiss_note    DOUBLE PRECISION NOT NULL DEFAULT 1.2,
+    weight_dismiss         DOUBLE PRECISION NOT NULL DEFAULT 0.8,
+    weight_interested      DOUBLE PRECISION NOT NULL DEFAULT 0.7,
+    source                 TEXT NOT NULL DEFAULT 'db',
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO {{TABLE}}_calibration_settings (singleton)
+VALUES (TRUE)
+ON CONFLICT (singleton) DO NOTHING;
+
+CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_calibration_proposals_created
+    ON {{TABLE}}_calibration_proposals(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_calibration_proposals_status
+    ON {{TABLE}}_calibration_proposals(status);
