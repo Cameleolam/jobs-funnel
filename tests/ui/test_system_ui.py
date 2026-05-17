@@ -1,6 +1,26 @@
+import inspect
+
 from fastapi.testclient import TestClient
 
+from scripts import doctor
+from ui.services import system_health
 import ui.server as srv
+
+
+def test_collect_system_health_maps_doctor_checks(monkeypatch):
+    monkeypatch.setattr(
+        system_health.doctor,
+        "collect_checks",
+        lambda: [
+            doctor.CheckResult("Postgres", "ok", "Postgres reachable"),
+            doctor.CheckResult("n8n", "fail", "n8n is not reachable", "Start n8n."),
+        ],
+    )
+
+    assert system_health.collect_system_health() == [
+        {"name": "Postgres", "status": "ok", "message": "Postgres reachable", "action": ""},
+        {"name": "n8n", "status": "fail", "message": "n8n is not reachable", "action": "Start n8n."},
+    ]
 
 
 def test_system_page_renders_health_checks(monkeypatch):
@@ -22,7 +42,20 @@ def test_system_page_renders_health_checks(monkeypatch):
     assert "status-fail" in response.text
 
 
+def test_system_page_route_uses_sync_endpoint():
+    assert not inspect.iscoroutinefunction(srv.system_page)
+
+
 def test_nav_exposes_system_page():
     html = (srv.TEMPLATES_DIR / "base.html").read_text(encoding="utf-8")
 
     assert 'href="/system"' in html
+
+
+def test_base_template_has_system_health_styles():
+    html = (srv.TEMPLATES_DIR / "base.html").read_text(encoding="utf-8")
+
+    assert ".health-row" in html
+    assert ".badge-ok" in html
+    assert ".badge-warn" in html
+    assert ".badge-fail" in html

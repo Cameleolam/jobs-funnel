@@ -784,7 +784,7 @@ async def calibration_page(request: Request):
 
 
 @app.get("/system", response_class=HTMLResponse)
-async def system_page(request: Request):
+def system_page(request: Request):
     return render(request, "system.html", {"checks": system_health.collect_system_health()})
 
 
