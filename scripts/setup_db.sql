@@ -76,6 +76,27 @@ CREATE TABLE IF NOT EXISTS {{TABLE}} (
     scored_uncalibrated    BOOLEAN NOT NULL DEFAULT FALSE
 );
 
+-- Existing profile tables need the folded migration columns too; CREATE TABLE
+-- IF NOT EXISTS is a no-op for them.
+ALTER TABLE {{TABLE}}
+    ADD COLUMN IF NOT EXISTS embedding              vector(1024),
+    ADD COLUMN IF NOT EXISTS embedding_calibration  vector(1024),
+    ADD COLUMN IF NOT EXISTS embedded_at            TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS embed_model            TEXT,
+    ADD COLUMN IF NOT EXISTS embed_attempts         INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS scored_uncalibrated    BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS scoring_provider TEXT,
+    ADD COLUMN IF NOT EXISTS scoring_model    TEXT,
+    ADD COLUMN IF NOT EXISTS review_provider  TEXT,
+    ADD COLUMN IF NOT EXISTS review_model     TEXT,
+    ADD COLUMN IF NOT EXISTS base_fit_score   INTEGER,
+    ADD COLUMN IF NOT EXISTS base_decision    TEXT,
+    ADD COLUMN IF NOT EXISTS review_error     TEXT,
+    ADD COLUMN IF NOT EXISTS needs_human_review BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS explanation        TEXT,
+    ADD COLUMN IF NOT EXISTS confidence         TEXT,
+    ADD COLUMN IF NOT EXISTS critique_count     INTEGER NOT NULL DEFAULT 0;
+
 CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_status ON {{TABLE}}(status);
 CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_sheet_synced ON {{TABLE}}(sheet_synced) WHERE sheet_synced = FALSE;
 CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_decision ON {{TABLE}}(decision);
@@ -126,6 +147,17 @@ CREATE TABLE IF NOT EXISTS pipeline_runs (
     notes           TEXT
 );
 
+ALTER TABLE pipeline_runs
+    ADD COLUMN IF NOT EXISTS embed_count             INTEGER DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS embed_failures          INTEGER DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS embed_degraded          BOOLEAN DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS dedup_vector_resolved   INTEGER DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS dedup_claude_calls      INTEGER DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS score_critique_count    INTEGER DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS score_human_flagged     INTEGER DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS score_uncalibrated      INTEGER DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS score_rescored          INTEGER DEFAULT 0;
+
 CREATE INDEX IF NOT EXISTS idx_pipeline_runs_started_at ON pipeline_runs(started_at);
 CREATE INDEX IF NOT EXISTS idx_pipeline_runs_status ON pipeline_runs(status);
 
@@ -141,6 +173,26 @@ CREATE TABLE IF NOT EXISTS job_raw_data (
 ALTER TABLE {{TABLE}} ADD COLUMN IF NOT EXISTS tracked_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_tracked_at
     ON {{TABLE}}(tracked_at) WHERE tracked_at IS NOT NULL;
+
+DO $$
+BEGIN
+    IF to_regclass('public.job_events') IS NOT NULL
+       AND to_regclass('public.{{EVENTS_TABLE}}') IS NULL THEN
+        EXECUTE 'ALTER TABLE job_events RENAME TO {{EVENTS_TABLE}}';
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF to_regclass('public.idx_job_events_job_id') IS NOT NULL
+       AND to_regclass('public.idx_{{EVENTS_TABLE}}_job_id') IS NULL THEN
+        EXECUTE 'ALTER INDEX idx_job_events_job_id RENAME TO idx_{{EVENTS_TABLE}}_job_id';
+    END IF;
+    IF to_regclass('public.idx_job_events_occurred_at') IS NOT NULL
+       AND to_regclass('public.idx_{{EVENTS_TABLE}}_occurred_at') IS NULL THEN
+        EXECUTE 'ALTER INDEX idx_job_events_occurred_at RENAME TO idx_{{EVENTS_TABLE}}_occurred_at';
+    END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS {{EVENTS_TABLE}} (
     id           SERIAL PRIMARY KEY,
