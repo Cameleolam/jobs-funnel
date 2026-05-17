@@ -314,6 +314,27 @@ def test_proposals_template_renders_compact_analytics_summary():
     assert "projected review 22 / cap 25.0" in html
 
 
+def test_calibration_proposals_render_human_summary():
+    html = srv.templates.get_template("partials/calibration_proposals.html").render(
+        request={},
+        active=_active_settings(),
+        proposals=[
+            {
+                "id": 12,
+                "status": "proposed",
+                "confidence": "medium",
+                "sample_counts": {"jobs": 20},
+                "proposed_settings": {"review_low": 3, "review_high": 6},
+                "metrics": {},
+                "rationale": {},
+                "summary_lines": ["You pursued 4 low-scored jobs."],
+            }
+        ],
+    )
+
+    assert "You pursued 4 low-scored jobs." in html
+
+
 def test_proposals_template_handles_older_rows_without_metrics_summary():
     html = srv.templates.get_template("partials/calibration_proposals.html").render(
         request={},

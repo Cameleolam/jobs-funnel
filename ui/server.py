@@ -26,6 +26,7 @@ from openpyxl.styles import Font, PatternFill
 
 from scripts import calibration_proposals
 from scripts import calibration_settings
+from ui.services.calibration_presenter import proposal_summary_lines
 from ui.services import system_health
 
 # ── Config ───────────────────────────────────────────────────────────
@@ -205,6 +206,10 @@ def render(request: Request, name: str, ctx: dict | None = None):
 def _calibration_context(error: str | None = None):
     active = calibration_settings.load_active_settings(force=True)
     proposals = calibration_proposals.list_proposals(limit=20)
+    proposals = [
+        {**proposal, "summary_lines": proposal_summary_lines(proposal)}
+        for proposal in proposals
+    ]
     return {
         "active": active,
         "proposals": proposals,

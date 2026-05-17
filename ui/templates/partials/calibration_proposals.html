@@ -39,6 +39,13 @@
         {{ review_low if review_low is not none else '-' }}-{{ review_high if review_high is not none else '-' }}
       </td>
       <td>
+        {% if proposal.summary_lines %}
+        <div class="proposal-summary">
+          {% for line in proposal.summary_lines %}
+          <div>{{ line }}</div>
+          {% endfor %}
+        </div>
+        {% endif %}
         {% if score_bands %}
         <div>below {{ below.get("total", 0) }} / pursued {{ below.get("pursued", 0) }} / dismissed {{ below.get("dismissed", 0) }}</div>
         <div>review {{ review.get("total", 0) }} / pursued {{ review.get("pursued", 0) }} / dismissed {{ review.get("dismissed", 0) }}</div>
