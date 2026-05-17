@@ -26,6 +26,7 @@ from openpyxl.styles import Font, PatternFill
 
 from scripts import calibration_proposals
 from scripts import calibration_settings
+from ui.services import system_health
 
 # ── Config ───────────────────────────────────────────────────────────
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
@@ -780,6 +781,11 @@ async def runs_page(request: Request):
 @app.get("/calibration", response_class=HTMLResponse)
 async def calibration_page(request: Request):
     return render(request, "calibration.html", _calibration_context())
+
+
+@app.get("/system", response_class=HTMLResponse)
+async def system_page(request: Request):
+    return render(request, "system.html", {"checks": system_health.collect_system_health()})
 
 
 @app.post("/calibration/proposals", response_class=HTMLResponse)
