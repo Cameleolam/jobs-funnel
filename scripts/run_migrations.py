@@ -7,6 +7,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from scripts import run_migration
 
 
@@ -42,15 +44,18 @@ def apply_sql_file(cur, path: Path, table: str, *, track: bool) -> str:
 def run() -> list[tuple[str, str]]:
     load_dotenv(PROJECT_DIR / ".env")
     table = os.environ.get("JOBS_FUNNEL_TABLE", "jobs")
+    paths = sql_plan()
+    for path in paths:
+        if not path.is_file():
+            raise FileNotFoundError(path)
+
     conn = run_migration.connect()
     results: list[tuple[str, str]] = []
     try:
         with conn:
             with conn.cursor() as cur:
                 run_migration.ensure_tracking_table(cur)
-                for path in sql_plan():
-                    if not path.is_file():
-                        raise FileNotFoundError(path)
+                for path in paths:
                     track = path.name != "setup_db.sql"
                     status = apply_sql_file(cur, path, table, track=track)
                     results.append((path.name, status))
