@@ -10,7 +10,7 @@ if %ERRORLEVEL% neq 0 (
 )
 echo.
 echo Running quick setup checks...
-python scripts\doctor.py
+python scripts\doctor.py --prestart
 if %ERRORLEVEL% neq 0 (
   echo Doctor checks failed.
   exit /b %ERRORLEVEL%

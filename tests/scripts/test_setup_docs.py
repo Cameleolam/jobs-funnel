@@ -4,6 +4,8 @@ from pathlib import Path
 ENV = Path(".env.template").read_text(encoding="utf-8")
 README = Path("README.md").read_text(encoding="utf-8")
 START = Path("start.bat").read_text(encoding="utf-8")
+PROFILES_README = Path("profiles/README.md").read_text(encoding="utf-8")
+SETUP_PROFILE = Path("scripts/setup_profile.py").read_text(encoding="utf-8")
 
 
 def test_env_template_defaults_to_codex_without_review_provider():
@@ -16,6 +18,25 @@ def test_readme_uses_apply_all_migration_command():
     assert "python scripts/run_migrations.py" in README
     assert "python scripts/run_migration.py scripts/migrations/0007_calibration_proposals.sql" not in README
     assert "psql -h localhost -U postgres -d jobs_funnel -f scripts/setup_db.sql" not in README
+    assert "Jobs per filter batch" in README
+    assert "Jobs per Claude filter batch" not in README
+
+
+def test_profile_setup_docs_use_migration_runner():
+    assert "python scripts/run_migrations.py" in PROFILES_README
+    assert "JOBS_FUNNEL_TABLE" in PROFILES_README
+    assert ".env" in PROFILES_README
+    assert "setup_db.sql" not in PROFILES_README
+    assert "setup_db.sql" not in SETUP_PROFILE
+    assert "psql -U postgres -d jobs_funnel -f scripts/setup_db.sql" not in SETUP_PROFILE
+    assert "python scripts/run_migrations.py" in SETUP_PROFILE
+
+
+def test_readme_selects_profile_before_running_migrations():
+    profile_index = README.index("python scripts/setup_profile.py myprofile")
+    migration_index = README.index("python scripts/run_migrations.py")
+
+    assert profile_index < migration_index
 
 
 def test_readme_documents_optional_claude_configuration():
@@ -36,12 +57,12 @@ def test_readme_points_to_doctor_troubleshooting_command():
 
 def test_start_bat_points_to_doctor_and_ui():
     docker_command = "docker compose up -d"
-    doctor_command = "python scripts\\doctor.py"
+    doctor_command = "python scripts\\doctor.py --prestart"
     ui_command = "python -m uvicorn ui.server:app --port 8080 --reload"
     ui_url = "http://localhost:8080"
     n8n_command = "npx dotenv -e .env -- n8n start"
 
-    assert doctor_command in START or "python scripts/doctor.py" in START
+    assert doctor_command in START or "python scripts/doctor.py --prestart" in START
     assert ui_url in START
     assert "Docker startup failed." in START
     assert "Doctor checks failed." in START

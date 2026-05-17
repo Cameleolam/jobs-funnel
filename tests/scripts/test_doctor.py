@@ -128,6 +128,50 @@ def test_collect_checks_default_provider_uses_codex_command_env(monkeypatch):
     assert urls == [("n8n", "http://n8n.local:5678")]
 
 
+def test_collect_checks_prestart_skips_n8n_reachability(monkeypatch):
+    urls = []
+    clear_doctor_env(monkeypatch)
+    monkeypatch.setattr(doctor, "load_dotenv", lambda path: None)
+    monkeypatch.setattr(doctor, "check_env_file", lambda: doctor.CheckResult(".env", "ok", ".env exists"))
+    monkeypatch.setattr(
+        doctor,
+        "check_workflow_file",
+        lambda: doctor.CheckResult("workflow", "ok", "workflow.json exists"),
+    )
+    monkeypatch.setattr(
+        doctor,
+        "check_command_available",
+        lambda command, *, required: doctor.CheckResult(command, "ok", f"{command} is available"),
+    )
+    monkeypatch.setenv("JOBS_FUNNEL_N8N_BASE", "http://n8n.local:5678")
+    monkeypatch.setenv("OLLAMA_URL", "http://ollama.local:11434/")
+    monkeypatch.setenv("SCORING_CODEX_CMD", "codex-local")
+
+    def record_url(name, url):
+        urls.append((name, url))
+        return doctor.CheckResult(name, "ok", f"{name} reachable at {url}")
+
+    monkeypatch.setattr(doctor, "check_url", record_url)
+
+    doctor.collect_checks(prestart=True)
+
+    assert ("n8n", "http://n8n.local:5678") not in urls
+
+
+def test_main_prestart_flag_uses_prestart_checks(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        doctor,
+        "collect_checks",
+        lambda *, prestart=False: calls.append(prestart) or [doctor.CheckResult("ok", "ok", "ok")],
+    )
+
+    result = doctor.main(["--prestart"])
+
+    assert result == 0
+    assert calls == [True]
+
+
 def test_collect_checks_claude_provider_uses_claude_command_env(monkeypatch):
     commands = []
     clear_doctor_env(monkeypatch)

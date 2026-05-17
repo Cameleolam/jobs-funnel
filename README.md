@@ -89,22 +89,7 @@ Key variables:
 - `SCORING_PROVIDER` — primary AI scorer (`claude_sonnet`, `claude_haiku`, `codex_gpt55_high`, `codex_gpt55_xhigh`, or `ollama_local`)
 - `SCORING_REVIEW_PROVIDER` — optional secondary reviewer for borderline scores
 
-## Step 4: Start PostgreSQL
-
-```bash
-docker compose up -d
-```
-
-Then apply the baseline schema plus any unapplied migrations:
-
-```bash
-python scripts/run_migrations.py
-```
-
-The migration runner resolves table placeholders for your active profile and creates the
-baseline tables such as `jobs`, `pipeline_runs`, and `job_raw_data`.
-
-## Step 5: Create and validate your profile
+## Step 4: Create and validate your profile
 
 ```bash
 python scripts/setup_profile.py myprofile
@@ -114,6 +99,22 @@ python scripts/validate_profile.py profiles/myprofile/
 
 Checks that `search.json` and `filter_prompt.md` exist.
 See `profiles/README.md` for the full guide and `templates/profile/` for the example files.
+
+## Step 5: Start PostgreSQL and apply migrations
+
+```bash
+docker compose up -d
+```
+
+Make sure `.env` has the intended `JOBS_FUNNEL_PROFILE` and `JOBS_FUNNEL_TABLE`, then
+apply the baseline schema plus any unapplied migrations:
+
+```bash
+python scripts/run_migrations.py
+```
+
+The migration runner resolves table placeholders for your active profile and creates the
+baseline tables such as `jobs`, `pipeline_runs`, and `job_raw_data`.
 
 ## Step 6: Test the filter script
 
@@ -183,7 +184,7 @@ Tunable pipeline constants. JS nodes read these at runtime.
 | `an_max_pages` | 10 | Max Arbeitnow pagination pages |
 | `an_delay_ms` | 5000 | Delay between AN page fetches |
 | `an_days_back` | 30 | Only include jobs posted within N days |
-| `batch_size` | 8 | Jobs per Claude filter batch |
+| `batch_size` | 8 | Jobs per filter batch |
 | `dedup_cap` | 80 | Max pending jobs fetched per analyze iteration |
 | `description_max_chars` | 5000 | Truncate descriptions beyond this length |
 | `api_max_retries` | 2 | Max retry attempts per API request |

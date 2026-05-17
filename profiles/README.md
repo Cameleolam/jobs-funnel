@@ -51,15 +51,15 @@ profiles/
    JOBS_FUNNEL_TABLE=jobs_myprofile
    ```
 
-7. Create your database table:
-   ```sql
-   -- Edit setup_db.sql: replace "jobs" with "jobs_myprofile", then run:
-   psql -U postgres -d jobs_funnel -f scripts/setup_db.sql
+7. Apply the database baseline and unapplied migrations after `.env` has those values:
+   ```bash
+   python scripts/run_migrations.py
    ```
 
 ## Switching profiles
 
-Change `JOBS_FUNNEL_PROFILE` and `JOBS_FUNNEL_TABLE` in your `.env` file, then restart n8n.
+Change `JOBS_FUNNEL_PROFILE` and `JOBS_FUNNEL_TABLE` in your `.env` file, run
+`python scripts/run_migrations.py`, then restart n8n.
 
 ## Validating a profile
 

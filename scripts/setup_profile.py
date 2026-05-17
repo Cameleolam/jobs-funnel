@@ -47,8 +47,8 @@ def main():
     print(f"  5. Set environment variables in .env:")
     print(f"       JOBS_FUNNEL_PROFILE={name}")
     print(f"       JOBS_FUNNEL_TABLE=jobs_{name}")
-    print(f"  6. Create the database table:")
-    print(f"       psql -U postgres -d jobs_funnel -f scripts/setup_db.sql")
+    print(f"  6. After saving those values in .env, apply database migrations:")
+    print(f"       python scripts/run_migrations.py")
     print(f"  7. Validate your profile:")
     print(f"       python scripts/validate_profile.py profiles/{name}/")
 

@@ -1,6 +1,7 @@
 """Human-readable local setup and health checker."""
 from __future__ import annotations
 
+import argparse
 import os
 import shutil
 from dataclasses import dataclass
@@ -85,7 +86,7 @@ def check_workflow_file() -> CheckResult:
     )
 
 
-def collect_checks() -> list[CheckResult]:
+def collect_checks(*, prestart: bool = False) -> list[CheckResult]:
     load_dotenv(PROJECT_DIR / ".env")
     n8n_url = os.environ.get("JOBS_FUNNEL_N8N_BASE", "http://localhost:5678")
     ollama_url = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
@@ -99,8 +100,9 @@ def collect_checks() -> list[CheckResult]:
         check_command_available("docker", required=True),
         check_command_available("n8n", required=True),
         check_command_available(codex_command, required=scoring_provider.startswith("codex")),
-        check_url("n8n", n8n_url),
     ]
+    if not prestart:
+        checks.append(check_url("n8n", n8n_url))
     if os.environ.get("EMBEDDING_MODEL"):
         checks.append(check_url("ollama", ollama_url))
     if review_provider.startswith("claude") or scoring_provider.startswith("claude"):
@@ -112,8 +114,15 @@ def exit_code(checks: list[CheckResult]) -> int:
     return 1 if any(check.status == "fail" for check in checks) else 0
 
 
-def main() -> int:
-    checks = collect_checks()
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Check local Jobs Funnel setup.")
+    parser.add_argument(
+        "--prestart",
+        action="store_true",
+        help="Skip checks for services started later by the startup script.",
+    )
+    args = parser.parse_args(argv)
+    checks = collect_checks(prestart=args.prestart)
     for check in checks:
         for line in check.lines():
             print(line)
