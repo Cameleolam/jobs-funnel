@@ -175,11 +175,11 @@ def test_score_input_passes_calibration_augmented_prompt_to_provider(monkeypatch
     assert "Backend Engineer @ Acme" in system_prompt
 
 
-def test_provider_keys_from_env_defaults_to_claude(monkeypatch):
+def test_provider_keys_from_env_defaults_to_codex(monkeypatch):
     monkeypatch.delenv("SCORING_PROVIDER", raising=False)
     monkeypatch.delenv("SCORING_REVIEW_PROVIDER", raising=False)
 
-    assert provider_keys_from_env() == ("claude_sonnet", None)
+    assert provider_keys_from_env() == ("codex_gpt55_high", None)
 
 
 def test_provider_keys_from_env_accepts_base_and_review(monkeypatch):

@@ -63,7 +63,7 @@ def build_user_prompt(prompt_input: Any, is_batch: bool) -> str:
 
 
 def provider_keys_from_env() -> tuple[str, str | None]:
-    base_key = os.environ.get("SCORING_PROVIDER", "claude_sonnet").strip() or "claude_sonnet"
+    base_key = os.environ.get("SCORING_PROVIDER", "codex_gpt55_high").strip() or "codex_gpt55_high"
     review_key = os.environ.get("SCORING_REVIEW_PROVIDER", "").strip() or None
     return base_key, review_key
 
