@@ -196,7 +196,7 @@ Scoring is selected through environment variables, not `config.json`.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `SCORING_PROVIDER` | `claude_sonnet` | Primary scorer used for every job |
+| `SCORING_PROVIDER` | `codex_gpt55_high` | Primary scorer used for every job |
 | `SCORING_REVIEW_PROVIDER` | empty | Optional secondary reviewer |
 | `SCORING_REVIEW_LOW` | `4` | Lowest score that should be reviewed |
 | `SCORING_REVIEW_HIGH` | `6` | Highest score that should be reviewed |
@@ -243,10 +243,10 @@ job keeps the provider error instead of automatically retrying on the secondary 
 Calibration Proposals are DB-backed runtime overrides for scoring calibration.
 They do not fine-tune a model and they do not generate CVs or cover letters.
 
-Run the migration for the active profile table:
+Run all unapplied migrations for the active profile table:
 
 ```bash
-python scripts/run_migration.py scripts/migrations/0007_calibration_proposals.sql
+python scripts/run_migrations.py
 ```
 
 Then open the UI and go to `/calibration`.
@@ -291,7 +291,17 @@ python scripts/build_workflow.py
 # Re-import workflow.json into n8n
 ```
 
+Rebuild and reimport `workflow.json` only after changing `workflow_template.json`,
+`scripts/n8n/*.js`, or crawler selections in `profiles/<profile>/search.json`.
+Python script, UI, README, and migration changes do not require n8n workflow reimport.
+
 ## Troubleshooting
+
+Run setup diagnostics:
+
+```bash
+python scripts/doctor.py
+```
 
 Common issues:
 - **Claude calls hanging**: check `claude --version` works, try `claude -p "hello"` to verify auth
