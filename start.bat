@@ -4,9 +4,17 @@ REM Run from the jobs_funnel directory
 
 echo Starting Postgres container...
 docker compose up -d
+if %ERRORLEVEL% neq 0 (
+  echo Docker startup failed.
+  exit /b %ERRORLEVEL%
+)
 echo.
 echo Running quick setup checks...
 python scripts\doctor.py
+if %ERRORLEVEL% neq 0 (
+  echo Doctor checks failed.
+  exit /b %ERRORLEVEL%
+)
 echo.
 echo Starting n8n at http://localhost:5678
 echo Jobs Funnel UI runs separately:

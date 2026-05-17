@@ -95,13 +95,14 @@ Key variables:
 docker compose up -d
 ```
 
-Then create the schema:
+Then apply the baseline schema plus any unapplied migrations:
 
 ```bash
-psql -h localhost -U postgres -d jobs_funnel -f scripts/setup_db.sql
+python scripts/run_migrations.py
 ```
 
-This creates the `jobs`, `pipeline_runs`, and `job_raw_data` tables.
+The migration runner resolves table placeholders for your active profile and creates the
+baseline tables such as `jobs`, `pipeline_runs`, and `job_raw_data`.
 
 ## Step 5: Create and validate your profile
 
@@ -304,8 +305,8 @@ python scripts/doctor.py
 ```
 
 Common issues:
-- **Claude calls hanging**: check `claude --version` works, try `claude -p "hello"` to verify auth
 - **Codex calls failing on Windows**: set `SCORING_CODEX_CMD` to the full `.cmd` path, for example `C:\Users\<you>\AppData\Roaming\npm\codex.cmd`
+- **Claude calls hanging when configured**: check `claude --version` works, try `claude -p "hello"` to verify auth
 - **Review provider not running**: confirm `SCORING_REVIEW_PROVIDER` is set and the base `fit_score` is between `SCORING_REVIEW_LOW` and `SCORING_REVIEW_HIGH`
 - **Preflight failures**: read the error — usually a missing env var or profile file
 - **Dead letter jobs**: jobs that fail 3x get `status='dead'`. Fix the issue, then reset: `UPDATE jobs SET status='pending', error_count=0 WHERE status='dead';`
