@@ -24,5 +24,6 @@ def test_readme_does_not_reference_deleted_migration_files():
 
 def test_run_migration_docs_point_to_batch_setup_runner():
     assert "scripts/migrations/0001_job_events.sql" not in RUN_MIGRATION
+    assert "python scripts/run_migration.py <path_to_sql_file>" not in RUN_MIGRATION
     assert "python scripts/run_migrations.py" in RUN_MIGRATION
     assert "python scripts/run_migration.py --list" in RUN_MIGRATION

@@ -112,7 +112,7 @@ def list_applied():
 def main():
     if len(sys.argv) != 2:
         print(
-            "Usage: python scripts/run_migration.py <path_to_sql_file>\n"
+            "Usage: python scripts/run_migrations.py\n"
             "       python scripts/run_migration.py --list",
             file=sys.stderr,
         )
