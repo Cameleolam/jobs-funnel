@@ -8,7 +8,7 @@ Index names should be templated too so multiple profiles can coexist in the
 same database without colliding (e.g. idx_{{TABLE}}_status).
 
 Usage:
-    python scripts/run_migration.py scripts/migrations/0001_job_events.sql
+    python scripts/run_migrations.py                 # normal setup
     python scripts/run_migration.py --list           # show applied migrations
 """
 import os

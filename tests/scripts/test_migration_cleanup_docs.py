@@ -2,6 +2,7 @@ from pathlib import Path
 
 
 README = Path("README.md").read_text(encoding="utf-8")
+RUN_MIGRATION = Path("scripts/run_migration.py").read_text(encoding="utf-8")
 
 
 def test_readme_does_not_reference_deleted_migration_files():
@@ -19,3 +20,9 @@ def test_readme_does_not_reference_deleted_migration_files():
     for migration in deleted_migrations:
         assert migration not in README
     assert "python scripts/run_migrations.py" in README
+
+
+def test_run_migration_docs_point_to_batch_setup_runner():
+    assert "scripts/migrations/0001_job_events.sql" not in RUN_MIGRATION
+    assert "python scripts/run_migrations.py" in RUN_MIGRATION
+    assert "python scripts/run_migration.py --list" in RUN_MIGRATION
