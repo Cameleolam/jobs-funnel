@@ -1,10 +1,6 @@
 -- Jobs Funnel - PostgreSQL Schema
--- Run via: python scripts/run_migration.py scripts/setup_db.sql
--- (Resolves {{TABLE}} / {{EVENTS_TABLE}} from JOBS_FUNNEL_TABLE.)
---
--- Or run with psql by pre-substituting placeholders manually:
---   sed 's/{{TABLE}}/jobs/g; s/{{EVENTS_TABLE}}/jobs_events/g' \
---     scripts/setup_db.sql | psql -U postgres
+-- Setup path: python scripts/run_migrations.py
+-- The migration runner resolves {{TABLE}} / {{EVENTS_TABLE}} from JOBS_FUNNEL_TABLE.
 
 -- Create database (run this separately if needed):
 -- CREATE DATABASE jobs_funnel;

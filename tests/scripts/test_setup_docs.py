@@ -6,6 +6,7 @@ README = Path("README.md").read_text(encoding="utf-8")
 START = Path("start.bat").read_text(encoding="utf-8")
 PROFILES_README = Path("profiles/README.md").read_text(encoding="utf-8")
 SETUP_PROFILE = Path("scripts/setup_profile.py").read_text(encoding="utf-8")
+SETUP_DB = Path("scripts/setup_db.sql").read_text(encoding="utf-8")
 
 
 def test_env_template_defaults_to_codex_without_review_provider():
@@ -43,6 +44,12 @@ def test_profile_setup_docs_use_migration_runner():
     assert "setup_db.sql" not in SETUP_PROFILE
     assert "psql -U postgres -d jobs_funnel -f scripts/setup_db.sql" not in SETUP_PROFILE
     assert "python scripts/run_migrations.py" in SETUP_PROFILE
+
+
+def test_setup_db_header_points_to_migration_runner():
+    assert "python scripts/run_migrations.py" in SETUP_DB
+    assert "python scripts/run_migration.py scripts/setup_db.sql" not in SETUP_DB
+    assert "psql -U postgres" not in SETUP_DB
 
 
 def test_profile_prompt_docs_use_generic_scorer_wording():

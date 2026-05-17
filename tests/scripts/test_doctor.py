@@ -125,6 +125,7 @@ def test_collect_checks_default_provider_uses_codex_command_env(monkeypatch):
 
     assert ("codex-local", True) in commands
     assert ("npx", True) in commands
+    assert ("dotenv", True) in commands
     assert ("claude-local", True) not in commands
     assert urls == [("n8n", "http://n8n.local:5678")]
 
@@ -158,6 +159,7 @@ def test_collect_checks_prestart_skips_n8n_reachability(monkeypatch):
     doctor.collect_checks(prestart=True)
 
     assert ("npx", True) in commands
+    assert ("dotenv", True) in commands
     assert ("n8n", "http://n8n.local:5678") not in urls
 
 

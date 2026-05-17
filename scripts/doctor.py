@@ -99,6 +99,7 @@ def collect_checks(*, prestart: bool = False) -> list[CheckResult]:
         check_workflow_file(),
         check_command_available("docker", required=True),
         check_command_available("npx", required=True),
+        check_command_available("dotenv", required=True),
         check_command_available("n8n", required=True),
         check_command_available(codex_command, required=scoring_provider.startswith("codex")),
     ]
