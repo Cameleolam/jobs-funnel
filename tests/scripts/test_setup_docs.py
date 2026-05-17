@@ -7,6 +7,12 @@ START = Path("start.bat").read_text(encoding="utf-8")
 PROFILES_README = Path("profiles/README.md").read_text(encoding="utf-8")
 SETUP_PROFILE = Path("scripts/setup_profile.py").read_text(encoding="utf-8")
 SETUP_DB = Path("scripts/setup_db.sql").read_text(encoding="utf-8")
+SETUP_FACING_TEXTS = {
+    "README.md": README,
+    "profiles/README.md": PROFILES_README,
+    "scripts/setup_profile.py": SETUP_PROFILE,
+    "scripts/setup_db.sql": SETUP_DB,
+}
 
 
 def test_env_template_defaults_to_codex_without_review_provider():
@@ -18,7 +24,6 @@ def test_env_template_defaults_to_codex_without_review_provider():
 def test_readme_uses_apply_all_migration_command():
     assert "python scripts/run_migrations.py" in README
     assert "python scripts/run_migration.py scripts/migrations/0007_calibration_proposals.sql" not in README
-    assert "psql -h localhost -U postgres -d jobs_funnel -f scripts/setup_db.sql" not in README
     assert "Jobs per filter batch" in README
     assert "Jobs per Claude filter batch" not in README
 
@@ -40,16 +45,24 @@ def test_profile_setup_docs_use_migration_runner():
     assert "python scripts/run_migrations.py" in PROFILES_README
     assert "JOBS_FUNNEL_TABLE" in PROFILES_README
     assert ".env" in PROFILES_README
-    assert "setup_db.sql" not in PROFILES_README
-    assert "setup_db.sql" not in SETUP_PROFILE
-    assert "psql -U postgres -d jobs_funnel -f scripts/setup_db.sql" not in SETUP_PROFILE
     assert "python scripts/run_migrations.py" in SETUP_PROFILE
+
+
+def test_setup_facing_docs_do_not_use_direct_schema_setup_paths():
+    forbidden_patterns = (
+        "python scripts/run_migration.py scripts/setup_db.sql",
+        "psql -h localhost -U postgres -d jobs_funnel -f scripts/setup_db.sql",
+        "psql -U postgres -d jobs_funnel -f scripts/setup_db.sql",
+        "scripts/setup_db.sql | psql",
+    )
+
+    for path, text in SETUP_FACING_TEXTS.items():
+        for pattern in forbidden_patterns:
+            assert pattern not in text, f"{path} contains direct schema setup path: {pattern}"
 
 
 def test_setup_db_header_points_to_migration_runner():
     assert "python scripts/run_migrations.py" in SETUP_DB
-    assert "python scripts/run_migration.py scripts/setup_db.sql" not in SETUP_DB
-    assert "psql -U postgres" not in SETUP_DB
 
 
 def test_profile_prompt_docs_use_generic_scorer_wording():
