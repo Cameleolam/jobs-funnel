@@ -8,7 +8,7 @@ Each profile represents a job seeker with their own search terms, scoring rubric
 profiles/
 ├── profile1/
 │   ├── search.json          # Search terms, location, keyword filters
-│   ├── filter_prompt.md     # Candidate profile + scoring rubric for Claude
+│   ├── filter_prompt.md     # Candidate profile + scoring rubric for AI scorer
 │   ├── generate_prompt.md   # Work history + CV/cover letter tailoring rules
 │   └── cvs/                 # CV variants (HTML files)
 │       ├── software.html
@@ -33,7 +33,7 @@ profiles/
    - `an_location_keywords`: Location keywords to match
    - `an_negative_keywords`: Job titles to auto-skip (e.g., "manager", "consultant")
 
-3. Edit `filter_prompt.md` - this is the full candidate profile that Claude uses to score jobs. The template includes a fictional example; replace it with your own profile. The prompt structure is fully customizable - adapt it to your background or refine it with AI. Key sections to fill in:
+3. Edit `filter_prompt.md` - this is the full candidate profile that the scoring provider uses to score jobs. The template includes a fictional example; replace it with your own profile. The prompt structure is fully customizable - adapt it to your background or refine it with AI. Key sections to fill in:
    - Target roles, location preference, visa status
    - Core tech stack and experience level
    - Honest gaps (what you DON'T know)

@@ -61,7 +61,7 @@ your profile. See `countries/README.md` for details. After changing the crawler 
 ## Step 1: Install n8n
 
 ```bash
-npm install -g n8n
+npm install -g n8n dotenv-cli
 ```
 
 ## Step 2: Set up the Python environment

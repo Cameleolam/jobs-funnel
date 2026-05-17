@@ -124,11 +124,13 @@ def test_collect_checks_default_provider_uses_codex_command_env(monkeypatch):
     doctor.collect_checks()
 
     assert ("codex-local", True) in commands
+    assert ("npx", True) in commands
     assert ("claude-local", True) not in commands
     assert urls == [("n8n", "http://n8n.local:5678")]
 
 
 def test_collect_checks_prestart_skips_n8n_reachability(monkeypatch):
+    commands = []
     urls = []
     clear_doctor_env(monkeypatch)
     monkeypatch.setattr(doctor, "load_dotenv", lambda path: None)
@@ -138,11 +140,11 @@ def test_collect_checks_prestart_skips_n8n_reachability(monkeypatch):
         "check_workflow_file",
         lambda: doctor.CheckResult("workflow", "ok", "workflow.json exists"),
     )
-    monkeypatch.setattr(
-        doctor,
-        "check_command_available",
-        lambda command, *, required: doctor.CheckResult(command, "ok", f"{command} is available"),
-    )
+    def record_command(command, *, required):
+        commands.append((command, required))
+        return doctor.CheckResult(command, "ok", f"{command} is available")
+
+    monkeypatch.setattr(doctor, "check_command_available", record_command)
     monkeypatch.setenv("JOBS_FUNNEL_N8N_BASE", "http://n8n.local:5678")
     monkeypatch.setenv("OLLAMA_URL", "http://ollama.local:11434/")
     monkeypatch.setenv("SCORING_CODEX_CMD", "codex-local")
@@ -155,6 +157,7 @@ def test_collect_checks_prestart_skips_n8n_reachability(monkeypatch):
 
     doctor.collect_checks(prestart=True)
 
+    assert ("npx", True) in commands
     assert ("n8n", "http://n8n.local:5678") not in urls
 
 

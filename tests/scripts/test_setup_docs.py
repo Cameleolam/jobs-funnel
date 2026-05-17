@@ -31,6 +31,7 @@ def test_readme_config_model_is_not_primary_scoring_config():
 
 def test_readme_manual_n8n_start_uses_dotenv():
     assert "npx dotenv -e .env -- n8n start" in README
+    assert "npm install -g n8n dotenv-cli" in README
     assert "```bash\nn8n start\n```" not in README
 
 
@@ -42,6 +43,13 @@ def test_profile_setup_docs_use_migration_runner():
     assert "setup_db.sql" not in SETUP_PROFILE
     assert "psql -U postgres -d jobs_funnel -f scripts/setup_db.sql" not in SETUP_PROFILE
     assert "python scripts/run_migrations.py" in SETUP_PROFILE
+
+
+def test_profile_prompt_docs_use_generic_scorer_wording():
+    assert "filter_prompt.md     # Candidate profile + scoring rubric for AI scorer" in PROFILES_README
+    assert "scoring provider uses to score jobs" in PROFILES_README
+    assert "for Claude" not in PROFILES_README
+    assert "Claude uses" not in PROFILES_README
 
 
 def test_readme_selects_profile_before_running_migrations():
