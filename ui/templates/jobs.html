@@ -71,6 +71,7 @@
       <input type="checkbox" name="recent_only" value="true" {% if filters.recent_only %}checked{% endif %}> Last 10 days
     </label>
     <label title="Hide jobs marked rejected or nope">
+      <input type="hidden" name="hide_rejected" value="false">
       <input type="checkbox" name="hide_rejected" value="true" {% if filters.hide_rejected %}checked{% endif %}> Hide rejected/nope
     </label>
   </div>

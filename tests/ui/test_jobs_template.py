@@ -17,3 +17,7 @@ def test_job_rows_have_empty_state():
 
 def test_jobs_template_groups_secondary_filters():
     assert "filter-secondary" in JOBS
+
+
+def test_hide_rejected_checkbox_has_hidden_false_value():
+    assert 'name="hide_rejected" value="false"' in JOBS
