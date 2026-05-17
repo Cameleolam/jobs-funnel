@@ -15,6 +15,11 @@ def test_setup_db_contains_pgvector_baseline():
 def test_setup_db_contains_calibration_tables():
     assert "CREATE TABLE IF NOT EXISTS {{TABLE}}_calibration_proposals" in SQL
     assert "CREATE TABLE IF NOT EXISTS {{TABLE}}_calibration_settings" in SQL
+    assert "min_review_decisions  INTEGER NOT NULL DEFAULT 30 CHECK (min_review_decisions > 0)" in SQL
+    assert "min_outcomes          INTEGER NOT NULL DEFAULT 10 CHECK (min_outcomes > 0)" in SQL
+    assert "confidence            TEXT NOT NULL DEFAULT 'low' CHECK (confidence IN ('low','medium','high'))" in SQL
+    assert "CHECK (review_low <= review_high)" in SQL
+    assert "source                TEXT NOT NULL DEFAULT 'defaults'" in SQL
     assert "INSERT INTO {{TABLE}}_calibration_settings (singleton)" in SQL
 
 
