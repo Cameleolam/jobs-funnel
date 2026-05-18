@@ -47,6 +47,15 @@ def test_readme_uses_apply_all_migration_command():
     assert "Jobs per Claude filter batch" not in README
 
 
+def test_readme_documents_default_codex_and_ollama_requirements():
+    assert "**Codex CLI**" in README
+    assert "`codex --version`" in README
+    assert "**Ollama**" in README
+    assert "ollama pull bge-m3" in README
+    assert "`OLLAMA_URL` / `EMBEDDING_MODEL`" in README
+    assert "Claude Code is optional" in README
+
+
 def test_readme_config_model_is_not_primary_scoring_config():
     assert "Claude model for scoring and dedup" not in README
     assert "Scoring is selected through environment variables, not `config.json`." in README

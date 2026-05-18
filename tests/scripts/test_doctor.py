@@ -4,6 +4,9 @@ import scripts.doctor as doctor
 
 
 DOCTOR_ENV_VARS = [
+    "JOBS_FUNNEL_PROJECT_DIR",
+    "JOBS_FUNNEL_PROFILE",
+    "JOBS_FUNNEL_TABLE",
     "JOBS_FUNNEL_N8N_BASE",
     "OLLAMA_URL",
     "EMBEDDING_MODEL",
@@ -56,6 +59,56 @@ def test_check_command_available_reports_missing(monkeypatch):
     assert result.status == "fail"
     assert "codex was not found on PATH" in result.message
     assert result.action == "Install codex or update PATH."
+
+
+def test_check_required_env_values_reports_blank_values(monkeypatch):
+    clear_doctor_env(monkeypatch)
+    monkeypatch.setenv("JOBS_FUNNEL_PROFILE", "profile1")
+    monkeypatch.setenv("JOBS_FUNNEL_TABLE", "jobs")
+
+    result = doctor.check_required_env_values()
+
+    assert result.status == "fail"
+    assert "JOBS_FUNNEL_PROJECT_DIR" in result.message
+    assert "Fill JOBS_FUNNEL_PROJECT_DIR" in result.action
+
+
+def test_check_required_env_values_passes_when_required_values_exist(monkeypatch, tmp_path):
+    clear_doctor_env(monkeypatch)
+    monkeypatch.setenv("JOBS_FUNNEL_PROJECT_DIR", str(tmp_path))
+    monkeypatch.setenv("JOBS_FUNNEL_PROFILE", "profile1")
+    monkeypatch.setenv("JOBS_FUNNEL_TABLE", "jobs_profile1")
+
+    result = doctor.check_required_env_values()
+
+    assert result.status == "ok"
+
+
+def test_check_profile_files_reports_missing_profile_inputs(monkeypatch, tmp_path):
+    clear_doctor_env(monkeypatch)
+    monkeypatch.setenv("JOBS_FUNNEL_PROJECT_DIR", str(tmp_path))
+    monkeypatch.setenv("JOBS_FUNNEL_PROFILE", "profile1")
+
+    result = doctor.check_profile_files()
+
+    assert result.status == "fail"
+    assert "required profile files are missing" in result.message
+    assert "profile1" in result.action
+
+
+def test_check_profile_files_passes_when_profile_inputs_exist(monkeypatch, tmp_path):
+    clear_doctor_env(monkeypatch)
+    profile_dir = tmp_path / "profiles" / "profile1"
+    profile_dir.mkdir(parents=True)
+    (profile_dir / "search.json").write_text("{}", encoding="utf-8")
+    (profile_dir / "filter_prompt.md").write_text("score jobs", encoding="utf-8")
+    monkeypatch.setenv("JOBS_FUNNEL_PROJECT_DIR", str(tmp_path))
+    monkeypatch.setenv("JOBS_FUNNEL_PROFILE", "profile1")
+
+    result = doctor.check_profile_files()
+
+    assert result.status == "ok"
+    assert result.message == "profile files exist for profile1"
 
 
 def test_check_url_uses_get_and_reports_ok(monkeypatch):

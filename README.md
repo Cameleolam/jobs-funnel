@@ -54,9 +54,14 @@ your profile. See `countries/README.md` for details. After changing the crawler 
 1. **Python 3.9+**: `python --version`
 2. **Node.js 18+**: `node -v`
 3. **Docker**: `docker --version` (for PostgreSQL)
-4. **AI scoring CLI**: install and authenticate at least one provider:
-   - Claude Code (`claude --version`)
-   - Codex CLI (`codex --version`)
+4. **Codex CLI**: install, authenticate, and verify `codex --version` (default scorer)
+5. **Ollama**: install, start it, and pull the default embedding model:
+   ```bash
+   ollama pull bge-m3
+   ```
+
+Claude Code is optional. Install it only if you set `SCORING_PROVIDER` or
+`SCORING_REVIEW_PROVIDER` to a Claude provider.
 
 ## Step 1: Install n8n
 
@@ -86,6 +91,7 @@ Key variables:
 - `JOBS_FUNNEL_PROFILE` — profile name (whatever you named it in setup)
 - `JOBS_FUNNEL_TABLE` — Postgres table name (e.g., `jobs`)
 - `JOBS_FUNNEL_PG_*` — Postgres connection details
+- `OLLAMA_URL` / `EMBEDDING_MODEL` — defaults to local Ollama with `bge-m3`
 - `SCORING_PROVIDER` — primary AI scorer (`claude_sonnet`, `claude_haiku`, `codex_gpt55_high`, `codex_gpt55_xhigh`, or `ollama_local`)
 - `SCORING_REVIEW_PROVIDER` — optional secondary reviewer for borderline scores
 
@@ -307,6 +313,7 @@ python scripts/doctor.py
 
 Common issues:
 - **Codex calls failing on Windows**: set `SCORING_CODEX_CMD` to the full `.cmd` path, for example `C:\Users\<you>\AppData\Roaming\npm\codex.cmd`
+- **Ollama checks failing**: start Ollama and run `ollama pull bge-m3`, or change `EMBEDDING_MODEL` only if you know the replacement model and dimension
 - **Claude calls hanging when configured**: check `claude --version` works, try `claude -p "hello"` to verify auth
 - **Review provider not running**: confirm `SCORING_REVIEW_PROVIDER` is set and the base `fit_score` is between `SCORING_REVIEW_LOW` and `SCORING_REVIEW_HIGH`
 - **Preflight failures**: read the error — usually a missing env var or profile file

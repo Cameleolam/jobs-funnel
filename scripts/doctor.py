@@ -14,6 +14,11 @@ from dotenv import load_dotenv
 
 Status = Literal["ok", "warn", "fail"]
 PROJECT_DIR = Path(__file__).resolve().parent.parent
+REQUIRED_ENV_VARS = (
+    "JOBS_FUNNEL_PROJECT_DIR",
+    "JOBS_FUNNEL_PROFILE",
+    "JOBS_FUNNEL_TABLE",
+)
 
 
 @dataclass(frozen=True)
@@ -74,6 +79,49 @@ def check_env_file() -> CheckResult:
     )
 
 
+def check_required_env_values() -> CheckResult:
+    missing = [name for name in REQUIRED_ENV_VARS if not os.environ.get(name, "").strip()]
+    if not missing:
+        return CheckResult(".env values", "ok", "required .env values are set")
+    joined = ", ".join(missing)
+    return CheckResult(
+        ".env values",
+        "fail",
+        f"required values are missing: {joined}",
+        f"Fill {joined} in .env.",
+    )
+
+
+def check_profile_files() -> CheckResult:
+    project_dir = os.environ.get("JOBS_FUNNEL_PROJECT_DIR", "").strip()
+    profile = os.environ.get("JOBS_FUNNEL_PROFILE", "").strip()
+    if not project_dir or not profile:
+        return CheckResult(
+            "profile",
+            "fail",
+            "profile files cannot be checked before .env profile values are set",
+            "Fill JOBS_FUNNEL_PROJECT_DIR and JOBS_FUNNEL_PROFILE in .env.",
+        )
+
+    profile_dir = Path(project_dir) / "profiles" / profile
+    missing = []
+    if not profile_dir.is_dir():
+        missing.append(str(profile_dir))
+    else:
+        for filename in ("search.json", "filter_prompt.md"):
+            if not (profile_dir / filename).is_file():
+                missing.append(str(profile_dir / filename))
+
+    if not missing:
+        return CheckResult("profile", "ok", f"profile files exist for {profile}")
+    return CheckResult(
+        "profile",
+        "fail",
+        "required profile files are missing",
+        "Create or fix: " + ", ".join(missing),
+    )
+
+
 def check_workflow_file() -> CheckResult:
     path = PROJECT_DIR / "workflow.json"
     if path.is_file():
@@ -96,6 +144,8 @@ def collect_checks(*, prestart: bool = False) -> list[CheckResult]:
     claude_command = os.environ.get("SCORING_CLAUDE_CMD", "claude")
     checks = [
         check_env_file(),
+        check_required_env_values(),
+        check_profile_files(),
         check_workflow_file(),
         check_command_available("docker", required=True),
         check_command_available("npx", required=True),
