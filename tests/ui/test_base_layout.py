@@ -100,6 +100,10 @@ def test_section_nav_is_active_by_path():
     assert _active_labels(_render_base("/system")) == ["System"]
 
 
+def test_review_query_does_not_override_section_paths():
+    assert _active_labels(_render_base("/tracking", b"view=review")) == ["Tracking"]
+
+
 def test_static_stylesheet_is_served():
     response = TestClient(srv.app).get("/static/styles.css")
 

@@ -10,7 +10,7 @@
 <body>
   {% set path = request.url.path %}
   {% set current_view = request.query_params.get("view", "") %}
-  {% set review_active = current_view == "review" %}
+  {% set review_active = path == "/" and current_view == "review" %}
   {% set jobs_active = (path == "/" or path.startswith("/jobs")) and not review_active %}
 
   <div class="app-shell">
