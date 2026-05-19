@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock
 
 import pytest
 from fastapi import HTTPException
@@ -8,7 +8,7 @@ import ui.db as ui_db
 
 
 def test_get_db_uses_shared_scripts_connection(monkeypatch):
-    conn = Mock()
+    conn = MagicMock()
     get_conn = Mock(return_value=conn)
     monkeypatch.setattr(ui_db.scripts_db, "get_conn", get_conn)
 
@@ -39,7 +39,7 @@ def test_fetch_one_uses_real_dict_cursor(monkeypatch):
     row = {"one": 1}
     cur = Mock()
     cur.fetchone.return_value = row
-    conn = Mock()
+    conn = MagicMock()
     conn.cursor.return_value.__enter__.return_value = cur
 
     @contextmanager

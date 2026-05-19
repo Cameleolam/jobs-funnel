@@ -7,48 +7,28 @@ Start:
 
 import io
 import json
-import os
-import re
-from contextlib import contextmanager
 from datetime import datetime
-from pathlib import Path
 from urllib.parse import urlencode
 
 import psycopg2
 import psycopg2.extras
-from dotenv import load_dotenv
 from fastapi import FastAPI, Form, HTTPException, Query, Request
 from pydantic import BaseModel
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
 from scripts import calibration_proposals
 from scripts import calibration_settings
+from ui.config import EVENTS_TABLE, STATIC_DIR, TABLE, TEMPLATES_DIR
+from ui.db import execute, fetch_all, fetch_one, get_db
+from ui.rendering import format_salary, render, templates
 from ui.services.calibration_presenter import proposal_summary_lines
 from ui.services import system_health
 
 # ── Config ───────────────────────────────────────────────────────────
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-
-DB_CONF = dict(
-    host=os.environ.get("JOBS_FUNNEL_PG_HOST", "localhost"),
-    port=os.environ.get("JOBS_FUNNEL_PG_PORT", "5432"),
-    dbname=os.environ.get("JOBS_FUNNEL_PG_DATABASE", "jobs_funnel"),
-    user=os.environ.get("JOBS_FUNNEL_PG_USER", "postgres"),
-    password=os.environ.get("JOBS_FUNNEL_PG_PASSWORD", ""),
-)
-TABLE = os.environ.get("JOBS_FUNNEL_TABLE", "jobs")
-EVENTS_TABLE = f"{TABLE}_events"
-
-TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
-
 app = FastAPI(title="Jobs Funnel UI")
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
-
-STATIC_DIR = Path(__file__).resolve().parent / "static"
 STATIC_DIR.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -65,19 +45,16 @@ def _detect_optional_columns():
         "critique_count",
     }
     try:
-        conn = psycopg2.connect(**DB_CONF)
-    except psycopg2.OperationalError:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_name = %s AND column_name = ANY(%s)",
+                    (TABLE, list(wanted)),
+                )
+                return {r[0] for r in cur.fetchall()}
+    except HTTPException:
         return set()
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT column_name FROM information_schema.columns "
-                "WHERE table_name = %s AND column_name = ANY(%s)",
-                (TABLE, list(wanted)),
-            )
-            return {r[0] for r in cur.fetchall()}
-    finally:
-        conn.close()
 
 
 OPTIONAL_COLUMNS = _detect_optional_columns()
@@ -147,63 +124,6 @@ else:
         "NULL AS confidence, 0 AS critique_count"
     )
 
-
-# ── Jinja filters ────────────────────────────────────────────────────
-def html_to_text(value):
-    if not value:
-        return ""
-    text = re.sub(r'<br\s*/?>', '\n', str(value))
-    text = re.sub(r'</(?:p|div|li|tr|h[1-6])>', '\n', text)
-    text = re.sub(r'<[^>]+>', '', text)
-    text = re.sub(r'&nbsp;', ' ', text)
-    text = re.sub(r'&amp;', '&', text)
-    text = re.sub(r'&lt;', '<', text)
-    text = re.sub(r'&gt;', '>', text)
-    text = re.sub(r'&quot;', '"', text)
-    text = re.sub(r'\n{3,}', '\n\n', text)
-    return text.strip()
-
-
-def format_salary(job):
-    mn, mx = job.get("salary_min"), job.get("salary_max")
-    if not mn and not mx:
-        return ""
-    cur = (job.get("salary_currency") or "EUR").upper()
-    sym = {"EUR": "\u20ac", "USD": "$", "CHF": "CHF", "GBP": "\u00a3"}.get(cur, cur)
-    if mn and mx:
-        return f"{mn // 1000}-{mx // 1000}k {sym}"
-    if mn:
-        return f"{mn // 1000}k+ {sym}"
-    return f"{mx // 1000}k {sym}"
-
-
-def has_flag(notes):
-    if not notes:
-        return False
-    lower = notes.lower()
-    return any(kw in lower for kw in ("manual check", "flag", "fetch full", "fetch the"))
-
-
-def format_duration(ms):
-    if ms is None:
-        return "..."
-    s = ms // 1000
-    if s < 60:
-        return f"{s}s"
-    return f"{s // 60}m {s % 60}s"
-
-
-templates.env.filters["html_to_text"] = html_to_text
-templates.env.filters["format_salary"] = format_salary
-templates.env.filters["has_flag"] = has_flag
-templates.env.filters["format_duration"] = format_duration
-
-
-def render(request: Request, name: str, ctx: dict | None = None):
-    context = {"request": request, "now": datetime.now().astimezone(), **(ctx or {})}
-    return templates.TemplateResponse(request=request, name=name, context=context)
-
-
 def _query_bool(request: Request, name: str, default: bool = False) -> bool:
     value = request.query_params.get(name)
     if value is None:
@@ -251,41 +171,6 @@ def _calibration_context(error: str | None = None):
 
 def _render_calibration_content(request: Request, error: str | None = None):
     return render(request, "partials/calibration_content.html", _calibration_context(error))
-
-
-# ── DB helpers ───────────────────────────────────────────────────────
-@contextmanager
-def get_db():
-    try:
-        conn = psycopg2.connect(**DB_CONF)
-    except psycopg2.OperationalError:
-        raise HTTPException(status_code=503, detail="Database unavailable")
-    try:
-        yield conn
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def fetch_all(query: str, params: tuple = ()):
-    with get_db() as conn:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(query, params)
-            return cur.fetchall()
-
-
-def fetch_one(query: str, params: tuple = ()):
-    with get_db() as conn:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(query, params)
-            return cur.fetchone()
-
-
-def execute(query: str, params: tuple = ()):
-    with get_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute(query, params)
-
 
 # ── Stats helper ─────────────────────────────────────────────────────
 def get_stats():
