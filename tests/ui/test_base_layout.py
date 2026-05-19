@@ -109,3 +109,24 @@ def test_static_stylesheet_is_served():
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/css")
+
+
+def test_shell_styles_define_responsive_sidebar_layout():
+    styles = _styles_source()
+
+    expected_fragments = [
+        ":root",
+        ".app-shell",
+        ".app-sidebar",
+        ".app-brand",
+        ".app-nav",
+        ".app-nav-link.active",
+        ".app-main",
+        ".app-content",
+        "@media (max-width: 900px)",
+    ]
+    for fragment in expected_fragments:
+        assert fragment in styles
+
+    assert ".nav-bar" not in styles
+    assert ".nav-bar-inner" not in styles
