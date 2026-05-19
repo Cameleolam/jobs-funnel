@@ -3,6 +3,8 @@ import inspect
 from fastapi.testclient import TestClient
 
 from scripts import doctor
+from ui.config import STATIC_DIR, TEMPLATES_DIR
+from ui.routes import system
 from ui.services import system_health
 import ui.server as srv
 
@@ -25,7 +27,7 @@ def test_collect_system_health_maps_doctor_checks(monkeypatch):
 
 def test_system_page_renders_health_checks(monkeypatch):
     monkeypatch.setattr(
-        srv.system_health,
+        system.system_health,
         "collect_system_health",
         lambda: [
             {"name": "Postgres", "status": "ok", "message": "Postgres reachable", "action": ""},
@@ -43,17 +45,17 @@ def test_system_page_renders_health_checks(monkeypatch):
 
 
 def test_system_page_route_uses_sync_endpoint():
-    assert not inspect.iscoroutinefunction(srv.system_page)
+    assert not inspect.iscoroutinefunction(system.system_page)
 
 
 def test_nav_exposes_system_page():
-    html = (srv.TEMPLATES_DIR / "base.html").read_text(encoding="utf-8")
+    html = (TEMPLATES_DIR / "base.html").read_text(encoding="utf-8")
 
     assert 'href="/system"' in html
 
 
 def test_base_template_has_system_health_styles():
-    styles = (srv.STATIC_DIR / "styles.css").read_text(encoding="utf-8")
+    styles = (STATIC_DIR / "styles.css").read_text(encoding="utf-8")
 
     assert ".health-row" in styles
     assert ".badge-ok" in styles

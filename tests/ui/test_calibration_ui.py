@@ -1,5 +1,8 @@
 from fastapi.testclient import TestClient
 
+from ui.config import TEMPLATES_DIR
+from ui.rendering import templates
+from ui.routes import calibration
 import ui.server as srv
 
 
@@ -25,11 +28,11 @@ def _active_settings(**overrides):
 
 def test_calibration_page_renders_active_settings(monkeypatch):
     monkeypatch.setattr(
-        srv.calibration_settings,
+        calibration.calibration_settings,
         "load_active_settings",
         lambda force=False: _active_settings(),
     )
-    monkeypatch.setattr(srv.calibration_proposals, "list_proposals", lambda limit=20: [])
+    monkeypatch.setattr(calibration.calibration_proposals, "list_proposals", lambda limit=20: [])
 
     response = TestClient(srv.app).get("/calibration")
 
@@ -44,17 +47,17 @@ def test_calibration_page_renders_active_settings(monkeypatch):
 
 def test_generate_proposal_endpoint_renders_proposal_partial(monkeypatch):
     monkeypatch.setattr(
-        srv.calibration_settings,
+        calibration.calibration_settings,
         "load_active_settings",
         lambda force=False: _active_settings(),
     )
     monkeypatch.setattr(
-        srv.calibration_proposals,
+        calibration.calibration_proposals,
         "generate_proposal",
         lambda window_days=90: {"id": 3, "status": "proposed"},
     )
     monkeypatch.setattr(
-        srv.calibration_proposals,
+        calibration.calibration_proposals,
         "list_proposals",
         lambda limit=20: [
             {
@@ -82,21 +85,21 @@ def test_generate_proposal_endpoint_renders_proposal_partial(monkeypatch):
 def test_apply_and_rollback_endpoints_call_service(monkeypatch):
     calls = []
     monkeypatch.setattr(
-        srv.calibration_settings,
+        calibration.calibration_settings,
         "load_active_settings",
         lambda force=False: _active_settings(),
     )
     monkeypatch.setattr(
-        srv.calibration_proposals,
+        calibration.calibration_proposals,
         "apply_proposal",
         lambda proposal_id: calls.append(("apply", proposal_id)) or {},
     )
     monkeypatch.setattr(
-        srv.calibration_proposals,
+        calibration.calibration_proposals,
         "rollback_proposal",
         lambda proposal_id: calls.append(("rollback", proposal_id)) or {},
     )
-    monkeypatch.setattr(srv.calibration_proposals, "list_proposals", lambda limit=20: [])
+    monkeypatch.setattr(calibration.calibration_proposals, "list_proposals", lambda limit=20: [])
 
     client = TestClient(srv.app)
     apply_response = client.post("/calibration/proposals/7/apply")
@@ -109,7 +112,7 @@ def test_apply_and_rollback_endpoints_call_service(monkeypatch):
 
 def test_apply_endpoint_response_includes_refreshed_active_settings(monkeypatch):
     monkeypatch.setattr(
-        srv.calibration_settings,
+        calibration.calibration_settings,
         "load_active_settings",
         lambda force=False: _active_settings(
             review_low=2,
@@ -118,9 +121,9 @@ def test_apply_endpoint_response_includes_refreshed_active_settings(monkeypatch)
             active_proposal_id=7,
         ),
     )
-    monkeypatch.setattr(srv.calibration_proposals, "apply_proposal", lambda proposal_id: {})
+    monkeypatch.setattr(calibration.calibration_proposals, "apply_proposal", lambda proposal_id: {})
     monkeypatch.setattr(
-        srv.calibration_proposals,
+        calibration.calibration_proposals,
         "list_proposals",
         lambda limit=20: [
             {
@@ -146,13 +149,13 @@ def test_apply_endpoint_response_includes_refreshed_active_settings(monkeypatch)
 
 def test_rollback_endpoint_response_includes_refreshed_active_settings(monkeypatch):
     monkeypatch.setattr(
-        srv.calibration_settings,
+        calibration.calibration_settings,
         "load_active_settings",
         lambda force=False: _active_settings(active_proposal_id=None),
     )
-    monkeypatch.setattr(srv.calibration_proposals, "rollback_proposal", lambda proposal_id: {})
+    monkeypatch.setattr(calibration.calibration_proposals, "rollback_proposal", lambda proposal_id: {})
     monkeypatch.setattr(
-        srv.calibration_proposals,
+        calibration.calibration_proposals,
         "list_proposals",
         lambda limit=20: [
             {
@@ -177,15 +180,15 @@ def test_rollback_endpoint_response_includes_refreshed_active_settings(monkeypat
 
 def test_generate_proposal_state_error_returns_visible_error(monkeypatch):
     def fail_generate(window_days=90):
-        raise srv.calibration_proposals.ProposalStateError("window_days must be positive")
+        raise calibration.calibration_proposals.ProposalStateError("window_days must be positive")
 
     monkeypatch.setattr(
-        srv.calibration_settings,
+        calibration.calibration_settings,
         "load_active_settings",
         lambda force=False: _active_settings(),
     )
-    monkeypatch.setattr(srv.calibration_proposals, "generate_proposal", fail_generate)
-    monkeypatch.setattr(srv.calibration_proposals, "list_proposals", lambda limit=20: [])
+    monkeypatch.setattr(calibration.calibration_proposals, "generate_proposal", fail_generate)
+    monkeypatch.setattr(calibration.calibration_proposals, "list_proposals", lambda limit=20: [])
 
     response = TestClient(srv.app, raise_server_exceptions=False).post(
         "/calibration/proposals",
@@ -200,17 +203,17 @@ def test_generate_proposal_state_error_returns_visible_error(monkeypatch):
 
 def test_apply_proposal_state_error_returns_visible_error(monkeypatch):
     def fail_apply(proposal_id):
-        raise srv.calibration_proposals.ProposalStateError(
+        raise calibration.calibration_proposals.ProposalStateError(
             f"Proposal {proposal_id} is not proposed"
         )
 
     monkeypatch.setattr(
-        srv.calibration_settings,
+        calibration.calibration_settings,
         "load_active_settings",
         lambda force=False: _active_settings(),
     )
-    monkeypatch.setattr(srv.calibration_proposals, "apply_proposal", fail_apply)
-    monkeypatch.setattr(srv.calibration_proposals, "list_proposals", lambda limit=20: [])
+    monkeypatch.setattr(calibration.calibration_proposals, "apply_proposal", fail_apply)
+    monkeypatch.setattr(calibration.calibration_proposals, "list_proposals", lambda limit=20: [])
 
     response = TestClient(srv.app).post("/calibration/proposals/7/apply")
 
@@ -222,17 +225,17 @@ def test_apply_proposal_state_error_returns_visible_error(monkeypatch):
 
 def test_rollback_proposal_state_error_returns_visible_error(monkeypatch):
     def fail_rollback(proposal_id):
-        raise srv.calibration_proposals.ProposalStateError(
+        raise calibration.calibration_proposals.ProposalStateError(
             f"Proposal {proposal_id} is not applied"
         )
 
     monkeypatch.setattr(
-        srv.calibration_settings,
+        calibration.calibration_settings,
         "load_active_settings",
         lambda force=False: _active_settings(),
     )
-    monkeypatch.setattr(srv.calibration_proposals, "rollback_proposal", fail_rollback)
-    monkeypatch.setattr(srv.calibration_proposals, "list_proposals", lambda limit=20: [])
+    monkeypatch.setattr(calibration.calibration_proposals, "rollback_proposal", fail_rollback)
+    monkeypatch.setattr(calibration.calibration_proposals, "list_proposals", lambda limit=20: [])
 
     response = TestClient(srv.app).post("/calibration/proposals/7/rollback")
 
@@ -243,7 +246,7 @@ def test_rollback_proposal_state_error_returns_visible_error(monkeypatch):
 
 
 def test_rollback_button_only_renders_for_active_applied_proposal():
-    html = srv.templates.get_template("partials/calibration_proposals.html").render(
+    html = templates.get_template("partials/calibration_proposals.html").render(
         request={},
         active=_active_settings(active_proposal_id=2),
         proposals=[
@@ -273,7 +276,7 @@ def test_rollback_button_only_renders_for_active_applied_proposal():
 
 
 def test_proposals_template_renders_compact_analytics_summary():
-    html = srv.templates.get_template("partials/calibration_proposals.html").render(
+    html = templates.get_template("partials/calibration_proposals.html").render(
         request={},
         active=_active_settings(),
         proposals=[
@@ -315,7 +318,7 @@ def test_proposals_template_renders_compact_analytics_summary():
 
 
 def test_calibration_proposals_render_human_summary():
-    html = srv.templates.get_template("partials/calibration_proposals.html").render(
+    html = templates.get_template("partials/calibration_proposals.html").render(
         request={},
         active=_active_settings(),
         proposals=[
@@ -336,7 +339,7 @@ def test_calibration_proposals_render_human_summary():
 
 
 def test_proposals_template_handles_older_rows_without_metrics_summary():
-    html = srv.templates.get_template("partials/calibration_proposals.html").render(
+    html = templates.get_template("partials/calibration_proposals.html").render(
         request={},
         active=_active_settings(),
         proposals=[
@@ -356,6 +359,6 @@ def test_proposals_template_handles_older_rows_without_metrics_summary():
 
 
 def test_nav_exposes_calibration_page():
-    html = (srv.TEMPLATES_DIR / "base.html").read_text(encoding="utf-8")
+    html = (TEMPLATES_DIR / "base.html").read_text(encoding="utf-8")
 
     assert 'href="/calibration"' in html

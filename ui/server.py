@@ -5,44 +5,25 @@ Start:
     python -m uvicorn ui.server:app --port 8080 --reload
 """
 
-from fastapi import FastAPI, Form, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
-from scripts import calibration_proposals
-from scripts import calibration_settings
-from ui.config import EVENTS_TABLE, STATIC_DIR, TABLE, TEMPLATES_DIR
+from ui.config import EVENTS_TABLE, STATIC_DIR, TABLE
 from ui.db import execute, fetch_all, fetch_one
-from ui.rendering import render, templates
-from ui.routes import jobs
-from ui.services.calibration_presenter import proposal_summary_lines
+from ui.rendering import render
+from ui.routes import calibration, jobs, runs, system
 from ui.services import stats as stats_service
-from ui.services import system_health
 
 # ── Config ───────────────────────────────────────────────────────────
 app = FastAPI(title="Jobs Funnel UI")
 STATIC_DIR.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 app.include_router(jobs.router)
-
-
-def _calibration_context(error: str | None = None):
-    active = calibration_settings.load_active_settings(force=True)
-    proposals = calibration_proposals.list_proposals(limit=20)
-    proposals = [
-        {**proposal, "summary_lines": proposal_summary_lines(proposal)}
-        for proposal in proposals
-    ]
-    return {
-        "active": active,
-        "proposals": proposals,
-        "error": error,
-    }
-
-
-def _render_calibration_content(request: Request, error: str | None = None):
-    return render(request, "partials/calibration_content.html", _calibration_context(error))
+app.include_router(calibration.router)
+app.include_router(system.router)
+app.include_router(runs.router)
 
 
 @app.get("/stats", response_class=HTMLResponse)
@@ -50,71 +31,9 @@ async def stats(request: Request):
     return render(request, "partials/stats.html", {"stats": stats_service.get_stats()})
 
 
-# Pipeline Runs
-@app.get("/runs", response_class=HTMLResponse)
-async def runs_page(request: Request):
-    return render(request, "runs.html")
-
-
-@app.get("/calibration", response_class=HTMLResponse)
-async def calibration_page(request: Request):
-    return render(request, "calibration.html", _calibration_context())
-
-
-@app.get("/system", response_class=HTMLResponse)
-def system_page(request: Request):
-    return render(request, "system.html", {"checks": system_health.collect_system_health()})
-
-
-@app.post("/calibration/proposals", response_class=HTMLResponse)
-async def calibration_generate_proposal(
-    request: Request,
-    window_days: int = Form(90),
-):
-    try:
-        calibration_proposals.generate_proposal(window_days=window_days)
-    except calibration_proposals.ProposalStateError as exc:
-        return _render_calibration_content(request, str(exc))
-    return _render_calibration_content(request)
-
-
-@app.post("/calibration/proposals/{proposal_id}/apply", response_class=HTMLResponse)
-async def calibration_apply_proposal(request: Request, proposal_id: int):
-    try:
-        calibration_proposals.apply_proposal(proposal_id)
-    except calibration_proposals.ProposalStateError as exc:
-        return _render_calibration_content(request, str(exc))
-    return _render_calibration_content(request)
-
-
-@app.post("/calibration/proposals/{proposal_id}/rollback", response_class=HTMLResponse)
-async def calibration_rollback_proposal(request: Request, proposal_id: int):
-    try:
-        calibration_proposals.rollback_proposal(proposal_id)
-    except calibration_proposals.ProposalStateError as exc:
-        return _render_calibration_content(request, str(exc))
-    return _render_calibration_content(request)
-
-
 @app.get("/tracking", response_class=HTMLResponse)
 async def tracking_page(request: Request):
     return render(request, "tracking.html")
-
-
-@app.get("/runs/list", response_class=HTMLResponse)
-async def runs_list(
-    request: Request,
-    limit: int = Query(50, alias="limit"),
-    offset: int = Query(0, alias="offset"),
-):
-    runs = fetch_all(
-        "SELECT * FROM pipeline_runs ORDER BY started_at DESC LIMIT %s OFFSET %s",
-        (limit, offset),
-    )
-    total = fetch_one("SELECT COUNT(*) as cnt FROM pipeline_runs")["cnt"]
-    return render(request, "partials/run_rows.html", {
-        "runs": runs, "total": total, "limit": limit, "offset": offset,
-    })
 
 
 # ── Tracking API ─────────────────────────────────────────────────────
