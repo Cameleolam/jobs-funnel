@@ -8,19 +8,47 @@
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-  <nav class="nav-bar top-nav">
-    <div class="nav-bar-inner">
-      <a href="/">Jobs</a>
-      <a href="/?view=review">Review Queue</a>
-      <a href="/tracking">Tracking</a>
-      <a href="/runs">Runs</a>
-      <a href="/calibration">Calibration</a>
-      <a href="/system">System</a>
-    </div>
-  </nav>
-  <div class="container">
-    {% block content %}{% endblock %}
+  {% set path = request.url.path %}
+  {% set current_view = request.query_params.get("view", "") %}
+  {% set review_active = current_view == "review" %}
+  {% set jobs_active = (path == "/" or path.startswith("/jobs")) and not review_active %}
+
+  <div class="app-shell">
+    <aside class="app-sidebar" aria-label="Primary">
+      <a class="app-brand" href="/" aria-label="Jobs Funnel">
+        <span class="app-brand-mark">JF</span>
+        <span class="app-brand-name">Jobs Funnel</span>
+      </a>
+
+      <nav class="app-nav" aria-label="Primary navigation">
+        <a class="app-nav-link{% if jobs_active %} active{% endif %}" href="/">
+          <span class="app-nav-text">Jobs</span>
+        </a>
+        <a class="app-nav-link{% if review_active %} active{% endif %}" href="/?view=review">
+          <span class="app-nav-text">Review Queue</span>
+        </a>
+        <a class="app-nav-link{% if path.startswith('/tracking') %} active{% endif %}" href="/tracking">
+          <span class="app-nav-text">Tracking</span>
+        </a>
+        <a class="app-nav-link{% if path.startswith('/runs') %} active{% endif %}" href="/runs">
+          <span class="app-nav-text">Runs</span>
+        </a>
+        <a class="app-nav-link{% if path.startswith('/calibration') %} active{% endif %}" href="/calibration">
+          <span class="app-nav-text">Calibration</span>
+        </a>
+        <a class="app-nav-link{% if path.startswith('/system') %} active{% endif %}" href="/system">
+          <span class="app-nav-text">System</span>
+        </a>
+      </nav>
+    </aside>
+
+    <main class="app-main">
+      <div class="app-content">
+        {% block content %}{% endblock %}
+      </div>
+    </main>
   </div>
+
   <script>
     // Toggle detail panel: if already open, close it instead of re-fetching
     document.addEventListener('htmx:configRequest', function(e) {

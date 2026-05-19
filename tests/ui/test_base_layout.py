@@ -2,20 +2,76 @@ from pathlib import Path
 import re
 
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
+from ui.rendering import templates
 import ui.server as srv
 
 
-BASE = Path("ui/templates/base.html").read_text(encoding="utf-8")
-STYLES = Path("ui/static/styles.css").read_text(encoding="utf-8")
+BASE_PATH = Path("ui/templates/base.html")
+STYLES_PATH = Path("ui/static/styles.css")
+
+
+def _base_source():
+    return BASE_PATH.read_text(encoding="utf-8")
+
+
+def _styles_source():
+    return STYLES_PATH.read_text(encoding="utf-8")
+
+
+def _render_base(path="/", query_string=b""):
+    request = Request({
+        "type": "http",
+        "method": "GET",
+        "path": path,
+        "raw_path": path.encode("ascii"),
+        "query_string": query_string,
+        "headers": [],
+        "scheme": "http",
+        "server": ("testserver", 80),
+        "client": ("testclient", 50000),
+    })
+    return templates.get_template("base.html").render(request=request)
+
+
+def _nav_links(html):
+    nav = re.search(
+        r'<nav class="app-nav" aria-label="Primary navigation">(.*?)</nav>',
+        html,
+        re.DOTALL,
+    )
+    assert nav is not None
+    return re.findall(
+        r'<a class="app-nav-link(?: active)?" href="([^"]+)">\s*'
+        r'<span class="app-nav-text">([^<]+)</span>\s*</a>',
+        nav.group(1),
+    )
+
+
+def _active_labels(html):
+    return re.findall(
+        r'<a class="app-nav-link active" href="[^"]+">\s*'
+        r'<span class="app-nav-text">([^<]+)</span>\s*</a>',
+        html,
+    )
 
 
 def test_base_links_static_stylesheet():
-    assert 'href="/static/styles.css"' in BASE
+    assert 'href="/static/styles.css"' in _base_source()
 
 
-def test_base_nav_has_core_sections():
-    expected_links = [
+def test_base_shell_has_sidebar_and_main_regions():
+    html = _render_base()
+
+    assert '<div class="app-shell">' in html
+    assert '<aside class="app-sidebar" aria-label="Primary">' in html
+    assert '<main class="app-main">' in html
+    assert '<div class="app-content">' in html
+
+
+def test_sidebar_nav_has_core_sections():
+    assert _nav_links(_render_base()) == [
         ("/", "Jobs"),
         ("/?view=review", "Review Queue"),
         ("/tracking", "Tracking"),
@@ -23,21 +79,25 @@ def test_base_nav_has_core_sections():
         ("/calibration", "Calibration"),
         ("/system", "System"),
     ]
-    nav = re.search(
-        r'<nav class="nav-bar top-nav">\s*<div class="nav-bar-inner">(.*?)</div>\s*</nav>',
-        BASE,
-        re.DOTALL,
-    )
-
-    assert nav is not None
-    actual_links = re.findall(r'<a href="([^"]+)">([^<]+)</a>', nav.group(1))
-    assert actual_links == expected_links
 
 
-def test_base_nav_styles_use_existing_classes():
-    assert ".nav-bar" in STYLES
-    assert ".nav-bar-inner" in STYLES
-    assert ".top-nav" not in STYLES
+def test_jobs_nav_is_active_for_home():
+    assert _active_labels(_render_base("/")) == ["Jobs"]
+
+
+def test_jobs_nav_is_active_for_job_paths():
+    assert _active_labels(_render_base("/jobs/12")) == ["Jobs"]
+
+
+def test_review_nav_is_active_for_review_query():
+    assert _active_labels(_render_base("/", b"view=review")) == ["Review Queue"]
+
+
+def test_section_nav_is_active_by_path():
+    assert _active_labels(_render_base("/tracking")) == ["Tracking"]
+    assert _active_labels(_render_base("/runs")) == ["Runs"]
+    assert _active_labels(_render_base("/calibration")) == ["Calibration"]
+    assert _active_labels(_render_base("/system")) == ["System"]
 
 
 def test_static_stylesheet_is_served():
