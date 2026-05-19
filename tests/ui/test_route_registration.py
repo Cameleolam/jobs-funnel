@@ -1,6 +1,8 @@
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
-from ui.routes import tracking
+from ui.routes import runs, tracking
 from ui.server import app
 
 
@@ -50,6 +52,12 @@ TRACKING_ROUTES = {
     ("/api/tracking/events/{event_id}", "PATCH"),
 }
 
+RUNS_ROUTES = {
+    ("/runs", "GET"),
+    ("/runs/list", "GET"),
+    ("/stats", "GET"),
+}
+
 
 def test_expected_routes_are_registered():
     registered_routes = {
@@ -69,6 +77,27 @@ def test_tracking_routes_are_registered_on_tracking_router():
     }
 
     assert TRACKING_ROUTES <= registered_routes
+
+
+def test_runs_routes_are_registered_on_runs_router():
+    registered_routes = {
+        (route.path, method)
+        for route in runs.router.routes
+        for method in getattr(route, "methods", set())
+    }
+
+    assert RUNS_ROUTES <= registered_routes
+
+
+def test_server_entrypoint_stays_slim():
+    server_source = Path("ui/server.py").read_text()
+
+    assert "def build_job_filter" not in server_source
+    assert "def get_stats" not in server_source
+    assert "def _serialize_job_with_events" not in server_source
+    assert "psycopg2" not in server_source
+    assert "include_router(jobs.router)" in server_source
+    assert "include_router(tracking.router)" in server_source
 
 
 def test_static_css_is_served():

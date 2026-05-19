@@ -5,6 +5,7 @@ from fastapi.responses import HTMLResponse
 
 from ui.db import fetch_all, fetch_one
 from ui.rendering import render
+from ui.services.stats import get_stats
 
 
 router = APIRouter()
@@ -13,6 +14,11 @@ router = APIRouter()
 @router.get("/runs", response_class=HTMLResponse)
 async def runs_page(request: Request):
     return render(request, "runs.html")
+
+
+@router.get("/stats", response_class=HTMLResponse)
+async def stats(request: Request):
+    return render(request, "partials/stats.html", {"stats": get_stats()})
 
 
 @router.get("/runs/list", response_class=HTMLResponse)
