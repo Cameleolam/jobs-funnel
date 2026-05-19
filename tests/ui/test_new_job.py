@@ -12,8 +12,7 @@ def client():
     return TestClient(app)
 
 
-@patch("ui.server.get_db")
-def test_get_new_job_form_renders(mock_db, client):
+def test_get_new_job_form_renders(client):
     response = client.get("/jobs/new")
     assert response.status_code == 200
     assert "Add Job Manually" in response.text
@@ -24,8 +23,8 @@ def test_get_new_job_form_renders(mock_db, client):
     assert 'name="description"' in response.text
 
 
-@patch("ui.server.fetch_one")
-@patch("ui.server.execute")
+@patch("ui.routes.jobs.fetch_one")
+@patch("ui.routes.jobs.execute")
 def test_post_new_job_inserts_and_redirects(mock_execute, mock_fetch_one, client):
     # First fetch_one call: duplicate-URL check returns None.
     # Second fetch_one call: post-insert lookup returns the new id.
@@ -59,8 +58,8 @@ def test_post_new_job_inserts_and_redirects(mock_execute, mock_fetch_one, client
     assert params[5] is True  # remote
 
 
-@patch("ui.server.fetch_one")
-@patch("ui.server.execute")
+@patch("ui.routes.jobs.fetch_one")
+@patch("ui.routes.jobs.execute")
 def test_post_new_job_duplicate_url_redirects_no_insert(mock_execute, mock_fetch_one, client):
     mock_fetch_one.return_value = {"id": 17}
 
@@ -80,8 +79,8 @@ def test_post_new_job_duplicate_url_redirects_no_insert(mock_execute, mock_fetch
     assert mock_execute.call_count == 0
 
 
-@patch("ui.server.execute")
-@patch("ui.server.fetch_one")
+@patch("ui.routes.jobs.execute")
+@patch("ui.routes.jobs.fetch_one")
 def test_post_new_job_empty_description_rerenders_with_error(mock_fetch_one, mock_execute, client):
     response = client.post(
         "/jobs/new",

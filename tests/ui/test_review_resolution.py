@@ -6,7 +6,10 @@ from unittest.mock import MagicMock
 from fastapi.responses import HTMLResponse
 from fastapi.testclient import TestClient
 
+import ui.config as ui_config
 import ui.server as srv
+from ui.rendering import templates
+from ui.routes import jobs as jobs_routes
 
 
 @contextmanager
@@ -32,11 +35,11 @@ def _patch_row_render(monkeypatch):
         job = (ctx or {})["job"]
         return HTMLResponse(f"row:{job['id']}:{job['decision']}:{job['user_status']}")
 
-    monkeypatch.setattr(srv, "render", fake_render)
+    monkeypatch.setattr(jobs_routes, "render", fake_render)
 
 
 def test_review_action_map_is_explicit():
-    assert srv.REVIEW_ACTIONS == {
+    assert jobs_routes.REVIEW_ACTIONS == {
         "apply_target": {
             "decision": "PASS",
             "user_status": "interested",
@@ -56,29 +59,29 @@ def test_review_action_map_is_explicit():
 
 
 def test_review_notes_value_preserves_existing_notes_on_blank_submission():
-    assert srv._review_notes_value("Keep this", "   ") == "Keep this"
-    assert srv._review_notes_value(None, "   ") is None
-    assert srv._review_notes_value("Old", "  New reason  ") == "New reason"
+    assert jobs_routes._review_notes_value("Keep this", "   ") == "Keep this"
+    assert jobs_routes._review_notes_value(None, "   ") is None
+    assert jobs_routes._review_notes_value("Old", "  New reason  ") == "New reason"
 
 
 def test_review_order_prioritizes_high_score_then_recent_analysis():
-    assert srv.build_order_clause("company", "ASC", "review") == (
+    assert jobs_routes.build_order_clause("company", "ASC", "review") == (
         "COALESCE(fit_score, 0) DESC, analyzed_at DESC NULLS LAST, id DESC"
     )
 
 
 def test_default_order_keeps_user_sort():
-    assert srv.build_order_clause("company", "ASC", "") == "company ASC, id ASC"
+    assert jobs_routes.build_order_clause("company", "ASC", "") == "company ASC, id ASC"
 
 
 def test_review_resolution_updates_job_and_inserts_decision_event(monkeypatch):
     client = TestClient(srv.app)
     _patch_row_render(monkeypatch)
-    monkeypatch.setattr(srv, "HAS_HUMAN_REVIEW_COLUMNS", True)
+    monkeypatch.setattr(jobs_routes.schema, "HAS_HUMAN_REVIEW_COLUMNS", True)
 
     updated_job = {"id": 42, "decision": "PASS", "user_status": "interested"}
     conn, cur = _fake_conn([{"id": 42, "notes": "old note"}, updated_job])
-    monkeypatch.setattr(srv, "get_db", lambda: _fake_get_db(conn))
+    monkeypatch.setattr(jobs_routes, "get_db", lambda: _fake_get_db(conn))
 
     response = client.patch(
         "/jobs/42/review",
@@ -108,11 +111,11 @@ def test_review_resolution_updates_job_and_inserts_decision_event(monkeypatch):
 def test_review_resolution_preserves_existing_notes_when_submitted_blank(monkeypatch):
     client = TestClient(srv.app)
     _patch_row_render(monkeypatch)
-    monkeypatch.setattr(srv, "HAS_HUMAN_REVIEW_COLUMNS", True)
+    monkeypatch.setattr(jobs_routes.schema, "HAS_HUMAN_REVIEW_COLUMNS", True)
 
     updated_job = {"id": 77, "decision": "SKIP", "user_status": "dismissed"}
     conn, cur = _fake_conn([{"id": 77, "notes": "Keep this note"}, updated_job])
-    monkeypatch.setattr(srv, "get_db", lambda: _fake_get_db(conn))
+    monkeypatch.setattr(jobs_routes, "get_db", lambda: _fake_get_db(conn))
 
     response = client.patch(
         "/jobs/77/review",
@@ -129,11 +132,11 @@ def test_review_resolution_preserves_existing_notes_when_submitted_blank(monkeyp
 def test_review_resolution_skips_missing_optional_column_assignment(monkeypatch):
     client = TestClient(srv.app)
     _patch_row_render(monkeypatch)
-    monkeypatch.setattr(srv, "HAS_HUMAN_REVIEW_COLUMNS", False)
+    monkeypatch.setattr(jobs_routes.schema, "HAS_HUMAN_REVIEW_COLUMNS", False)
 
     updated_job = {"id": 88, "decision": "MAYBE", "user_status": "interested"}
     conn, cur = _fake_conn([{"id": 88, "notes": None}, updated_job])
-    monkeypatch.setattr(srv, "get_db", lambda: _fake_get_db(conn))
+    monkeypatch.setattr(jobs_routes, "get_db", lambda: _fake_get_db(conn))
 
     response = client.patch(
         "/jobs/88/review",
@@ -148,7 +151,7 @@ def test_review_resolution_skips_missing_optional_column_assignment(monkeypatch)
 def test_review_resolution_rejects_unknown_action_before_db(monkeypatch):
     client = TestClient(srv.app)
     get_db = MagicMock()
-    monkeypatch.setattr(srv, "get_db", get_db)
+    monkeypatch.setattr(jobs_routes, "get_db", get_db)
 
     response = client.patch(
         "/jobs/42/review",
@@ -163,7 +166,7 @@ def test_review_resolution_rejects_unknown_action_before_db(monkeypatch):
 def test_review_resolution_returns_404_for_missing_job(monkeypatch):
     client = TestClient(srv.app)
     conn, cur = _fake_conn([None])
-    monkeypatch.setattr(srv, "get_db", lambda: _fake_get_db(conn))
+    monkeypatch.setattr(jobs_routes, "get_db", lambda: _fake_get_db(conn))
 
     response = client.patch(
         "/jobs/404/review",
@@ -176,7 +179,7 @@ def test_review_resolution_returns_404_for_missing_job(monkeypatch):
 
 
 def test_jobs_view_selector_exposes_review_queue():
-    html = (srv.TEMPLATES_DIR / "jobs.html").read_text(encoding="utf-8")
+    html = (ui_config.TEMPLATES_DIR / "jobs.html").read_text(encoding="utf-8")
     assert 'value="review"' in html
     assert "Review queue</option>" in html
 
@@ -224,7 +227,7 @@ def _review_job_row():
 
 def test_job_detail_renders_review_resolution_controls(monkeypatch):
     client = TestClient(srv.app)
-    monkeypatch.setattr(srv, "fetch_one", lambda query, params=(): _review_job_row())
+    monkeypatch.setattr(jobs_routes, "fetch_one", lambda query, params=(): _review_job_row())
 
     response = client.get("/jobs/42")
 
@@ -240,7 +243,7 @@ def test_job_detail_renders_review_resolution_controls(monkeypatch):
 
 
 def test_job_row_renders_review_state():
-    html = srv.templates.get_template("partials/job_row_single.html").render(
+    html = templates.get_template("partials/job_row_single.html").render(
         request={},
         now=datetime.now().astimezone(),
         job={

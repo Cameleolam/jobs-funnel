@@ -2,6 +2,7 @@
 
 from fastapi.testclient import TestClient
 
+import ui.config as ui_config
 import ui.server as srv
 from ui.routes import jobs as jobs_routes
 
@@ -9,14 +10,9 @@ from ui.routes import jobs as jobs_routes
 RECENT_CLAUSE = "crawled_at >= NOW() - INTERVAL '10 days'"
 
 
-def test_server_uses_extracted_job_filter_helpers():
-    assert srv.build_job_filter is jobs_routes.build_job_filter
-    assert srv.build_order_clause is jobs_routes.build_order_clause
-
-
 def _stub_stats(monkeypatch):
     monkeypatch.setattr(
-        srv,
+        jobs_routes.stats_service,
         "get_stats",
         lambda: {
             "total": 0,
@@ -35,29 +31,29 @@ def _stub_stats(monkeypatch):
 
 
 def test_default_jobs_filter_limits_to_last_10_days():
-    where, params = srv.build_job_filter()
+    where, params = jobs_routes.build_job_filter()
 
     assert RECENT_CLAUSE in where
     assert params == [0, 10]
 
 
 def test_recent_only_false_removes_last_10_days_filter():
-    where, params = srv.build_job_filter(recent_only=False)
+    where, params = jobs_routes.build_job_filter(recent_only=False)
 
     assert RECENT_CLAUSE not in where
     assert params == [0, 10]
 
 
 def test_special_views_ignore_recent_only_filter(monkeypatch):
-    monkeypatch.setattr(srv, "HAS_HUMAN_REVIEW_COLUMNS", True)
+    monkeypatch.setattr(jobs_routes.schema, "HAS_HUMAN_REVIEW_COLUMNS", True)
 
     for view in ("review", "error", "dead", "failed", "duplicates"):
-        where, _ = srv.build_job_filter(view=view, recent_only=True)
+        where, _ = jobs_routes.build_job_filter(view=view, recent_only=True)
         assert RECENT_CLAUSE not in where
 
 
 def test_jobs_template_has_recent_only_checked_by_default():
-    html = (srv.TEMPLATES_DIR / "jobs.html").read_text(encoding="utf-8")
+    html = (ui_config.TEMPLATES_DIR / "jobs.html").read_text(encoding="utf-8")
 
     assert 'name="recent_only"' in html
     assert "Last 10 days" in html
