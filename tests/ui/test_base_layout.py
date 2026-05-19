@@ -130,3 +130,10 @@ def test_shell_styles_define_responsive_sidebar_layout():
 
     assert ".nav-bar" not in styles
     assert ".nav-bar-inner" not in styles
+
+
+def test_job_status_stripes_render_on_first_table_cell():
+    styles = _styles_source()
+
+    assert ".jobs-table tr.decision-PASS > td:first-child" in styles
+    assert ".jobs-table tr.status-review > td:first-child" in styles
