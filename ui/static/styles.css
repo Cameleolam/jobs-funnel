@@ -196,7 +196,7 @@ a { color: var(--accent); }
 .filter-bar label { font-size: 0.78rem; color: #4b5563; font-weight: 600; }
 
 .filter-bar select,
-.filter-bar input {
+.filter-bar input:not([type="checkbox"]):not([type="hidden"]) {
   min-height: 32px;
   padding: 0.35rem 0.55rem;
   border: 1px solid var(--border-strong);
@@ -224,6 +224,13 @@ a { color: var(--accent); }
   gap: 0.65rem;
   flex-wrap: wrap;
   align-items: center;
+}
+
+.filter-secondary input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin-right: 0.2rem;
+  accent-color: var(--accent);
 }
 
 /* ── Buttons ─────────────────────────────────── */

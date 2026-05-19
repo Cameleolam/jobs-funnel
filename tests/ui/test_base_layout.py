@@ -137,3 +137,10 @@ def test_job_status_stripes_render_on_first_table_cell():
 
     assert ".jobs-table tr.decision-PASS > td:first-child" in styles
     assert ".jobs-table tr.status-review > td:first-child" in styles
+
+
+def test_filter_checkbox_styles_stay_checkbox_sized():
+    styles = _styles_source()
+
+    assert '.filter-bar input:not([type="checkbox"]):not([type="hidden"])' in styles
+    assert '.filter-secondary input[type="checkbox"]' in styles
