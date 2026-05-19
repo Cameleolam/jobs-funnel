@@ -2,7 +2,7 @@
 
 import psycopg2
 
-from scripts.db import get_conn
+from scripts import db as scripts_db
 from ui.config import TABLE
 
 
@@ -19,7 +19,7 @@ def _detect_optional_columns():
     }
     conn = None
     try:
-        conn = get_conn()
+        conn = scripts_db.get_conn()
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT column_name FROM information_schema.columns "

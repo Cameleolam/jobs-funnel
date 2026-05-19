@@ -1,11 +1,12 @@
 """Phase 1 stabilization: UI must tolerate DBs with optional columns.
 
-We exercise the detection function directly (mocking psycopg2.connect) and use
-module reloads only for import-time ROW_COLS checks.
+We exercise the detection function directly and use module reloads only for
+import-time ROW_COLS checks.
 """
 import importlib
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
+import psycopg2
 import ui.schema as schema
 from ui.routes import jobs as jobs_routes
 
@@ -22,28 +23,38 @@ def _fake_conn(present_cols):
     return conn
 
 
-def test_detect_returns_optional_columns_when_present():
-    with patch("psycopg2.connect", return_value=_fake_conn(["embedding", "scored_uncalibrated"])):
-        assert schema._detect_optional_columns() == {"embedding", "scored_uncalibrated"}
+def test_detect_returns_optional_columns_when_present(monkeypatch):
+    conn = _fake_conn(["embedding", "scored_uncalibrated"])
+    monkeypatch.setattr(schema.scripts_db, "get_conn", lambda: conn)
+
+    assert schema._detect_optional_columns() == {"embedding", "scored_uncalibrated"}
+    conn.close.assert_called_once_with()
 
 
-def test_detect_returns_empty_set_when_columns_missing():
-    with patch("psycopg2.connect", return_value=_fake_conn([])):
-        assert schema._detect_optional_columns() == set()
+def test_detect_returns_empty_set_when_columns_missing(monkeypatch):
+    conn = _fake_conn([])
+    monkeypatch.setattr(schema.scripts_db, "get_conn", lambda: conn)
+
+    assert schema._detect_optional_columns() == set()
+    conn.close.assert_called_once_with()
 
 
 def test_has_embedding_columns_stays_false_when_only_one_column_present(monkeypatch):
     # Defensive: a half-applied migration shouldn't enable the embedding code path.
-    monkeypatch.setattr("psycopg2.connect", lambda **kwargs: _fake_conn(["embedding"]))
+    monkeypatch.setattr(schema.scripts_db, "get_conn", lambda: _fake_conn(["embedding"]))
     importlib.reload(schema)
 
     assert schema.HAS_EMBEDDING_COLUMNS is False
 
 
-def test_detect_returns_empty_set_when_db_unreachable():
-    import psycopg2
-    with patch("psycopg2.connect", side_effect=psycopg2.OperationalError("nope")):
-        assert schema._detect_optional_columns() == set()
+def test_detect_returns_empty_set_when_db_unreachable(monkeypatch):
+    monkeypatch.setattr(
+        schema.scripts_db,
+        "get_conn",
+        MagicMock(side_effect=psycopg2.OperationalError("nope")),
+    )
+
+    assert schema._detect_optional_columns() == set()
 
 
 def test_row_cols_at_module_load_matches_detection_flag():
@@ -70,8 +81,9 @@ def test_row_cols_at_module_load_matches_detection_flag():
 
 def test_row_cols_include_human_review_when_columns_exist(monkeypatch):
     monkeypatch.setattr(
-        "psycopg2.connect",
-        lambda **kwargs: _fake_conn([
+        schema.scripts_db,
+        "get_conn",
+        lambda: _fake_conn([
             "embedding",
             "scored_uncalibrated",
             "needs_human_review",
@@ -90,7 +102,7 @@ def test_row_cols_include_human_review_when_columns_exist(monkeypatch):
 
 
 def test_row_cols_alias_human_review_when_columns_missing(monkeypatch):
-    monkeypatch.setattr("psycopg2.connect", lambda **kwargs: _fake_conn([]))
+    monkeypatch.setattr(schema.scripts_db, "get_conn", lambda: _fake_conn([]))
     importlib.reload(schema)
 
     assert "FALSE AS needs_human_review" in schema.ROW_COLS

@@ -3,9 +3,15 @@
 from fastapi.testclient import TestClient
 
 import ui.server as srv
+from ui.routes import jobs as jobs_routes
 
 
 RECENT_CLAUSE = "crawled_at >= NOW() - INTERVAL '10 days'"
+
+
+def test_server_uses_extracted_job_filter_helpers():
+    assert srv.build_job_filter is jobs_routes.build_job_filter
+    assert srv.build_order_clause is jobs_routes.build_order_clause
 
 
 def _stub_stats(monkeypatch):
