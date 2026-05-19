@@ -24,6 +24,7 @@ from scripts import calibration_settings
 from ui.config import EVENTS_TABLE, STATIC_DIR, TABLE, TEMPLATES_DIR
 from ui.db import execute, fetch_all, fetch_one, get_db
 from ui.rendering import format_salary, render, templates
+from ui.schema import HAS_EMBEDDING_COLUMNS, HAS_HUMAN_REVIEW_COLUMNS, ROW_COLS
 from ui.services.calibration_presenter import proposal_summary_lines
 from ui.services import system_health
 
@@ -31,40 +32,6 @@ from ui.services import system_health
 app = FastAPI(title="Jobs Funnel UI")
 STATIC_DIR.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
-# ── Optional schema detection ───────────────────────────────────────
-# The Phase 1 embedding migration (0003_pgvector.sql) is per-profile-table.
-# Human review columns are also optional while Phase 4 migrations roll out.
-def _detect_optional_columns():
-    wanted = {
-        "embedding",
-        "scored_uncalibrated",
-        "needs_human_review",
-        "explanation",
-        "confidence",
-        "critique_count",
-    }
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT column_name FROM information_schema.columns "
-                    "WHERE table_name = %s AND column_name = ANY(%s)",
-                    (TABLE, list(wanted)),
-                )
-                return {r[0] for r in cur.fetchall()}
-    except HTTPException:
-        return set()
-
-
-OPTIONAL_COLUMNS = _detect_optional_columns()
-HAS_EMBEDDING_COLUMNS = {"embedding", "scored_uncalibrated"}.issubset(OPTIONAL_COLUMNS)
-HAS_HUMAN_REVIEW_COLUMNS = {
-    "needs_human_review",
-    "explanation",
-    "confidence",
-    "critique_count",
-}.issubset(OPTIONAL_COLUMNS)
 
 REVIEW_ACTIONS = {
     "apply_target": {
@@ -90,39 +57,6 @@ def _review_notes_value(existing_notes, submitted_notes):
     if submitted:
         return submitted
     return existing_notes if existing_notes else None
-
-_BASE_ROW_COLS = (
-    "id, url, title, company, location, source, fit_score, decision, "
-    "cv_variant, reasoning, status, crawled_at, analyzed_at, "
-    "salary_min, salary_max, salary_currency, remote, likely_english, "
-    "staffing_agency, geo_mismatch, "
-    "tags, priority_notes, notes, user_status, "
-    "posted_at, employment_type, seniority_level, start_date, "
-    "error, error_code, retry_count, "
-    "possible_duplicate_of, duplicate_confirmed, "
-    "tracked_at"
-)
-
-if HAS_EMBEDDING_COLUMNS:
-    ROW_COLS = (
-        f"{_BASE_ROW_COLS}, "
-        "(embedding IS NULL) AS awaiting_embedding, scored_uncalibrated"
-    )
-else:
-    ROW_COLS = (
-        f"{_BASE_ROW_COLS}, "
-        "FALSE AS awaiting_embedding, FALSE AS scored_uncalibrated"
-    )
-
-if HAS_HUMAN_REVIEW_COLUMNS:
-    ROW_COLS = (
-        f"{ROW_COLS}, needs_human_review, explanation, confidence, critique_count"
-    )
-else:
-    ROW_COLS = (
-        f"{ROW_COLS}, FALSE AS needs_human_review, NULL AS explanation, "
-        "NULL AS confidence, 0 AS critique_count"
-    )
 
 def _query_bool(request: Request, name: str, default: bool = False) -> bool:
     value = request.query_params.get(name)
