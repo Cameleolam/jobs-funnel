@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 
+from ui.routes import tracking
 from ui.server import app
 
 
@@ -37,6 +38,18 @@ EXPECTED_ROUTES = {
     ("/api/tracking/events/{event_id}", "PATCH"),
 }
 
+TRACKING_ROUTES = {
+    ("/tracking", "GET"),
+    ("/api/tracking/jobs", "GET"),
+    ("/api/tracking/jobs/{job_id}/start", "POST"),
+    ("/api/tracking/jobs/{job_id}/stop", "POST"),
+    ("/api/tracking/jobs/{job_id}/close", "POST"),
+    ("/api/tracking/jobs/{job_id}/reopen", "POST"),
+    ("/api/tracking/events", "POST"),
+    ("/api/tracking/events/{event_id}", "DELETE"),
+    ("/api/tracking/events/{event_id}", "PATCH"),
+}
+
 
 def test_expected_routes_are_registered():
     registered_routes = {
@@ -46,6 +59,16 @@ def test_expected_routes_are_registered():
     }
 
     assert EXPECTED_ROUTES <= registered_routes
+
+
+def test_tracking_routes_are_registered_on_tracking_router():
+    registered_routes = {
+        (route.path, method)
+        for route in tracking.router.routes
+        for method in getattr(route, "methods", set())
+    }
+
+    assert TRACKING_ROUTES <= registered_routes
 
 
 def test_static_css_is_served():
