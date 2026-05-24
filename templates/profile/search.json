@@ -73,5 +73,17 @@
   "himalayas_negative_keywords": [
     "senior director", "vp ", "vice president", "head of", "chief",
     "manager", "intern", "trainee"
+  ],
+  "ats_watchlist_title_keywords": [
+    "backend", "software engineer", "python", "data engineer",
+    "automation engineer", "ai engineer", "ml engineer", "full stack"
+  ],
+  "ats_watchlist_description_keywords": [
+    "python", "django", "fastapi", "flask", "etl", "postgres",
+    "workflow automation", "llm", "api integration"
+  ],
+  "ats_watchlist_negative_keywords": [
+    "intern", "working student", "werkstudent", "trainee",
+    "manager", "director", "principal", "staff", "lead", "head of"
   ]
 }

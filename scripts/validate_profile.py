@@ -20,6 +20,8 @@ REQUIRED_SEARCH_KEYS = {
     "an_negative_keywords": list,
 }
 
+ATS_WATCHLIST_PROVIDERS = {"greenhouse", "lever", "lever_eu", "ashby"}
+
 
 def validate_search_json(profile_dir):
     errors = []
@@ -91,6 +93,56 @@ def validate_filter_prompt(profile_dir):
     return errors, []
 
 
+def validate_company_watchlist(profile_dir):
+    errors = []
+    warnings = []
+    search_path = profile_dir / "search.json"
+    watchlist_path = profile_dir / "company_watchlist.json"
+
+    try:
+        search = json.loads(search_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return [], []
+
+    selected = search.get("crawlers") if isinstance(search, dict) else []
+    selected = selected if isinstance(selected, list) else []
+    ats_selected = "ats_watchlist" in selected
+
+    if not watchlist_path.exists():
+        if ats_selected:
+            warnings.append("company_watchlist.json not found while ats_watchlist is selected")
+        return errors, warnings
+
+    try:
+        entries = json.loads(watchlist_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        return [f"company_watchlist.json: invalid JSON: {e}"], warnings
+
+    if not isinstance(entries, list):
+        return ["company_watchlist.json: top-level value must be a list"], warnings
+
+    for i, entry in enumerate(entries):
+        prefix = f"company_watchlist.json[{i}]"
+        if not isinstance(entry, dict):
+            errors.append(f"{prefix}: entry must be an object")
+            continue
+
+        for key in ("company", "provider", "slug"):
+            if key not in entry:
+                errors.append(f"{prefix}: missing required key '{key}'")
+            elif not isinstance(entry[key], str) or not entry[key].strip():
+                errors.append(f"{prefix}: '{key}' must be a non-empty string")
+
+        provider = entry.get("provider")
+        if isinstance(provider, str) and provider not in ATS_WATCHLIST_PROVIDERS:
+            errors.append(f"{prefix}: unknown provider '{provider}'")
+
+        if "enabled" in entry and not isinstance(entry["enabled"], bool):
+            errors.append(f"{prefix}: 'enabled' must be bool")
+
+    return errors, warnings
+
+
 def validate_cvs(profile_dir):
     errors = []
     warnings = []
@@ -140,7 +192,13 @@ def main():
     all_errors = []
     all_warnings = []
 
-    for validator in (validate_search_json, validate_filter_prompt, validate_cvs, validate_generate_prompt):
+    for validator in (
+        validate_search_json,
+        validate_filter_prompt,
+        validate_company_watchlist,
+        validate_cvs,
+        validate_generate_prompt,
+    ):
         errs, warns = validator(profile_dir)
         all_errors.extend(errs)
         all_warnings.extend(warns)

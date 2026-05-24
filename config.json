@@ -21,5 +21,9 @@
   "an_remote_max_pages": 5,
   "an_remote_delay_ms": 3000,
   "himalayas_max_pages": 3,
-  "himalayas_delay_ms": 2000
+  "himalayas_delay_ms": 2000,
+  "ats_watchlist_min_interval_hours": 23,
+  "ats_watchlist_company_delay_ms": 250,
+  "ats_watchlist_timeout_ms": 10000,
+  "ats_watchlist_max_companies": 300
 }

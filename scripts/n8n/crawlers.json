@@ -43,5 +43,14 @@
     "countries": ["*"],
     "remote_only": true,
     "position": [1280, 800]
+  },
+  {
+    "id": "ats_watchlist",
+    "node_id": "ats-watchlist-fetch",
+    "name": "ATS Watchlist: Fetch Jobs",
+    "file": "scripts/n8n/ats-watchlist-fetch.js",
+    "countries": ["*"],
+    "remote_only": false,
+    "position": [1280, 1000]
   }
 ]
