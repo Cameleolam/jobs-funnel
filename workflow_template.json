@@ -99,7 +99,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT url, LOWER(TRIM(title)) AS title, LOWER(TRIM(company)) AS company FROM {{ $env.JOBS_FUNNEL_TABLE }}",
+        "query": "SELECT url, LOWER(TRIM(title)) AS title, LOWER(TRIM(company)) AS company FROM {{table_identifier_expr}}",
         "options": {}
       },
       "id": "dedup-get-urls",
@@ -275,7 +275,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM {{ $env.JOBS_FUNNEL_TABLE }} WHERE status IN ('pending', 'error') AND retry_count < 3 AND embedding_calibration IS NOT NULL ORDER BY CASE description_quality WHEN 'good' THEN 0 WHEN 'unknown' THEN 1 WHEN 'poor' THEN 2 WHEN 'empty' THEN 3 ELSE 4 END, crawled_at ASC LIMIT 80",
+        "query": "SELECT * FROM {{table_identifier_expr}} WHERE status IN ('pending', 'error') AND retry_count < 3 AND embedding_calibration IS NOT NULL ORDER BY CASE description_quality WHEN 'good' THEN 0 WHEN 'unknown' THEN 1 WHEN 'poor' THEN 2 WHEN 'empty' THEN 3 ELSE 4 END, crawled_at ASC LIMIT 80",
         "options": {}
       },
       "id": "db-fetch-pending",
@@ -394,7 +394,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT id, title, company, location FROM {{ $env.JOBS_FUNNEL_TABLE }} WHERE status = 'analyzed' AND crawled_at > NOW() - make_interval(days => {{ Number.isFinite(Number($env.DEDUP_SCOPE_DAYS)) && Number($env.DEDUP_SCOPE_DAYS) > 0 ? Math.floor(Number($env.DEDUP_SCOPE_DAYS)) : 30 }}) ORDER BY crawled_at DESC LIMIT 200",
+        "query": "SELECT id, title, company, location FROM {{table_identifier_expr}} WHERE status = 'analyzed' AND crawled_at > NOW() - make_interval(days => {{ Number.isFinite(Number($env.DEDUP_SCOPE_DAYS)) && Number($env.DEDUP_SCOPE_DAYS) > 0 ? Math.floor(Number($env.DEDUP_SCOPE_DAYS)) : 30 }}) ORDER BY crawled_at DESC LIMIT 200",
         "options": {}
       },
       "id": "dedup-fetch-recent",
@@ -435,7 +435,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Parse tiered run_dedup.py output and build duplicate + metric UPDATE queries\nconst table = $env.JOBS_FUNNEL_TABLE;\n\nfunction readRunStart() {\n  try { return $('DB: Run Start').first().json; } catch (e) {}\n  try { return $('DB: Run Start (Analyze)').first().json; } catch (e) {}\n  return {};\n}\n\nfunction isPlainObject(value) {\n  return value !== null && typeof value === 'object' && !Array.isArray(value);\n}\n\nfunction metricCount(value) {\n  const n = Number(value);\n  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;\n}\n\nconst stdout = ($input.first().json.stdout || '').trim();\nif (!stdout) return [{ json: { _dedupQuery: 'SELECT 1' } }];\n\nlet payload;\ntry {\n  payload = JSON.parse(stdout);\n} catch (e) {\n  payload = null;\n}\n\nlet pairs = [];\nlet metrics = {};\nif (Array.isArray(payload)) {\n  pairs = payload;\n} else if (isPlainObject(payload)) {\n  pairs = Array.isArray(payload.pairs) ? payload.pairs : [];\n  metrics = isPlainObject(payload.metrics) ? payload.metrics : {};\n}\nconst out = [];\n\nfor (const p of pairs) {\n  if (!isPlainObject(p)) continue;\n  const newId = Number(p.new_id);\n  const existingId = Number(p.existing_id);\n  if (Number.isFinite(newId) && Number.isFinite(existingId)) {\n    out.push({\n      json: {\n        _dedupQuery: `UPDATE ${table} SET possible_duplicate_of = ${existingId}, duplicate_confirmed = TRUE WHERE id = ${newId} AND possible_duplicate_of IS NULL`\n      }\n    });\n  }\n}\n\nconst runStart = readRunStart();\nif (runStart.id) {\n  out.push({\n    json: {\n      _dedupQuery:\n        `UPDATE pipeline_runs SET ` +\n        `dedup_vector_resolved = dedup_vector_resolved + ${metricCount(metrics.vector_resolved)}, ` +\n        `dedup_claude_calls = dedup_claude_calls + ${metricCount(metrics.claude_calls)} ` +\n        `WHERE id = ${Number(runStart.id)}`\n    }\n  });\n}\n\nreturn out.length ? out : [{ json: { _dedupQuery: 'SELECT 1' } }];"
+        "jsCode": "// Parse tiered run_dedup.py output and build duplicate + metric UPDATE queries\n{{file:scripts/n8n/dedup-parse-results.js}}"
       },
       "id": "dedup-semantic-parse",
       "name": "Dedup: Parse Results",

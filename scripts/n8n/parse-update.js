@@ -1,5 +1,7 @@
 // Unbatch: match each Claude response to its batch, then build UPDATE SQL
-const table = $env.JOBS_FUNNEL_TABLE;
+/* {{include:scripts/n8n/lib/sql.js}} */
+
+const table = sqlIdentifier($env.JOBS_FUNNEL_TABLE);
 const batchItems = $('Batch Items').all();
 // Discover valid CV variants from profile's cvs/ directory (if it exists)
 const fs = require('fs');
@@ -12,21 +14,6 @@ try {
   // No cvs/ directory — accept any cv_variant from Claude
 }
 const ERROR_KEYWORDS = ['parse error', 'incomplete', 'timed out', 'filter error', 'claude response parse'];
-
-// Proper SQL escaping: handles quotes, backslashes, null bytes
-function sqlStr(s) {
-  if (s === null || s === undefined) return 'NULL';
-  return "'" + String(s).replace(/\\/g, '\\\\').replace(/'/g, "''").replace(/\0/g, '') + "'";
-}
-
-// Dollar-quoted JSONB literal: avoids double-encoding from sqlStr + ::jsonb cast
-function jsonbLiteral(value) {
-  const arr = Array.isArray(value) ? value : [];
-  const json = JSON.stringify(arr);
-  let tag = '$jb$';
-  if (json.includes(tag)) tag = '$jb2$';
-  return tag + json + tag + '::jsonb';
-}
 
 // Derive error_code: prefer explicit field from filter.py, else classify from content
 function classifyErrorCode(assessment) {
@@ -101,7 +88,7 @@ for (let b = 0; b < $input.all().length; b++) {
     if (isErrorFallback) {
       const errCode = classifyErrorCode(assessment);
       results.push({ json: {
-        _updateQuery: `UPDATE ${table} SET status = ${DEAD_STATUS_EXPR}, error = ${sqlStr(assessment.reasoning || 'Fallback SKIP from failed Claude call')}, error_code = '${errCode}', retry_count = retry_count + 1 WHERE id = ${orig.id}`
+        _updateQuery: `UPDATE ${table} SET status = ${DEAD_STATUS_EXPR}, error = ${sqlStr(assessment.reasoning || 'Fallback SKIP from failed Claude call')}, error_code = ${sqlStr(errCode)}, retry_count = retry_count + 1 WHERE id = ${orig.id}`
       }});
       continue;
     }
@@ -140,8 +127,10 @@ for (let b = 0; b < $input.all().length; b++) {
     const critiqueCount = Number(assessment.critique_count || 0);
 
     // Conditional salary: only update if DB has no salary (don't overwrite API-provided values)
-    const salaryClause = exSalMin
-      ? `, salary_min = CASE WHEN salary_min IS NULL THEN ${Number(exSalMin)} ELSE salary_min END, salary_max = CASE WHEN salary_max IS NULL THEN ${exSalMax ? Number(exSalMax) : 'NULL'} ELSE salary_max END, salary_currency = CASE WHEN salary_currency IS NULL OR salary_currency = 'EUR' THEN ${sqlStr(exSalCur || 'EUR')} ELSE salary_currency END`
+    const salaryMin = sqlInt(exSalMin);
+    const salaryMax = sqlInt(exSalMax);
+    const salaryClause = salaryMin !== 'NULL'
+      ? `, salary_min = CASE WHEN salary_min IS NULL THEN ${salaryMin} ELSE salary_min END, salary_max = CASE WHEN salary_max IS NULL THEN ${salaryMax} ELSE salary_max END, salary_currency = CASE WHEN salary_currency IS NULL OR salary_currency = 'EUR' THEN ${sqlStr(exSalCur || 'EUR')} ELSE salary_currency END`
       : '';
 
     const uncalibrated = assessment.scored_uncalibrated === true;
@@ -159,7 +148,7 @@ for (let b = 0; b < $input.all().length; b++) {
       `, confidence = ${sqlStr(confidence)}` +
       `, critique_count = ${Number.isFinite(critiqueCount) && critiqueCount >= 0 ? Math.floor(critiqueCount) : 0}`;
     results.push({ json: {
-      _updateQuery: `UPDATE ${table} SET status = 'analyzed', analyzed_at = NOW(), error = NULL, error_code = NULL, retry_count = 0, fit_score = ${score}, decision = '${decision}', cv_variant = '${cvVariant}', hard_blockers = ${jsonbLiteral(assessment.hard_blockers)}, soft_gaps = ${jsonbLiteral(assessment.soft_gaps)}, strong_matches = ${jsonbLiteral(assessment.strong_matches)}, reasoning = ${sqlStr(assessment.reasoning || '')}, priority_notes = ${sqlStr(assessment.priority_notes || null)}, employment_type = ${sqlStr(empType)}, seniority_level = ${sqlStr(senLevel)}, start_date = COALESCE(start_date, ${sqlStr(startDate)})${salaryClause}, scored_uncalibrated = ${uncalibrated ? 'TRUE' : 'FALSE'}${providerMetadataClause}${graphMetadataClause} WHERE id = ${orig.id}`
+      _updateQuery: `UPDATE ${table} SET status = 'analyzed', analyzed_at = NOW(), error = NULL, error_code = NULL, retry_count = 0, fit_score = ${score}, decision = '${decision}', cv_variant = ${sqlStr(cvVariant)}, hard_blockers = ${jsonbLiteral(assessment.hard_blockers)}, soft_gaps = ${jsonbLiteral(assessment.soft_gaps)}, strong_matches = ${jsonbLiteral(assessment.strong_matches)}, reasoning = ${sqlStr(assessment.reasoning || '')}, priority_notes = ${sqlStr(assessment.priority_notes || null)}, employment_type = ${sqlStr(empType)}, seniority_level = ${sqlStr(senLevel)}, start_date = COALESCE(start_date, ${sqlStr(startDate)})${salaryClause}, scored_uncalibrated = ${uncalibrated ? 'TRUE' : 'FALSE'}${providerMetadataClause}${graphMetadataClause} WHERE id = ${orig.id}`
     }});
   }
 }

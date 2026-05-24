@@ -43,7 +43,7 @@ def apply_sql_file(cur, path: Path, table: str, *, track: bool) -> str:
 
 def run() -> list[tuple[str, str]]:
     load_dotenv(PROJECT_DIR / ".env")
-    table = os.environ.get("JOBS_FUNNEL_TABLE", "jobs")
+    table = run_migration.validate_identifier(os.environ.get("JOBS_FUNNEL_TABLE", "jobs"), "JOBS_FUNNEL_TABLE")
     paths = sql_plan()
     for path in paths:
         if not path.is_file():

@@ -1,6 +1,8 @@
 // Finalize the pipeline_runs row with stats and duration.
 // Reads run_id from whichever DB: Run Start node executed.
-const table = ($env.JOBS_FUNNEL_TABLE || 'jobs').replace(/'/g, "''");
+/* {{include:scripts/n8n/lib/sql.js}} */
+
+const table = sqlIdentifier($env.JOBS_FUNNEL_TABLE || 'jobs');
 
 let runId = null;
 let startedAt = null;

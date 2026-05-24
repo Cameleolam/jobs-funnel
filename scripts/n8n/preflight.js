@@ -10,10 +10,15 @@ const table = $env.JOBS_FUNNEL_TABLE || '';
 const ollamaUrl = ($env.OLLAMA_URL || 'http://localhost:11434').replace(/\/+$/, '');
 const embedModel = $env.EMBEDDING_MODEL || 'bge-m3';
 
+function isSqlIdentifier(value) {
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(String(value || ''));
+}
+
 // Required env vars
 if (!projectDir) errors.push('JOBS_FUNNEL_PROJECT_DIR not set');
 if (!profile) errors.push('JOBS_FUNNEL_PROFILE not set');
 if (!table) errors.push('JOBS_FUNNEL_TABLE not set');
+else if (!isSqlIdentifier(table)) errors.push(`Invalid JOBS_FUNNEL_TABLE: ${table}`);
 
 // Profile directory structure
 if (projectDir && profile) {

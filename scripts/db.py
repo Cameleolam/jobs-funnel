@@ -9,6 +9,7 @@ from pathlib import Path
 
 import psycopg2
 from dotenv import load_dotenv
+from scripts.lib.sql_identifiers import validate_identifier
 
 _DOTENV_LOADED = False
 
@@ -24,7 +25,7 @@ def _load_env():
 def table_name() -> str:
     """Active jobs table name. Defaults to 'jobs'."""
     _load_env()
-    return os.environ.get("JOBS_FUNNEL_TABLE", "jobs")
+    return validate_identifier(os.environ.get("JOBS_FUNNEL_TABLE", "jobs"), "JOBS_FUNNEL_TABLE")
 
 
 def events_table_name() -> str:

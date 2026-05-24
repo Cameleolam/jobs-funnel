@@ -23,16 +23,33 @@ PROJECT_DIR = Path(__file__).resolve().parent.parent
 TEMPLATE = PROJECT_DIR / "workflow_template.json"
 OUTPUT = PROJECT_DIR / "workflow.json"
 REGISTRY = PROJECT_DIR / "scripts" / "n8n" / "crawlers.json"
+TABLE_IDENTIFIER_EXPR = (
+    "{{ (() => { const t = $env.JOBS_FUNNEL_TABLE || ''; "
+    "if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(t)) "
+    "throw new Error('Invalid JOBS_FUNNEL_TABLE: ' + t); return t; })() }}"
+)
+JS_INCLUDE_RE = re.compile(r"/\*\s*\{\{include:(scripts/n8n/[^}]+)\}\}\s*\*/")
 
 
 def js_to_json_string(js_path: Path) -> str:
-    content = js_path.read_text(encoding="utf-8").strip()
+    content = expand_js_includes(js_path.read_text(encoding="utf-8").strip())
     content = content.replace("\\", "\\\\")
     content = content.replace('"', '\\"')
     content = content.replace("\n", "\\n")
     content = content.replace("\t", "\\t")
     content = content.replace("\r", "")
     return content
+
+
+def expand_js_includes(content: str) -> str:
+    def replacer(match):
+        rel_path = match.group(1)
+        include_path = PROJECT_DIR / rel_path
+        if not include_path.exists():
+            raise FileNotFoundError(include_path)
+        return include_path.read_text(encoding="utf-8").strip()
+
+    return JS_INCLUDE_RE.sub(replacer, content)
 
 
 def load_selected_crawlers():
@@ -111,6 +128,7 @@ def build():
     template_text = template_text.replace("{{crawler_nodes}}", emit_crawler_nodes(crawlers))
     template_text = template_text.replace("{{crawler_connections}}", emit_crawler_connections(crawlers))
     template_text = template_text.replace("{{crawler_count}}", str(len(crawlers)))
+    template_text = template_text.replace("{{table_identifier_expr}}", TABLE_IDENTIFIER_EXPR)
 
     # Phase 2: expand {{file:...}} placeholders
     pattern = re.compile(r'\{\{file:(scripts/n8n/[^}]+)\}\}')

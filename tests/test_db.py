@@ -5,9 +5,11 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 import scripts.db as db
+from scripts.lib.sql_identifiers import validate_identifier
 
 
 def test_table_name_defaults_to_jobs(monkeypatch):
+    monkeypatch.setattr(db, "_DOTENV_LOADED", True)
     monkeypatch.delenv("JOBS_FUNNEL_TABLE", raising=False)
     assert db.table_name() == "jobs"
 
@@ -15,6 +17,16 @@ def test_table_name_defaults_to_jobs(monkeypatch):
 def test_table_name_reads_env(monkeypatch):
     monkeypatch.setenv("JOBS_FUNNEL_TABLE", "jobs_test")
     assert db.table_name() == "jobs_test"
+
+
+def test_table_name_rejects_invalid_identifier(monkeypatch):
+    monkeypatch.setenv("JOBS_FUNNEL_TABLE", "jobs; DROP TABLE jobs; --")
+    with pytest.raises(ValueError, match="Invalid JOBS_FUNNEL_TABLE"):
+        db.table_name()
+
+
+def test_validate_identifier_accepts_sql_identifier():
+    assert validate_identifier("jobs_profile1", "JOBS_FUNNEL_TABLE") == "jobs_profile1"
 
 
 def test_calibration_table_names_follow_active_jobs_table(monkeypatch):

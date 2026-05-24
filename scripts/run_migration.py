@@ -12,12 +12,17 @@ Usage:
     python scripts/run_migration.py --list           # show applied migrations
 """
 import os
-import re
 import sys
 from pathlib import Path
 
 import psycopg2
 from dotenv import load_dotenv
+
+try:
+    from scripts.lib.sql_identifiers import validate_identifier
+except ModuleNotFoundError:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from scripts.lib.sql_identifiers import validate_identifier
 
 
 SCHEMA_MIGRATIONS_DDL = """
@@ -53,6 +58,7 @@ END $$;
 
 
 def resolve_placeholders(sql: str, table: str) -> str:
+    table = validate_identifier(table, "JOBS_FUNNEL_TABLE")
     events_table = f"{table}_events"
     sql = sql.replace("{{TABLE}}", table)
     sql = sql.replace("{{EVENTS_TABLE}}", events_table)
@@ -128,7 +134,7 @@ def main():
         sys.exit(2)
 
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-    table = os.environ.get("JOBS_FUNNEL_TABLE", "jobs")
+    table = validate_identifier(os.environ.get("JOBS_FUNNEL_TABLE", "jobs"), "JOBS_FUNNEL_TABLE")
 
     raw_sql = sql_path.read_text(encoding="utf-8")
     sql = resolve_placeholders(raw_sql, table)

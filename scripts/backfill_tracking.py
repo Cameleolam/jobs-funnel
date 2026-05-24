@@ -6,15 +6,22 @@ Run manually:
     python scripts/backfill_tracking.py
 """
 import os
+import sys
 from pathlib import Path
 
 import psycopg2
 from dotenv import load_dotenv
 
+try:
+    from scripts.lib.sql_identifiers import validate_identifier
+except ModuleNotFoundError:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from scripts.lib.sql_identifiers import validate_identifier
+
 
 def main():
     load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-    table = os.environ.get("JOBS_FUNNEL_TABLE", "jobs")
+    table = validate_identifier(os.environ.get("JOBS_FUNNEL_TABLE", "jobs"), "JOBS_FUNNEL_TABLE")
     events_table = f"{table}_events"
     conn = psycopg2.connect(
         host=os.environ.get("JOBS_FUNNEL_PG_HOST", "localhost"),

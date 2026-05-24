@@ -43,6 +43,15 @@ def test_already_applied_filters_by_table_scope():
     assert params == ("0003_pgvector.sql", "jobs_profile2")
 
 
+def test_resolve_placeholders_rejects_invalid_table_identifier():
+    try:
+        rm.resolve_placeholders("SELECT * FROM {{TABLE}}", "jobs; DROP TABLE jobs; --")
+    except ValueError as exc:
+        assert "Invalid JOBS_FUNNEL_TABLE" in str(exc)
+    else:
+        raise AssertionError("ValueError not raised")
+
+
 def test_ensure_tracking_table_runs_ddl_then_upgrade():
     # Ordering matters: legacy DBs need DDL noop'd first, then the upgrade
     # block detects and rewrites. Reversing would leave a broken state if

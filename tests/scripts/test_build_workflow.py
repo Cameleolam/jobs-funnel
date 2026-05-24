@@ -31,6 +31,11 @@ def parse_update_code(wf):
     return parse["parameters"]["jsCode"]
 
 
+def prep_insert_code(wf):
+    prep = next(n for n in wf["nodes"] if n["name"] == "Prep Insert")
+    return prep["parameters"]["jsCode"]
+
+
 def dedup_semantic_prep_code(wf):
     prep = next(n for n in wf["nodes"] if n["name"] == "Dedup: Semantic Prep")
     return prep["parameters"]["jsCode"]
@@ -133,7 +138,7 @@ Promise.resolve(fn($input, $env, $, fakeRequire, fakeDate)).then(
     return json.loads(result.stdout)
 
 
-def run_parse_update(code: str, assessment: dict):
+def run_parse_update_process(code: str, assessment: dict, *, table: str = "jobs"):
     harness = """
 const fs = require('fs');
 const input = JSON.parse(fs.readFileSync(0, 'utf8'));
@@ -144,7 +149,7 @@ const $input = {
   }
 };
 const $env = {
-  JOBS_FUNNEL_TABLE: 'jobs',
+  JOBS_FUNNEL_TABLE: input.table,
   JOBS_FUNNEL_PROJECT_DIR: 'D:/projects/jobs_funnel',
   JOBS_FUNNEL_PROFILE: 'profile1',
 };
@@ -174,11 +179,49 @@ Promise.resolve(fn($input, $env, $, fakeRequire)).then(
 """
     result = subprocess.run(
         ["node", "-e", harness],
-        input=json.dumps({"code": code, "assessment": assessment}),
+        input=json.dumps({"code": code, "assessment": assessment, "table": table}),
         cwd=REPO,
         capture_output=True,
         text=True,
     )
+    return result
+
+
+def run_parse_update(code: str, assessment: dict, *, table: str = "jobs"):
+    result = run_parse_update_process(code, assessment, table=table)
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)
+
+
+def run_prep_insert_process(code: str, job: dict, *, table: str = "jobs"):
+    harness = """
+const input = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+const fn = new Function('$input', '$env', input.code);
+const $input = {
+  all() {
+    return [{ json: input.job }];
+  }
+};
+const $env = { JOBS_FUNNEL_TABLE: input.table };
+Promise.resolve(fn($input, $env)).then(
+  result => process.stdout.write(JSON.stringify(result)),
+  error => {
+    console.error(error && error.stack ? error.stack : String(error));
+    process.exit(1);
+  }
+);
+"""
+    return subprocess.run(
+        ["node", "-e", harness],
+        input=json.dumps({"code": code, "job": job, "table": table}),
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+    )
+
+
+def run_prep_insert(code: str, job: dict, *, table: str = "jobs"):
+    result = run_prep_insert_process(code, job, table=table)
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)
 
@@ -472,6 +515,20 @@ def test_phase2_dedup_prep_aligns_flattened_parse_updates_by_job_id():
     assert [job["id"] for job in payload["new_jobs"]] == [101, 201]
 
 
+def test_n8n_generated_queries_validate_jobs_table_identifier():
+    wf = run_build("profile1")
+    query_nodes = [
+        "Dedup: Get Seen URLs",
+        "DB: Fetch Pending",
+        "Dedup: Fetch Recent",
+    ]
+
+    for name in query_nodes:
+        query = next(n for n in wf["nodes"] if n["name"] == name)["parameters"]["query"]
+        assert "Invalid JOBS_FUNNEL_TABLE" in query
+        assert "{{ $env.JOBS_FUNNEL_TABLE }}" not in query
+
+
 def test_fresh_setup_schema_includes_pipeline_metric_columns():
     sql = (REPO / "scripts" / "setup_db.sql").read_text(encoding="utf-8")
 
@@ -583,6 +640,112 @@ def test_parse_update_persists_provider_metadata():
     assert "base_fit_score = 5" in query
     assert "base_decision = 'MAYBE'" in query
     assert "review_error = 'kept base'" in query
+
+
+def test_parse_update_escapes_unconstrained_cv_variant():
+    wf = run_build("profile1")
+    code = parse_update_code(wf)
+    result = run_parse_update(code, {
+        "fit_score": 7,
+        "decision": "PASS",
+        "cv_variant": "software', status = 'dead' --",
+        "hard_blockers": [],
+        "soft_gaps": [],
+        "strong_matches": ["Python"],
+        "reasoning": "reviewed",
+    })
+
+    query = result[0]["json"]["_updateQuery"]
+    assert "cv_variant = 'software'', status = ''dead'' --'" in query
+    assert "cv_variant = 'software', status = 'dead' --'" not in query
+
+
+def test_parse_update_rejects_invalid_jobs_table_identifier():
+    wf = run_build("profile1")
+    code = parse_update_code(wf)
+    result = run_parse_update_process(
+        code,
+        {
+            "fit_score": 7,
+            "decision": "PASS",
+            "cv_variant": "software",
+            "hard_blockers": [],
+            "soft_gaps": [],
+            "strong_matches": ["Python"],
+            "reasoning": "reviewed",
+        },
+        table="jobs; DROP TABLE jobs; --",
+    )
+
+    assert result.returncode != 0
+    assert "Invalid JOBS_FUNNEL_TABLE" in result.stderr
+
+
+def test_parse_update_escapes_fallback_error_code():
+    wf = run_build("profile1")
+    code = parse_update_code(wf)
+    result = run_parse_update(code, {
+        "fit_score": 0,
+        "decision": "SKIP",
+        "cv_variant": "software",
+        "hard_blockers": ["filter error"],
+        "soft_gaps": [],
+        "strong_matches": [],
+        "reasoning": "fallback",
+        "error_code": "API_ERROR', status = 'dead' --",
+    })
+
+    query = result[0]["json"]["_updateQuery"]
+    assert "error_code = 'API_ERROR'', status = ''dead'' --'" in query
+    assert "error_code = 'API_ERROR', status = 'dead' --'" not in query
+
+
+def test_prep_insert_sanitizes_dynamic_non_text_fields():
+    wf = run_build("profile1")
+    code = prep_insert_code(wf)
+    result = run_prep_insert(code, {
+        "url": "https://example.test/job",
+        "title": "Backend",
+        "company": "Acme",
+        "location": "Berlin",
+        "description": "Role",
+        "description_quality": "good",
+        "source": "manual",
+        "external_id": "ext-1",
+        "tags": [],
+        "remote": "TRUE); DROP TABLE jobs; --",
+        "likely_english": "TRUE); DROP TABLE jobs; --",
+        "staffing_agency": "TRUE); DROP TABLE jobs; --",
+        "geo_mismatch": "TRUE); DROP TABLE jobs; --",
+        "salary_min": "1); DROP TABLE jobs; --",
+        "salary_max": "2); DROP TABLE jobs; --",
+        "salary_currency": "EUR",
+    })
+
+    query = result[0]["json"]["_insertQuery"]
+    assert "DROP TABLE" not in query
+    assert ", NULL, NULL, 'EUR'" in query
+    assert "FALSE, FALSE, FALSE, FALSE" in query
+
+
+def test_prep_insert_rejects_invalid_jobs_table_identifier():
+    wf = run_build("profile1")
+    code = prep_insert_code(wf)
+    result = run_prep_insert_process(
+        code,
+        {
+            "url": "https://example.test/job",
+            "title": "Backend",
+            "company": "Acme",
+            "location": "Berlin",
+            "description": "Role",
+            "source": "manual",
+        },
+        table="jobs; DROP TABLE jobs; --",
+    )
+
+    assert result.returncode != 0
+    assert "Invalid JOBS_FUNNEL_TABLE" in result.stderr
 
 
 def test_parse_update_persists_human_review_metadata():
