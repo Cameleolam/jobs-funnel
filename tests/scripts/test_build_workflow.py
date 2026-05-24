@@ -31,6 +31,11 @@ def parse_update_code(wf):
     return parse["parameters"]["jsCode"]
 
 
+def dedup_semantic_prep_code(wf):
+    prep = next(n for n in wf["nodes"] if n["name"] == "Dedup: Semantic Prep")
+    return prep["parameters"]["jsCode"]
+
+
 def run_dedup_parse(code: str, stdout: str, run_start_id=17):
     harness = """
 const fs = require('fs');
@@ -61,6 +66,65 @@ Promise.resolve(fn($input, $env, $)).then(
     result = subprocess.run(
         ["node", "-e", harness],
         input=json.dumps({"code": code, "stdout": stdout, "runStartId": run_start_id}),
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)
+
+
+def run_dedup_semantic_prep(code: str, batch_items, parse_results, existing_rows):
+    harness = """
+const input = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+const writes = {};
+const fakeRequire = (name) => {
+  if (name === 'fs') {
+    return {
+      mkdirSync() {},
+      writeFileSync(path, contents) {
+        writes[path] = JSON.parse(contents);
+      },
+    };
+  }
+  throw new Error(`unexpected require ${name}`);
+};
+const fn = new Function('$input', '$env', '$', 'require', 'Date', input.code);
+const $input = { all() { return []; } };
+const $env = {
+  JOBS_FUNNEL_TABLE: 'jobs',
+  JOBS_FUNNEL_PROJECT_DIR: 'D:/projects/jobs_funnel',
+};
+function nodeAll(rows) {
+  return {
+    all() {
+      return rows.map(json => ({ json }));
+    }
+  };
+}
+function $(name) {
+  if (name === 'Batch Items') return nodeAll(input.batchItems);
+  if (name === 'Parse + Prep Update') return nodeAll(input.parseResults);
+  if (name === 'Dedup: Fetch Recent') return nodeAll(input.existingRows);
+  throw new Error(`unexpected node ${name}`);
+}
+const fakeDate = { now() { return 1234567890; } };
+Promise.resolve(fn($input, $env, $, fakeRequire, fakeDate)).then(
+  result => process.stdout.write(JSON.stringify({ result, writes })),
+  error => {
+    console.error(error && error.stack ? error.stack : String(error));
+    process.exit(1);
+  }
+);
+"""
+    result = subprocess.run(
+        ["node", "-e", harness],
+        input=json.dumps({
+            "code": code,
+            "batchItems": batch_items,
+            "parseResults": parse_results,
+            "existingRows": existing_rows,
+        }),
         cwd=REPO,
         capture_output=True,
         text=True,
@@ -372,6 +436,40 @@ def test_phase2_dedup_prep_comments_reference_current_wrapper():
 
     assert "run_dedup.py" in code
     assert "dedup_semantic.py" not in code
+
+
+def test_phase2_dedup_prep_aligns_flattened_parse_updates_by_job_id():
+    wf = run_build("profile1")
+    code = dedup_semantic_prep_code(wf)
+
+    out = run_dedup_semantic_prep(
+        code,
+        batch_items=[
+            {
+                "_batchOriginals": [
+                    {"id": 101, "title": "Backend Engineer", "company": "Acme", "location": "Berlin"},
+                    {"id": 102, "title": "Failed Role", "company": "Beta", "location": "Hamburg"},
+                ]
+            },
+            {
+                "_batchOriginals": [
+                    {"id": 201, "title": "Python Engineer", "company": "Gamma", "location": "Remote"}
+                ]
+            },
+        ],
+        parse_results=[
+            {"_updateQuery": "UPDATE jobs SET status = 'analyzed' WHERE id = 101"},
+            {"_updateQuery": "UPDATE jobs SET status = CASE WHEN retry_count + 1 >= 3 THEN 'dead' ELSE 'error' END WHERE id = 102"},
+            {"_updateQuery": "UPDATE jobs SET status = 'analyzed' WHERE id = 201"},
+        ],
+        existing_rows=[
+            {"id": 999, "title": "Existing Backend Engineer", "company": "Acme", "location": "Berlin"}
+        ],
+    )
+
+    assert out["result"] == [{"json": {"_dedupTmpPath": "D:/projects/jobs_funnel/temp/n8n_dedup_1234567890.json"}}]
+    payload = next(iter(out["writes"].values()))
+    assert [job["id"] for job in payload["new_jobs"]] == [101, 201]
 
 
 def test_fresh_setup_schema_includes_pipeline_metric_columns():

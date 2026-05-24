@@ -10,13 +10,25 @@ const tmpDir = projectDir + '/temp';
 const batchItems = $('Batch Items').all();
 const parseResults = $('Parse + Prep Update').all();
 
+function analyzedJobId(updateQuery) {
+  const query = String(updateQuery || '');
+  if (!/\bstatus\s*=\s*'analyzed'/i.test(query)) return null;
+  const match = query.match(/\bWHERE\s+id\s*=\s*(\d+)\b/i);
+  return match ? match[1] : null;
+}
+
+const analyzedIds = new Set();
+for (const result of parseResults) {
+  const id = analyzedJobId(result.json && result.json._updateQuery);
+  if (id) analyzedIds.add(id);
+}
+
 const newJobs = [];
 for (let b = 0; b < batchItems.length; b++) {
   const originals = (batchItems[b].json._batchOriginals) || [];
-  const updateQuery = (parseResults[b] && parseResults[b].json._updateQuery) || '';
   for (let i = 0; i < originals.length; i++) {
-    // Only include successfully analyzed jobs (query contains status = 'analyzed')
-    if (updateQuery.includes("status = 'analyzed'")) {
+    // Only include successfully analyzed jobs from parse-update's flattened per-job rows.
+    if (analyzedIds.has(String(originals[i].id))) {
       newJobs.push({
         id: originals[i].id,
         title: originals[i].title || '',
