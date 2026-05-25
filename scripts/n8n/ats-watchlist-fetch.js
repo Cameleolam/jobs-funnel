@@ -12,6 +12,7 @@ const MIN_INTERVAL_HOURS = numberConfig('ats_watchlist_min_interval_hours', 23);
 const COMPANY_DELAY_MS = numberConfig('ats_watchlist_company_delay_ms', 250);
 const TIMEOUT_MS = numberConfig('ats_watchlist_timeout_ms', 10000);
 const MAX_COMPANIES = Math.max(0, Math.floor(numberConfig('ats_watchlist_max_companies', 300)));
+const MAX_JOBS_PER_COMPANY = Math.max(0, Math.floor(numberConfig('ats_watchlist_max_jobs_per_company', 25)));
 const MAX_RETRIES = Math.max(0, Math.floor(numberConfig('api_max_retries', 2)));
 const RETRY_DELAY = numberConfig('api_retry_delay_ms', 1000);
 
@@ -37,10 +38,25 @@ const DEFAULT_NEGATIVE_KEYWORDS = [
   'unpaid', 'manager', 'director', 'vp ', 'vice president', 'head of',
   'principal', 'staff', 'lead', 'architect',
 ];
+const HARD_NEGATIVE_KEYWORDS = [
+  'legal', 'counsel', 'hr', 'people ops', 'recruiting', 'recruiter',
+  'coordinator', 'social media', 'marketing', 'sales', 'account executive',
+  'account manager', 'licensing', 'finance', 'ifrs', 'commercial',
+  'privacy', 'm&a', 'customer success', 'business development',
+];
+const DESCRIPTION_FALLBACK_TITLE_KEYWORDS = [
+  'engineer', 'developer', 'data', 'scientist', 'automation', 'platform',
+  'software', 'devops', 'sre', 'ml', 'ai', 'backend', 'frontend',
+  'full stack', 'fullstack', 'machine learning', 'qa', 'cloud',
+  'infrastructure', 'research', 'systems', 'site reliability',
+];
 
 const titleKeywords = keywordList(search.ats_watchlist_title_keywords, DEFAULT_TITLE_KEYWORDS);
 const descriptionKeywords = keywordList(search.ats_watchlist_description_keywords, DEFAULT_DESCRIPTION_KEYWORDS);
-const negativeKeywords = keywordList(search.ats_watchlist_negative_keywords, DEFAULT_NEGATIVE_KEYWORDS);
+const negativeKeywords = Array.from(new Set(
+  keywordList(search.ats_watchlist_negative_keywords, DEFAULT_NEGATIVE_KEYWORDS)
+    .concat(HARD_NEGATIVE_KEYWORDS)
+));
 
 function readJson(path, fallback) {
   try {
@@ -169,10 +185,10 @@ function locationName(value) {
   return '';
 }
 
-function isRemote(location, description) {
-  const combined = `${location || ''} ${description || ''}`.toLowerCase();
-  if (combined.includes('hybrid')) return false;
-  return /\bremote\b/.test(combined);
+function isRemote(location) {
+  const lower = String(location || '').toLowerCase();
+  if (lower.includes('hybrid')) return false;
+  return /\bremote\b/.test(lower);
 }
 
 function numberOrNull(value) {
@@ -209,7 +225,7 @@ function mapGreenhouse(raw, entry) {
     location,
     description,
     tags: ['ats', 'greenhouse'].concat((raw.departments || []).map(d => d.name || d).filter(Boolean)),
-    remote: isRemote(location, description),
+    remote: isRemote(location),
     posted_at: isoDate(raw.updated_at || raw.first_published || raw.published_at),
     salary,
   });
@@ -231,7 +247,7 @@ function mapLever(raw, entry) {
     location,
     description,
     tags: ['ats', providerKey(entry.provider)].concat([categories.team, categories.department, categories.commitment].filter(Boolean)),
-    remote: isRemote(location, description),
+    remote: isRemote(location),
     posted_at: isoDate(raw.updatedAt || raw.createdAt),
     salary,
   });
@@ -249,7 +265,7 @@ function mapAshby(raw, entry) {
     location,
     description,
     tags: ['ats', 'ashby'].concat([raw.department, raw.team, raw.employmentType].filter(Boolean)),
-    remote: isRemote(location, description),
+    remote: isRemote(location),
     posted_at: isoDate(raw.publishedAt || raw.updatedAt),
     salary,
   });
@@ -317,7 +333,10 @@ function shouldKeep(job) {
   if (containsKeyword(title, negativeKeywords)) return false;
   if (hasBlockedLocation(job.location, description)) return false;
   if (hasGermanC1Requirement(`${title}\n${description}`)) return false;
-  return containsKeyword(title, titleKeywords) || containsKeyword(description, descriptionKeywords);
+  const titleMatch = containsKeyword(title, titleKeywords);
+  const descriptionFallback = containsKeyword(title, DESCRIPTION_FALLBACK_TITLE_KEYWORDS)
+    && containsKeyword(description, descriptionKeywords);
+  return titleMatch || descriptionFallback;
 }
 
 function dedupeKeys(job) {
@@ -374,6 +393,12 @@ const seenUrls = new Set();
 const seenCompanyTitles = new Set();
 const errors = [];
 let companiesSucceeded = 0;
+let companyCapsApplied = 0;
+
+function jobRecency(job) {
+  const time = Date.parse(job.posted_at || '');
+  return Number.isFinite(time) ? time : 0;
+}
 
 for (const [index, entry] of companies.entries()) {
   if (index > 0) await sleep(COMPANY_DELAY_MS);
@@ -387,15 +412,27 @@ for (const [index, entry] of companies.entries()) {
     });
     companiesSucceeded++;
 
+    const companyJobs = [];
     for (const raw of extractJobs(entry.provider, body)) {
       const job = mapJob(raw, entry);
       if (!shouldKeep(job)) continue;
+      companyJobs.push(job);
+    }
+
+    companyJobs.sort((left, right) => jobRecency(right) - jobRecency(left));
+    let companyAccepted = 0;
+    for (const job of companyJobs) {
       const keys = dedupeKeys(job);
       if (keys.url && seenUrls.has(keys.url)) continue;
       if (keys.companyTitle && seenCompanyTitles.has(keys.companyTitle)) continue;
+      if (MAX_JOBS_PER_COMPANY > 0 && companyAccepted >= MAX_JOBS_PER_COMPANY) {
+        companyCapsApplied++;
+        continue;
+      }
       if (keys.url) seenUrls.add(keys.url);
       if (keys.companyTitle) seenCompanyTitles.add(keys.companyTitle);
       allJobs.push(job);
+      companyAccepted++;
     }
   } catch (e) {
     errors.push({
@@ -417,6 +454,7 @@ const meta = {
   companies_enabled: companies.length,
   companies_succeeded: companiesSucceeded,
   fetch_errors: errors.length,
+  company_caps_applied: companyCapsApplied,
   errors: errors.slice(0, 20),
 };
 

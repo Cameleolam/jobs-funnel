@@ -84,6 +84,9 @@
   ],
   "ats_watchlist_negative_keywords": [
     "intern", "working student", "werkstudent", "trainee",
-    "manager", "director", "principal", "staff", "lead", "head of"
+    "manager", "director", "principal", "staff", "lead", "head of",
+    "legal", "counsel", "hr", "people ops", "recruiting", "recruiter",
+    "coordinator", "social media", "marketing", "sales",
+    "account executive", "licensing", "finance", "ifrs"
   ]
 }

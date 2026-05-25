@@ -22,6 +22,7 @@ def make_project(tmp_path: Path, watchlist, *, config=None, search=None):
             "ats_watchlist_company_delay_ms": 0,
             "ats_watchlist_timeout_ms": 1000,
             "ats_watchlist_max_companies": 300,
+            "ats_watchlist_max_jobs_per_company": 25,
             **(config or {}),
         },
     )
@@ -303,6 +304,137 @@ def test_ats_watchlist_records_company_errors_without_killing_successful_run(tmp
     assert jobs[0]["_crawlMeta"]["fetch_errors"] == 1
     assert jobs[0]["_crawlMeta"]["errors"][0]["company"] == "Broken Lever"
     assert jobs[0]["_crawlMeta"]["errors"][0]["provider"] == "lever"
+
+
+def test_ats_watchlist_uses_location_only_for_remote_detection(tmp_path):
+    lever_url = "https://api.lever.co/v0/postings/examplelever?mode=json"
+    project_dir = make_project(
+        tmp_path,
+        [{"company": "Lever Co", "provider": "lever", "slug": "examplelever"}],
+    )
+
+    result = run_ats_fetch(
+        project_dir,
+        responses={
+            lever_url: [
+                {
+                    "id": "ny-1",
+                    "text": "Software Engineer",
+                    "hostedUrl": "https://jobs.lever.co/examplelever/ny-1",
+                    "categories": {"location": "New York, NY"},
+                    "descriptionPlain": "Remote-friendly team building Python API integration.",
+                }
+            ]
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    job = payload["result"][0]["json"]
+
+    assert job["remote"] is False
+    assert job["geo_mismatch"] is True
+
+
+def test_ats_watchlist_rejects_business_titles_even_with_matching_descriptions(tmp_path):
+    lever_url = "https://api.lever.co/v0/postings/examplelever?mode=json"
+    project_dir = make_project(
+        tmp_path,
+        [{"company": "Lever Co", "provider": "lever", "slug": "examplelever"}],
+    )
+
+    result = run_ats_fetch(
+        project_dir,
+        responses={
+            lever_url: [
+                {
+                    "id": "legal-1",
+                    "text": "Privacy Legal Counsel",
+                    "hostedUrl": "https://jobs.lever.co/examplelever/legal-1",
+                    "categories": {"location": "Berlin"},
+                    "descriptionPlain": "You will advise teams building Python API integration.",
+                },
+                {
+                    "id": "marketing-1",
+                    "text": "Technical Marketing Engineer",
+                    "hostedUrl": "https://jobs.lever.co/examplelever/marketing-1",
+                    "categories": {"location": "Berlin"},
+                    "descriptionPlain": "You will write about LLM and API integration workflows.",
+                },
+                {
+                    "id": "analyst-1",
+                    "text": "Product Analyst",
+                    "hostedUrl": "https://jobs.lever.co/examplelever/analyst-1",
+                    "categories": {"location": "Berlin"},
+                    "descriptionPlain": "You will analyze Python workflow automation metrics.",
+                },
+                {
+                    "id": "data-1",
+                    "text": "Data Platform Engineer",
+                    "hostedUrl": "https://jobs.lever.co/examplelever/data-1",
+                    "categories": {"location": "Berlin"},
+                    "descriptionPlain": "You will build Python workflow automation.",
+                },
+            ]
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    jobs = [item["json"] for item in payload["result"]]
+
+    assert [job["title"] for job in jobs] == ["Data Platform Engineer"]
+
+
+def test_ats_watchlist_caps_jobs_per_company_by_newest_posted_at(tmp_path):
+    greenhouse_url = "https://boards-api.greenhouse.io/v1/boards/examplegreen/jobs?content=true"
+    project_dir = make_project(
+        tmp_path,
+        [{"company": "Green Co", "provider": "greenhouse", "slug": "examplegreen"}],
+        config={"ats_watchlist_max_jobs_per_company": 2},
+    )
+
+    result = run_ats_fetch(
+        project_dir,
+        responses={
+            greenhouse_url: {
+                "jobs": [
+                    {
+                        "id": 1,
+                        "title": "Backend Engineer",
+                        "absolute_url": "https://boards.greenhouse.io/examplegreen/jobs/1",
+                        "location": {"name": "Berlin"},
+                        "content": "Python APIs.",
+                        "updated_at": "2026-01-01T10:00:00Z",
+                    },
+                    {
+                        "id": 2,
+                        "title": "Software Engineer",
+                        "absolute_url": "https://boards.greenhouse.io/examplegreen/jobs/2",
+                        "location": {"name": "Berlin"},
+                        "content": "Python APIs.",
+                        "updated_at": "2026-05-01T10:00:00Z",
+                    },
+                    {
+                        "id": 3,
+                        "title": "Applied AI Engineer",
+                        "absolute_url": "https://boards.greenhouse.io/examplegreen/jobs/3",
+                        "location": {"name": "Berlin"},
+                        "content": "LLM API integration.",
+                        "updated_at": "2026-03-01T10:00:00Z",
+                    },
+                ]
+            }
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    jobs = [item["json"] for item in payload["result"]]
+
+    assert [job["external_id"] for job in jobs] == ["2", "3"]
+    assert jobs[0]["_crawlMeta"]["company_caps_applied"] == 1
+    assert jobs[0]["_crawlMeta"]["total_results"] == 2
 
 
 def test_ats_watchlist_throws_when_every_enabled_company_fails(tmp_path):
