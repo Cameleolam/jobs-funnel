@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block content %}
+
+<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"
+        integrity="sha384-yxKDWWf0wwdUj/gPeuL11czrnKFQROnLgY8ll7En9NYoXibgg3C6NK/UDHNtUgWJ"
+        crossorigin="anonymous"></script>
+
+<div class="clusters-page">
+  <div class="clusters-header">
+    <div>
+      <h2 class="page-title">Job Clusters</h2>
+      <p class="page-subtitle">Semantic neighborhoods from analyzed jobs.</p>
+    </div>
+    <div class="clusters-summary" id="clusters-summary" aria-live="polite">Loading...</div>
+  </div>
+
+  <form class="clusters-controls" id="clusters-controls">
+    <label>
+      Date range
+      <select name="days" id="cluster-days">
+        <option value="7">7 days</option>
+        <option value="30" selected>30 days</option>
+        <option value="90">90 days</option>
+        <option value="all">All dates</option>
+      </select>
+    </label>
+    <label>
+      Jobs
+      <select name="limit" id="cluster-limit">
+        <option value="100">100</option>
+        <option value="250" selected>250</option>
+        <option value="500">500</option>
+        <option value="all">All</option>
+      </select>
+    </label>
+    <label>
+      Company cap
+      <select name="company_cap" id="cluster-company-cap">
+        <option value="10">10</option>
+        <option value="25" selected>25</option>
+        <option value="50">50</option>
+        <option value="all">All</option>
+      </select>
+    </label>
+    <label>
+      Similarity
+      <input type="number" name="threshold" id="cluster-threshold"
+             min="0.5" max="0.98" step="0.01" value="0.82">
+    </label>
+    <label>
+      Color
+      <select name="color_by" id="cluster-color">
+        <option value="decision" selected>Decision</option>
+        <option value="source">Source</option>
+        <option value="user_status">User status</option>
+      </select>
+    </label>
+    <label class="clusters-toggle">
+      <input type="checkbox" name="hide_same_company_edges" id="cluster-hide-same-company" checked>
+      Hide same-company links
+    </label>
+    <button class="btn btn-primary btn-sm" type="submit">Refresh</button>
+  </form>
+
+  <div class="clusters-layout">
+    <section class="clusters-graph-panel" aria-label="Semantic job graph">
+      <div id="clusters-empty" class="clusters-empty" hidden></div>
+      <div id="clusters-graph"></div>
+    </section>
+
+    <aside class="clusters-side-panel" aria-label="Cluster details">
+      <div id="clusters-selection" class="clusters-selection">
+        <h3>Selection</h3>
+        <p class="text-muted">No selection.</p>
+      </div>
+
+      <div class="clusters-list-wrap">
+        <h3>Clusters</h3>
+        <div id="clusters-list" class="clusters-list"></div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script src="/static/clusters.js"></script>
+{% endblock %}

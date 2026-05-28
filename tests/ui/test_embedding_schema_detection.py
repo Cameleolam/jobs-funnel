@@ -24,10 +24,14 @@ def _fake_conn(present_cols):
 
 
 def test_detect_returns_optional_columns_when_present(monkeypatch):
-    conn = _fake_conn(["embedding", "scored_uncalibrated"])
+    conn = _fake_conn(["embedding", "embedding_calibration", "scored_uncalibrated"])
     monkeypatch.setattr(schema.scripts_db, "get_conn", lambda: conn)
 
-    assert schema._detect_optional_columns() == {"embedding", "scored_uncalibrated"}
+    assert schema._detect_optional_columns() == {
+        "embedding",
+        "embedding_calibration",
+        "scored_uncalibrated",
+    }
     conn.close.assert_called_once_with()
 
 
@@ -45,6 +49,26 @@ def test_has_embedding_columns_stays_false_when_only_one_column_present(monkeypa
     importlib.reload(schema)
 
     assert schema.HAS_EMBEDDING_COLUMNS is False
+
+
+def test_has_calibration_embedding_column_tracks_embedding_calibration(monkeypatch):
+    monkeypatch.setattr(
+        schema.scripts_db,
+        "get_conn",
+        lambda: _fake_conn(["embedding", "scored_uncalibrated"]),
+    )
+    importlib.reload(schema)
+
+    assert schema.HAS_CALIBRATION_EMBEDDING_COLUMN is False
+
+    monkeypatch.setattr(
+        schema.scripts_db,
+        "get_conn",
+        lambda: _fake_conn(["embedding_calibration"]),
+    )
+    importlib.reload(schema)
+
+    assert schema.HAS_CALIBRATION_EMBEDDING_COLUMN is True
 
 
 def test_detect_returns_empty_set_when_db_unreachable(monkeypatch):

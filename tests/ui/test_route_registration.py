@@ -28,6 +28,8 @@ EXPECTED_ROUTES = {
     ("/calibration/proposals", "POST"),
     ("/calibration/proposals/{proposal_id}/apply", "POST"),
     ("/calibration/proposals/{proposal_id}/rollback", "POST"),
+    ("/clusters", "GET"),
+    ("/api/clusters/graph", "GET"),
     ("/system", "GET"),
     ("/tracking", "GET"),
     ("/api/tracking/jobs", "GET"),
@@ -97,6 +99,7 @@ def test_server_entrypoint_stays_slim():
     assert "def _serialize_job_with_events" not in server_source
     assert "psycopg2" not in server_source
     assert "include_router(jobs.router)" in server_source
+    assert "include_router(clusters.router)" in server_source
     assert "include_router(tracking.router)" in server_source
 
 

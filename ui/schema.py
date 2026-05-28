@@ -11,6 +11,7 @@ from ui.config import TABLE
 def _detect_optional_columns():
     wanted = {
         "embedding",
+        "embedding_calibration",
         "scored_uncalibrated",
         "needs_human_review",
         "explanation",
@@ -36,6 +37,7 @@ def _detect_optional_columns():
 
 OPTIONAL_COLUMNS = _detect_optional_columns()
 HAS_EMBEDDING_COLUMNS = {"embedding", "scored_uncalibrated"}.issubset(OPTIONAL_COLUMNS)
+HAS_CALIBRATION_EMBEDDING_COLUMN = "embedding_calibration" in OPTIONAL_COLUMNS
 HAS_HUMAN_REVIEW_COLUMNS = {
     "needs_human_review",
     "explanation",
