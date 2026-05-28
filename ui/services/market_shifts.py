@@ -202,6 +202,7 @@ def _query() -> str:
         WHERE status = 'analyzed'
           AND analyzed_at >= date_trunc('week', CURRENT_DATE)::timestamptz
               - ((%s - 1) * interval '1 week')
+          AND analyzed_at < date_trunc('week', CURRENT_DATE)::timestamptz + interval '1 week'
         ORDER BY analyzed_at DESC
     """
 

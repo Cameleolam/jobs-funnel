@@ -112,4 +112,8 @@ def test_get_market_shifts_normalizes_params_and_queries_analyzed_jobs(monkeypat
     assert "FROM jobs_table" in seen[0][0]
     assert "status = 'analyzed'" in seen[0][0]
     assert "analyzed_at >=" in seen[0][0]
+    assert (
+        "analyzed_at < date_trunc('week', CURRENT_DATE)::timestamptz + interval '1 week'"
+        in seen[0][0]
+    )
     assert payload["summary"] == {"total_jobs": 1, "topic_count": 1, "signal_jobs": 1}
