@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<link rel="stylesheet" href="/static/analytics.css">
+
+<div class="analytics-shell">
+  <header class="analytics-header">
+    <div>
+      <h2 class="page-title">Analytics</h2>
+      <p class="page-subtitle">Scoring, funnel, and market signals.</p>
+    </div>
+  </header>
+
+  <nav class="analytics-tabs" aria-label="Analytics sections">
+    <a href="#analytics-scoring">Scoring</a>
+    <a href="#analytics-funnel">Funnel</a>
+    <a href="#analytics-market">Market</a>
+  </nav>
+
+  <div class="analytics-grid">
+    <section class="analytics-panel" id="analytics-scoring" data-analytics-endpoint="/api/analytics/scoring">
+      <div class="analytics-panel-header">
+        <h3>Scoring</h3>
+        <span class="analytics-state" data-analytics-status>Loading</span>
+      </div>
+      <div class="analytics-empty" data-analytics-empty>Loading scoring analytics.</div>
+    </section>
+
+    <section class="analytics-panel" id="analytics-funnel" data-analytics-endpoint="/api/analytics/funnel">
+      <div class="analytics-panel-header">
+        <h3>Funnel</h3>
+        <span class="analytics-state" data-analytics-status>Loading</span>
+      </div>
+      <div class="analytics-empty" data-analytics-empty>Loading funnel analytics.</div>
+    </section>
+
+    <section class="analytics-panel" id="analytics-market" data-analytics-endpoint="/api/analytics/market-shifts">
+      <div class="analytics-panel-header">
+        <h3>Market</h3>
+        <span class="analytics-state" data-analytics-status>Loading</span>
+      </div>
+      <div class="analytics-empty" data-analytics-empty>Loading market analytics.</div>
+    </section>
+  </div>
+</div>
+
+<script src="/static/analytics.js"></script>
+{% endblock %}

@@ -76,6 +76,7 @@ def test_sidebar_nav_has_core_sections():
         ("/?view=review", "Review Queue"),
         ("/tracking", "Tracking"),
         ("/clusters", "Clusters"),
+        ("/analytics", "Analytics"),
         ("/runs", "Runs"),
         ("/calibration", "Calibration"),
         ("/system", "System"),
@@ -97,6 +98,7 @@ def test_review_nav_is_active_for_review_query():
 def test_section_nav_is_active_by_path():
     assert _active_labels(_render_base("/tracking")) == ["Tracking"]
     assert _active_labels(_render_base("/clusters")) == ["Clusters"]
+    assert _active_labels(_render_base("/analytics")) == ["Analytics"]
     assert _active_labels(_render_base("/runs")) == ["Runs"]
     assert _active_labels(_render_base("/calibration")) == ["Calibration"]
     assert _active_labels(_render_base("/system")) == ["System"]

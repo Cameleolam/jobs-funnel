@@ -2,7 +2,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from ui.routes import runs, tracking
+from ui.routes import analytics, runs, tracking
 from ui.server import app
 
 
@@ -30,6 +30,10 @@ EXPECTED_ROUTES = {
     ("/calibration/proposals/{proposal_id}/rollback", "POST"),
     ("/clusters", "GET"),
     ("/api/clusters/graph", "GET"),
+    ("/analytics", "GET"),
+    ("/api/analytics/scoring", "GET"),
+    ("/api/analytics/funnel", "GET"),
+    ("/api/analytics/market-shifts", "GET"),
     ("/system", "GET"),
     ("/tracking", "GET"),
     ("/api/tracking/jobs", "GET"),
@@ -58,6 +62,13 @@ RUNS_ROUTES = {
     ("/runs", "GET"),
     ("/runs/list", "GET"),
     ("/stats", "GET"),
+}
+
+ANALYTICS_ROUTES = {
+    ("/analytics", "GET"),
+    ("/api/analytics/scoring", "GET"),
+    ("/api/analytics/funnel", "GET"),
+    ("/api/analytics/market-shifts", "GET"),
 }
 
 
@@ -91,6 +102,16 @@ def test_runs_routes_are_registered_on_runs_router():
     assert RUNS_ROUTES <= registered_routes
 
 
+def test_analytics_routes_are_registered_on_analytics_router():
+    registered_routes = {
+        (route.path, method)
+        for route in analytics.router.routes
+        for method in getattr(route, "methods", set())
+    }
+
+    assert ANALYTICS_ROUTES <= registered_routes
+
+
 def test_server_entrypoint_stays_slim():
     server_source = Path("ui/server.py").read_text()
 
@@ -101,6 +122,7 @@ def test_server_entrypoint_stays_slim():
     assert "include_router(jobs.router)" in server_source
     assert "include_router(clusters.router)" in server_source
     assert "include_router(tracking.router)" in server_source
+    assert "include_router(analytics.router)" in server_source
 
 
 def test_static_css_is_served():
