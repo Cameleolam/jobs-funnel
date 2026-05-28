@@ -116,6 +116,103 @@
     container.appendChild(section);
   }
 
+  function renderFunnelCounters(container, summary) {
+    var counters = document.createElement("div");
+    counters.className = "funnel-counters";
+    [
+      ["Tracked", "tracked_jobs"],
+      ["Applied", "applied"],
+      ["Open", "in_process"],
+      ["Rejected", "rejected"],
+      ["Closed", "closed"],
+      ["Interviews", "interviews"],
+    ].forEach(function (item) {
+      var counter = document.createElement("div");
+      counter.className = "funnel-counter";
+      appendText(counter, "span", "funnel-counter-value", String(summary[item[1]] || 0));
+      appendText(counter, "span", "funnel-counter-label", item[0]);
+      counters.appendChild(counter);
+    });
+    var closeText = summary.avg_days_to_close === null || summary.avg_days_to_close === undefined
+      ? "n/a"
+      : String(summary.avg_days_to_close);
+    var closeCounter = document.createElement("div");
+    closeCounter.className = "funnel-counter";
+    appendText(closeCounter, "span", "funnel-counter-value", closeText);
+    appendText(closeCounter, "span", "funnel-counter-label", "Avg days close");
+    counters.appendChild(closeCounter);
+    container.appendChild(counters);
+  }
+
+  function renderFunnelTimeline(container, weeks) {
+    var section = document.createElement("div");
+    section.className = "funnel-section";
+    appendText(section, "h4", null, "Weekly events");
+
+    if (!weeks || !weeks.length) {
+      appendText(section, "p", "scoring-muted", "No events in this window.");
+      container.appendChild(section);
+      return;
+    }
+
+    var maxTotal = weeks.reduce(function (max, week) {
+      return Math.max(max, Number(week.total) || 0);
+    }, 1);
+    var timeline = document.createElement("div");
+    timeline.className = "funnel-timeline";
+    weeks.forEach(function (week) {
+      var row = document.createElement("div");
+      row.className = "funnel-week";
+      appendText(row, "span", "funnel-week-label", String(week.week || ""));
+
+      var track = document.createElement("div");
+      track.className = "funnel-week-track";
+      ["application", "contact", "interview", "task", "decision", "note"].forEach(function (kind) {
+        var count = Number(week[kind]) || 0;
+        if (!count) return;
+        var fill = document.createElement("span");
+        fill.className = "funnel-week-fill funnel-week-fill-" + kind;
+        fill.style.width = Math.max(4, Math.round((count / maxTotal) * 100)) + "%";
+        fill.title = kind + ": " + count;
+        track.appendChild(fill);
+      });
+      row.appendChild(track);
+      appendText(row, "span", "funnel-week-total", String(week.total || 0));
+      timeline.appendChild(row);
+    });
+    section.appendChild(timeline);
+    container.appendChild(section);
+  }
+
+  function renderStuckJobs(container, jobs) {
+    var section = document.createElement("div");
+    section.className = "funnel-section";
+    appendText(section, "h4", null, "Stuck jobs");
+
+    if (!jobs || !jobs.length) {
+      appendText(section, "p", "scoring-muted", "None");
+      container.appendChild(section);
+      return;
+    }
+
+    var list = document.createElement("ul");
+    list.className = "funnel-stuck-list";
+    jobs.forEach(function (job) {
+      var item = document.createElement("li");
+      var titleText = (job.title || "Untitled") + " @ " + (job.company || "Unknown");
+      appendText(item, "span", "scoring-job-title", titleText);
+      appendText(
+        item,
+        "span",
+        "scoring-job-meta",
+        (job.user_status || "unknown") + " - " + String(job.days_since_last_event || 0) + " days"
+      );
+      list.appendChild(item);
+    });
+    section.appendChild(list);
+    container.appendChild(section);
+  }
+
   function renderScoringPanel(panel, data) {
     var summary = data && data.summary ? data.summary : {};
     var mismatches = data && data.mismatches ? data.mismatches : {};
@@ -139,6 +236,22 @@
       mismatches.low_score_applied || []
     );
     renderMismatchList(container, "Pending review", mismatches.pending_review || []);
+
+    panel.appendChild(container);
+  }
+
+  function renderFunnelPanel(panel, data) {
+    var summary = data && data.summary ? data.summary : {};
+    clearRendered(panel);
+    hideEmptyState(panel);
+
+    var container = document.createElement("div");
+    container.className = "funnel-content";
+    container.setAttribute("data-analytics-rendered", "funnel");
+
+    renderFunnelCounters(container, summary);
+    renderFunnelTimeline(container, data && data.weeks ? data.weeks : []);
+    renderStuckJobs(container, data && data.stuck_jobs ? data.stuck_jobs : []);
 
     panel.appendChild(container);
   }
@@ -170,6 +283,8 @@
         setStatus(panel, hasContent(data) ? "Ready" : "Empty");
         if (endpoint === "/api/analytics/scoring") {
           renderScoringPanel(panel, data);
+        } else if (endpoint.indexOf("/api/analytics/funnel") === 0) {
+          renderFunnelPanel(panel, data);
         } else {
           renderEmptyState(panel, "No analytics data yet.");
         }

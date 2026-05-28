@@ -76,15 +76,43 @@ def test_analytics_api_scoring_returns_service_payload(monkeypatch):
     assert response.json() == payload
 
 
-def test_analytics_api_funnel_returns_empty_shape():
-    response = TestClient(app).get("/api/analytics/funnel")
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "summary": {},
-        "weeks": [],
+def test_analytics_api_funnel_returns_service_payload(monkeypatch):
+    payload = {
+        "summary": {
+            "tracked_jobs": 2,
+            "applied": 1,
+            "in_process": 1,
+            "rejected": 0,
+            "closed": 0,
+            "interviews": 1,
+            "avg_days_to_close": None,
+        },
+        "weeks": [
+            {
+                "week": "2026-05-04",
+                "application": 1,
+                "contact": 0,
+                "interview": 1,
+                "task": 0,
+                "decision": 0,
+                "note": 0,
+                "total": 2,
+            }
+        ],
         "stuck_jobs": [],
     }
+    seen = {}
+    monkeypatch.setattr(
+        analytics.funnel_analytics,
+        "get_funnel_summary",
+        lambda weeks=12: seen.setdefault("payload", (weeks, payload))[1],
+    )
+
+    response = TestClient(app).get("/api/analytics/funnel?weeks=12")
+
+    assert response.status_code == 200
+    assert seen["payload"][0] == 12
+    assert response.json() == payload
 
 
 def test_analytics_api_market_shifts_returns_empty_shape():
@@ -109,5 +137,7 @@ def test_analytics_static_assets_are_served_and_define_shell_hooks():
     assert js_response.status_code == 200
     assert "renderEmptyState" in ANALYTICS_JS.read_text(encoding="utf-8")
     assert "renderScoringPanel" in ANALYTICS_JS.read_text(encoding="utf-8")
+    assert "renderFunnelPanel" in ANALYTICS_JS.read_text(encoding="utf-8")
     assert ".analytics-shell" in ANALYTICS_CSS.read_text(encoding="utf-8")
     assert ".scoring-bucket" in ANALYTICS_CSS.read_text(encoding="utf-8")
+    assert ".funnel-timeline" in ANALYTICS_CSS.read_text(encoding="utf-8")

@@ -160,6 +160,111 @@
   font-weight: 700;
 }
 
+.funnel-content {
+  display: grid;
+  gap: 14px;
+}
+
+.funnel-counters {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.funnel-counter {
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.funnel-counter-value {
+  color: #0f172a;
+  display: block;
+  font-size: 1.2rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.funnel-counter-label,
+.funnel-week-label,
+.funnel-week-total {
+  color: #64748b;
+  font-size: 0.78rem;
+}
+
+.funnel-section {
+  display: grid;
+  gap: 8px;
+}
+
+.funnel-section h4 {
+  color: #334155;
+  font-size: 0.86rem;
+  margin: 0;
+}
+
+.funnel-timeline {
+  display: grid;
+  gap: 7px;
+}
+
+.funnel-week {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 76px minmax(72px, 1fr) 24px;
+}
+
+.funnel-week-track {
+  background: #e2e8f0;
+  border-radius: 999px;
+  display: flex;
+  height: 9px;
+  overflow: hidden;
+}
+
+.funnel-week-fill {
+  display: block;
+  height: 100%;
+}
+
+.funnel-week-fill-application {
+  background: #0f766e;
+}
+
+.funnel-week-fill-contact {
+  background: #2563eb;
+}
+
+.funnel-week-fill-interview {
+  background: #7c3aed;
+}
+
+.funnel-week-fill-task {
+  background: #ca8a04;
+}
+
+.funnel-week-fill-decision {
+  background: #dc2626;
+}
+
+.funnel-week-fill-note {
+  background: #475569;
+}
+
+.funnel-stuck-list {
+  display: grid;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.funnel-stuck-list li {
+  border-left: 3px solid #f59e0b;
+  padding-left: 8px;
+}
+
 @media (max-width: 1000px) {
   .analytics-grid {
     grid-template-columns: 1fr;
