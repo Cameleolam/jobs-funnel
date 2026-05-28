@@ -57,6 +57,8 @@ def _clamp_int(value: Any, default: int, lower: int, upper: int) -> int:
 
 
 def _normalize_topic(value: Any) -> str | None:
+    if not isinstance(value, (str, int, float, bool)):
+        return None
     topic = str(value or "").strip().lower()
     if not topic or topic in GENERIC_TAGS:
         return None

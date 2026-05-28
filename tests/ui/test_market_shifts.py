@@ -75,6 +75,17 @@ def test_extract_topics_falls_back_to_title_tokens_without_generic_words():
     assert topics == ["ml", "platform"]
 
 
+def test_extract_topics_ignores_non_scalar_tags_and_falls_back_to_title():
+    topics = market_shifts.extract_topics(
+        {
+            "title": "Backend Python Platform Engineer",
+            "tags": [{"name": "python"}, ["backend"], "remote"],
+        }
+    )
+
+    assert topics == ["backend", "python", "platform"]
+
+
 def test_get_market_shifts_normalizes_params_and_queries_analyzed_jobs(monkeypatch):
     seen = []
 
