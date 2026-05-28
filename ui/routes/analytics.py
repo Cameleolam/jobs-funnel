@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
 from ui.rendering import render
-from ui.services import funnel_analytics, scoring_insights
+from ui.services import funnel_analytics, market_shifts, scoring_insights
 
 
 router = APIRouter()
@@ -26,9 +26,5 @@ async def api_analytics_funnel(weeks: str = "12"):
 
 
 @router.get("/api/analytics/market-shifts")
-async def api_analytics_market_shifts():
-    return {
-        "weeks": [],
-        "topics": [],
-        "summary": {},
-    }
+async def api_analytics_market_shifts(weeks: str = "12", limit: str = "20"):
+    return market_shifts.get_market_shifts(weeks=weeks, limit=limit)

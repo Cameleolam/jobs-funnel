@@ -213,6 +213,69 @@
     container.appendChild(section);
   }
 
+  function renderMarketCounters(container, summary) {
+    var counters = document.createElement("div");
+    counters.className = "market-counters";
+    [
+      ["Jobs", "total_jobs"],
+      ["Topics", "topic_count"],
+      ["Signals", "signal_jobs"],
+    ].forEach(function (item) {
+      var counter = document.createElement("div");
+      counter.className = "market-counter";
+      appendText(counter, "span", "market-counter-value", String(summary[item[1]] || 0));
+      appendText(counter, "span", "market-counter-label", item[0]);
+      counters.appendChild(counter);
+    });
+    container.appendChild(counters);
+  }
+
+  function shortWeekLabel(week) {
+    var text = String(week || "");
+    return text.length >= 10 ? text.slice(5, 10) : text;
+  }
+
+  function renderMarketHeatmap(container, data) {
+    var topics = data && data.topics ? data.topics : [];
+    var weeks = data && data.weeks ? data.weeks : [];
+    var section = document.createElement("div");
+    section.className = "market-section";
+    appendText(section, "h4", null, "Weekly topics");
+
+    if (!topics.length || !weeks.length) {
+      appendText(section, "p", "scoring-muted", "No market topics in this window.");
+      container.appendChild(section);
+      return;
+    }
+
+    var maxCount = topics.reduce(function (max, topic) {
+      return Math.max(max, Number(topic.total) || 0);
+    }, 1);
+    var table = document.createElement("div");
+    table.className = "market-heatmap";
+    table.style.gridTemplateColumns = "minmax(82px, 1fr) repeat(" + weeks.length + ", 34px)";
+    appendText(table, "span", "market-heatmap-heading", "Topic");
+    weeks.forEach(function (week) {
+      appendText(table, "span", "market-heatmap-week", shortWeekLabel(week));
+    });
+
+    topics.forEach(function (topic) {
+      var label = appendText(table, "span", "market-topic-label", topic.topic || "");
+      label.title = String(topic.total || 0) + " jobs, " + String(topic.signal_total || 0) + " signals";
+      (topic.weeks || []).forEach(function (week) {
+        var count = Number(week.count) || 0;
+        var signalCount = Number(week.signal_count) || 0;
+        var cell = appendText(table, "span", "market-cell", String(count));
+        cell.title = String(topic.topic || "") + " " + String(week.week || "") + ": "
+          + count + " jobs, " + signalCount + " signals";
+        cell.setAttribute("data-signal-count", String(signalCount));
+        cell.style.opacity = String(0.35 + (0.65 * (count / maxCount)));
+      });
+    });
+    section.appendChild(table);
+    container.appendChild(section);
+  }
+
   function renderScoringPanel(panel, data) {
     var summary = data && data.summary ? data.summary : {};
     var mismatches = data && data.mismatches ? data.mismatches : {};
@@ -236,6 +299,21 @@
       mismatches.low_score_applied || []
     );
     renderMismatchList(container, "Pending review", mismatches.pending_review || []);
+
+    panel.appendChild(container);
+  }
+
+  function renderMarketPanel(panel, data) {
+    var summary = data && data.summary ? data.summary : {};
+    clearRendered(panel);
+    hideEmptyState(panel);
+
+    var container = document.createElement("div");
+    container.className = "market-content";
+    container.setAttribute("data-analytics-rendered", "market");
+
+    renderMarketCounters(container, summary);
+    renderMarketHeatmap(container, data || {});
 
     panel.appendChild(container);
   }
@@ -285,6 +363,8 @@
           renderScoringPanel(panel, data);
         } else if (endpoint.indexOf("/api/analytics/funnel") === 0) {
           renderFunnelPanel(panel, data);
+        } else if (endpoint.indexOf("/api/analytics/market-shifts") === 0) {
+          renderMarketPanel(panel, data);
         } else {
           renderEmptyState(panel, "No analytics data yet.");
         }

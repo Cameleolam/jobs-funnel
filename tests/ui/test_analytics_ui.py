@@ -135,15 +135,31 @@ def test_analytics_api_funnel_tolerates_invalid_weeks(monkeypatch):
     assert response.json() == payload
 
 
-def test_analytics_api_market_shifts_returns_empty_shape():
-    response = TestClient(app).get("/api/analytics/market-shifts")
+def test_analytics_api_market_shifts_returns_service_payload(monkeypatch):
+    payload = {
+        "weeks": ["2026-05-04"],
+        "topics": [
+            {
+                "topic": "backend",
+                "total": 1,
+                "signal_total": 1,
+                "weeks": [{"week": "2026-05-04", "count": 1, "signal_count": 1}],
+            }
+        ],
+        "summary": {"total_jobs": 1, "topic_count": 1, "signal_jobs": 1},
+    }
+    seen = {}
+    monkeypatch.setattr(
+        analytics.market_shifts,
+        "get_market_shifts",
+        lambda weeks=12, limit=20: seen.setdefault("payload", (weeks, limit, payload))[2],
+    )
+
+    response = TestClient(app).get("/api/analytics/market-shifts?weeks=12&limit=20")
 
     assert response.status_code == 200
-    assert response.json() == {
-        "weeks": [],
-        "topics": [],
-        "summary": {},
-    }
+    assert seen["payload"][:2] == ("12", "20")
+    assert response.json() == payload
 
 
 def test_analytics_static_assets_are_served_and_define_shell_hooks():
@@ -158,6 +174,8 @@ def test_analytics_static_assets_are_served_and_define_shell_hooks():
     assert "renderEmptyState" in ANALYTICS_JS.read_text(encoding="utf-8")
     assert "renderScoringPanel" in ANALYTICS_JS.read_text(encoding="utf-8")
     assert "renderFunnelPanel" in ANALYTICS_JS.read_text(encoding="utf-8")
+    assert "renderMarketPanel" in ANALYTICS_JS.read_text(encoding="utf-8")
     assert ".analytics-shell" in ANALYTICS_CSS.read_text(encoding="utf-8")
     assert ".scoring-bucket" in ANALYTICS_CSS.read_text(encoding="utf-8")
     assert ".funnel-timeline" in ANALYTICS_CSS.read_text(encoding="utf-8")
+    assert ".market-heatmap" in ANALYTICS_CSS.read_text(encoding="utf-8")
