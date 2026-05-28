@@ -2,6 +2,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from ui.routes import analytics
 from ui.server import app
 
 
@@ -24,21 +25,55 @@ def test_analytics_page_renders_shell():
     assert "Market" in response.text
 
 
-def test_analytics_api_scoring_returns_empty_shape():
-    response = TestClient(app).get("/api/analytics/scoring")
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "summary": {},
-        "buckets": [],
-        "decisions": [],
-        "user_statuses": [],
+def test_analytics_api_scoring_returns_service_payload(monkeypatch):
+    payload = {
+        "summary": {
+            "total": 1,
+            "applied": 1,
+            "dismissed": 0,
+            "pending_review": 0,
+            "needs_human_review": 0,
+            "low_confidence": 0,
+            "high_score_dismissed": 0,
+            "low_score_applied": 1,
+        },
+        "buckets": [
+            {
+                "bucket": "3-5",
+                "total": 1,
+                "applied": 1,
+                "dismissed": 0,
+                "application_rate": 1.0,
+                "dismissed_rate": 0.0,
+            }
+        ],
+        "decisions": [{"decision": "recommended", "count": 1}],
+        "user_statuses": [{"user_status": "applied", "count": 1}],
         "mismatches": {
             "high_score_dismissed": [],
-            "low_score_applied": [],
+            "low_score_applied": [
+                {
+                    "id": 12,
+                    "title": "Backend Engineer",
+                    "company": "Acme",
+                    "fit_score": 4,
+                    "decision": "recommended",
+                    "user_status": "applied",
+                }
+            ],
             "pending_review": [],
         },
     }
+    monkeypatch.setattr(
+        analytics.scoring_insights,
+        "get_scoring_summary",
+        lambda: payload,
+    )
+
+    response = TestClient(app).get("/api/analytics/scoring")
+
+    assert response.status_code == 200
+    assert response.json() == payload
 
 
 def test_analytics_api_funnel_returns_empty_shape():
@@ -73,4 +108,6 @@ def test_analytics_static_assets_are_served_and_define_shell_hooks():
     assert css_response.headers["content-type"].startswith("text/css")
     assert js_response.status_code == 200
     assert "renderEmptyState" in ANALYTICS_JS.read_text(encoding="utf-8")
+    assert "renderScoringPanel" in ANALYTICS_JS.read_text(encoding="utf-8")
     assert ".analytics-shell" in ANALYTICS_CSS.read_text(encoding="utf-8")
+    assert ".scoring-bucket" in ANALYTICS_CSS.read_text(encoding="utf-8")

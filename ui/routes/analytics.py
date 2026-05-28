@@ -4,6 +4,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
 from ui.rendering import render
+from ui.services import scoring_insights
 
 
 router = APIRouter()
@@ -16,17 +17,7 @@ async def analytics_page(request: Request):
 
 @router.get("/api/analytics/scoring")
 async def api_analytics_scoring():
-    return {
-        "summary": {},
-        "buckets": [],
-        "decisions": [],
-        "user_statuses": [],
-        "mismatches": {
-            "high_score_dismissed": [],
-            "low_score_applied": [],
-            "pending_review": [],
-        },
-    }
+    return scoring_insights.get_scoring_summary()
 
 
 @router.get("/api/analytics/funnel")
