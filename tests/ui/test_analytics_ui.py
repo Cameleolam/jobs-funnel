@@ -20,6 +20,11 @@ def test_analytics_page_renders_shell():
     assert 'id="analytics-scoring"' in response.text
     assert 'id="analytics-funnel"' in response.text
     assert 'id="analytics-market"' in response.text
+    assert 'data-analytics-view="all"' in response.text
+    assert 'data-analytics-view-button="all"' in response.text
+    assert 'data-analytics-view-button="market"' in response.text
+    assert 'data-analytics-window' in response.text
+    assert 'data-analytics-topic-limit' in response.text
     assert "Scoring" in response.text
     assert "Funnel" in response.text
     assert "Market" in response.text
@@ -147,6 +152,12 @@ def test_analytics_api_market_shifts_returns_service_payload(monkeypatch):
             }
         ],
         "summary": {"total_jobs": 1, "topic_count": 1, "signal_jobs": 1},
+        "insights": {
+            "rising_topics": [],
+            "fading_topics": [],
+            "high_signal_topics": [],
+            "noisy_topics": [],
+        },
     }
     seen = {}
     monkeypatch.setattr(
@@ -175,7 +186,15 @@ def test_analytics_static_assets_are_served_and_define_shell_hooks():
     assert "renderScoringPanel" in ANALYTICS_JS.read_text(encoding="utf-8")
     assert "renderFunnelPanel" in ANALYTICS_JS.read_text(encoding="utf-8")
     assert "renderMarketPanel" in ANALYTICS_JS.read_text(encoding="utf-8")
+    assert "renderInsightCards" in ANALYTICS_JS.read_text(encoding="utf-8")
+    assert "renderFunnelLegend" in ANALYTICS_JS.read_text(encoding="utf-8")
+    assert "data-analytics-window" in ANALYTICS_JS.read_text(encoding="utf-8")
+    assert "data-analytics-view-button" in ANALYTICS_JS.read_text(encoding="utf-8")
+    assert "Fit signals" in ANALYTICS_JS.read_text(encoding="utf-8")
     assert ".analytics-shell" in ANALYTICS_CSS.read_text(encoding="utf-8")
+    assert ".analytics-shell.view-scoring" in ANALYTICS_CSS.read_text(encoding="utf-8")
+    assert ".analytics-insights" in ANALYTICS_CSS.read_text(encoding="utf-8")
+    assert ".funnel-legend" in ANALYTICS_CSS.read_text(encoding="utf-8")
     assert ".scoring-bucket" in ANALYTICS_CSS.read_text(encoding="utf-8")
     assert ".funnel-timeline" in ANALYTICS_CSS.read_text(encoding="utf-8")
     assert ".market-heatmap" in ANALYTICS_CSS.read_text(encoding="utf-8")

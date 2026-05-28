@@ -2,7 +2,7 @@
 {% block content %}
 <link rel="stylesheet" href="/static/analytics.css">
 
-<div class="analytics-shell">
+<div class="analytics-shell view-all" data-analytics-view="all">
   <header class="analytics-header">
     <div>
       <h2 class="page-title">Analytics</h2>
@@ -10,11 +10,35 @@
     </div>
   </header>
 
-  <nav class="analytics-tabs" aria-label="Analytics sections">
-    <a href="#analytics-scoring">Scoring</a>
-    <a href="#analytics-funnel">Funnel</a>
-    <a href="#analytics-market">Market</a>
-  </nav>
+  <div class="analytics-toolbar">
+    <div class="analytics-view-controls" aria-label="Analytics view mode">
+      <button type="button" class="analytics-view-button active" data-analytics-view-button="all">All</button>
+      <button type="button" class="analytics-view-button" data-analytics-view-button="scoring">Scoring</button>
+      <button type="button" class="analytics-view-button" data-analytics-view-button="funnel">Funnel</button>
+      <button type="button" class="analytics-view-button" data-analytics-view-button="market">Market</button>
+    </div>
+
+    <div class="analytics-filters" aria-label="Analytics filters">
+      <label>
+        <span>Window</span>
+        <select data-analytics-window>
+          <option value="4">4w</option>
+          <option value="8">8w</option>
+          <option value="12" selected>12w</option>
+          <option value="26">26w</option>
+          <option value="52">52w</option>
+        </select>
+      </label>
+      <label>
+        <span>Topics</span>
+        <select data-analytics-topic-limit>
+          <option value="10">10</option>
+          <option value="20" selected>20</option>
+          <option value="50">50</option>
+        </select>
+      </label>
+    </div>
+  </div>
 
   <div class="analytics-grid">
     <section class="analytics-panel" id="analytics-scoring" data-analytics-endpoint="/api/analytics/scoring">
