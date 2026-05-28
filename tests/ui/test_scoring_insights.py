@@ -145,3 +145,22 @@ def test_build_scoring_summary_uses_optional_human_review_fields_when_available(
     assert summary["summary"]["needs_human_review"] == 1
     assert summary["summary"]["low_confidence"] == 1
     assert [row["id"] for row in summary["mismatches"]["pending_review"]] == [6]
+
+
+def test_build_scoring_summary_counts_categorical_low_confidence():
+    rows = [
+        {
+            "id": 8,
+            "title": "Analytics Engineer",
+            "company": "Hotel",
+            "fit_score": 6,
+            "decision": "recommended",
+            "user_status": "new",
+            "needs_human_review": False,
+            "confidence": " LOW ",
+        }
+    ]
+
+    summary = build_scoring_summary(rows, has_human_review_columns=True)
+
+    assert summary["summary"]["low_confidence"] == 1

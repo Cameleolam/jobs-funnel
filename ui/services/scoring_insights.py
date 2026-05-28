@@ -68,7 +68,10 @@ def _is_pending_review(row: Mapping[str, Any], has_human_review_columns: bool) -
 def _is_low_confidence(row: Mapping[str, Any], has_human_review_columns: bool) -> bool:
     if not has_human_review_columns:
         return False
-    confidence = _score(row.get("confidence"))
+    raw_confidence = row.get("confidence")
+    if isinstance(raw_confidence, str) and raw_confidence.strip().lower() == "low":
+        return True
+    confidence = _score(raw_confidence)
     return confidence is not None and confidence < 0.5
 
 
