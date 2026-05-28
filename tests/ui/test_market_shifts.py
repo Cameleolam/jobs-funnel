@@ -52,6 +52,7 @@ def test_build_market_shift_series_groups_topics_by_week_and_fills_topic_weeks()
         "total_jobs": 3,
         "topic_count": 4,
         "signal_jobs": 2,
+        "date_mode": "posted",
         "date_basis": {
             "posted_at": 0,
             "crawled_at": 0,
@@ -223,7 +224,9 @@ def test_get_market_shifts_normalizes_params_and_queries_analyzed_jobs(monkeypat
     assert [call[1][0] for call in seen] == [12, 52, 1]
     assert "FROM jobs_table" in seen[0][0]
     assert "status = 'analyzed'" in seen[0][0]
-    assert "COALESCE(posted_at, crawled_at, analyzed_at) AS market_date" in seen[0][0]
+    assert "posted_at AS market_date" in seen[0][0]
+    assert "posted_at IS NOT NULL" in seen[0][0]
+    assert "COALESCE(posted_at, crawled_at, analyzed_at)" not in seen[0][0]
     assert "market_date >=" in seen[0][0]
     assert (
         "market_date < date_trunc('week', CURRENT_DATE)::timestamptz + interval '1 week'"
@@ -232,4 +235,40 @@ def test_get_market_shifts_normalizes_params_and_queries_analyzed_jobs(monkeypat
     assert payload["summary"]["total_jobs"] == 1
     assert payload["summary"]["topic_count"] == 1
     assert payload["summary"]["signal_jobs"] == 1
+    assert payload["summary"]["date_mode"] == "posted"
     assert payload["summary"]["date_basis"]["posted_at"] == 1
+
+
+def test_get_market_shifts_defaults_to_posted_only(monkeypatch):
+    seen = []
+
+    def fake_fetch_all(query, params=()):
+        seen.append((query, params))
+        return []
+
+    monkeypatch.setattr(market_shifts, "TABLE", "jobs_table")
+    monkeypatch.setattr(market_shifts, "fetch_all", fake_fetch_all)
+
+    payload = market_shifts.get_market_shifts(weeks=12, limit=20)
+
+    assert seen[0][1] == (12,)
+    assert "posted_at AS market_date" in seen[0][0]
+    assert "posted_at IS NOT NULL" in seen[0][0]
+    assert "COALESCE(posted_at, crawled_at, analyzed_at)" not in seen[0][0]
+    assert payload["summary"]["date_mode"] == "posted"
+
+
+def test_get_market_shifts_can_include_fallback_dates(monkeypatch):
+    seen = []
+
+    def fake_fetch_all(query, params=()):
+        seen.append((query, params))
+        return []
+
+    monkeypatch.setattr(market_shifts, "TABLE", "jobs_table")
+    monkeypatch.setattr(market_shifts, "fetch_all", fake_fetch_all)
+
+    payload = market_shifts.get_market_shifts(weeks=12, limit=20, date_mode="fallback")
+
+    assert "COALESCE(posted_at, crawled_at, analyzed_at) AS market_date" in seen[0][0]
+    assert payload["summary"]["date_mode"] == "fallback"

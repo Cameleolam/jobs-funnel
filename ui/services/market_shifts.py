@@ -158,6 +158,10 @@ def _rate(part: int, total: int) -> float:
     return round(part / total, 4)
 
 
+def _normalize_date_mode(value: Any) -> str:
+    return "fallback" if value == "fallback" else "posted"
+
+
 def _topic_summary(topic: str, total: int, signal_total: int) -> dict[str, Any]:
     return {
         "topic": topic,
@@ -209,8 +213,13 @@ def _build_insights(
     }
 
 
-def build_market_shift_series(rows: list[Mapping[str, Any]], limit: int = 20) -> dict[str, Any]:
+def build_market_shift_series(
+    rows: list[Mapping[str, Any]],
+    limit: int = 20,
+    date_mode: str = "posted",
+) -> dict[str, Any]:
     safe_limit = _clamp_int(limit, 20, 1, 50)
+    safe_date_mode = _normalize_date_mode(date_mode)
     weeks = sorted({
         week
         for row in rows
@@ -265,6 +274,7 @@ def build_market_shift_series(rows: list[Mapping[str, Any]], limit: int = 20) ->
             "total_jobs": len(rows),
             "topic_count": len(topic_totals),
             "signal_jobs": signal_jobs,
+            "date_mode": safe_date_mode,
             "date_basis": {
                 "posted_at": date_basis["posted_at"],
                 "crawled_at": date_basis["crawled_at"],
@@ -276,14 +286,22 @@ def build_market_shift_series(rows: list[Mapping[str, Any]], limit: int = 20) ->
     }
 
 
-def _query() -> str:
+def _query(date_mode: str = "posted") -> str:
+    if _normalize_date_mode(date_mode) == "fallback":
+        market_date = "COALESCE(posted_at, crawled_at, analyzed_at) AS market_date"
+        required_date_filter = ""
+    else:
+        market_date = "posted_at AS market_date"
+        required_date_filter = "AND posted_at IS NOT NULL"
+
     return f"""
         WITH analyzed_jobs AS (
             SELECT
                 id, title, tags, decision, posted_at, crawled_at, analyzed_at,
-                COALESCE(posted_at, crawled_at, analyzed_at) AS market_date
+                {market_date}
             FROM {TABLE}
             WHERE status = 'analyzed'
+              {required_date_filter}
         )
         SELECT id, title, tags, decision, posted_at, crawled_at, analyzed_at, market_date
         FROM analyzed_jobs
@@ -294,8 +312,13 @@ def _query() -> str:
     """
 
 
-def get_market_shifts(weeks: int = 12, limit: int = 20) -> dict[str, Any]:
+def get_market_shifts(
+    weeks: int = 12,
+    limit: int = 20,
+    date_mode: str = "posted",
+) -> dict[str, Any]:
     safe_weeks = _clamp_int(weeks, 12, 1, 52)
     safe_limit = _clamp_int(limit, 20, 1, 50)
-    rows = fetch_all(_query(), (safe_weeks,))
-    return build_market_shift_series(rows, limit=safe_limit)
+    safe_date_mode = _normalize_date_mode(date_mode)
+    rows = fetch_all(_query(safe_date_mode), (safe_weeks,))
+    return build_market_shift_series(rows, limit=safe_limit, date_mode=safe_date_mode)

@@ -242,6 +242,20 @@ def test_job_detail_renders_review_resolution_controls(monkeypatch):
     assert "Ask about EU remote." in response.text
 
 
+def test_job_view_renders_full_page(monkeypatch):
+    client = TestClient(srv.app)
+    monkeypatch.setattr(jobs_routes, "fetch_one", lambda query, params=(): _review_job_row())
+
+    response = client.get("/jobs/42/view")
+
+    assert response.status_code == 200
+    assert "Jobs Funnel" in response.text
+    assert "Ask about EU remote." in response.text
+    assert "Back to jobs" in response.text
+    assert "Close</button>" not in response.text
+    assert 'hx-target="#row-' not in response.text
+
+
 def test_job_row_renders_review_state():
     html = templates.get_template("partials/job_row_single.html").render(
         request={},

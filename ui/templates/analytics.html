@@ -5,64 +5,82 @@
 <div class="analytics-shell view-all" data-analytics-view="all">
   <header class="analytics-header">
     <div>
-      <h2 class="page-title">Analytics</h2>
-      <p class="page-subtitle">Scoring, funnel, and market signals.</p>
+      <h2 class="page-title">Insights</h2>
+      <p class="page-subtitle">Action queue, decision learning, funnel quality, and market signals.</p>
     </div>
   </header>
 
   <div class="analytics-toolbar">
-    <div class="analytics-view-controls" aria-label="Analytics view mode">
+    <div class="analytics-view-controls" aria-label="Insights view mode">
       <button type="button" class="analytics-view-button active" data-analytics-view-button="all">All</button>
-      <button type="button" class="analytics-view-button" data-analytics-view-button="scoring">Scoring</button>
-      <button type="button" class="analytics-view-button" data-analytics-view-button="funnel">Funnel</button>
+      <button type="button" class="analytics-view-button" data-analytics-view-button="act">Act Today</button>
+      <button type="button" class="analytics-view-button" data-analytics-view-button="learn">Learn</button>
+      <button type="button" class="analytics-view-button" data-analytics-view-button="improve">Improve</button>
       <button type="button" class="analytics-view-button" data-analytics-view-button="market">Market</button>
-    </div>
-
-    <div class="analytics-filters" aria-label="Analytics filters">
-      <label>
-        <span>Window</span>
-        <select data-analytics-window>
-          <option value="4">4w</option>
-          <option value="8">8w</option>
-          <option value="12" selected>12w</option>
-          <option value="26">26w</option>
-          <option value="52">52w</option>
-        </select>
-      </label>
-      <label>
-        <span>Topics</span>
-        <select data-analytics-topic-limit>
-          <option value="10">10</option>
-          <option value="20" selected>20</option>
-          <option value="50">50</option>
-        </select>
-      </label>
     </div>
   </div>
 
   <div class="analytics-grid">
-    <section class="analytics-panel" id="analytics-scoring" data-analytics-endpoint="/api/analytics/scoring">
+    <section class="analytics-panel" id="analytics-act" data-insights-panel="act">
       <div class="analytics-panel-header">
-        <h3>Scoring</h3>
+        <h3>Act Today</h3>
         <span class="analytics-state" data-analytics-status>Loading</span>
       </div>
-      <div class="analytics-empty" data-analytics-empty>Loading scoring analytics.</div>
+      <div class="analytics-empty" data-analytics-empty>Loading action queue.</div>
     </section>
 
-    <section class="analytics-panel" id="analytics-funnel" data-analytics-endpoint="/api/analytics/funnel">
+    <section class="analytics-panel" id="analytics-learn" data-insights-panel="learn">
       <div class="analytics-panel-header">
-        <h3>Funnel</h3>
+        <h3>Learn From Decisions</h3>
         <span class="analytics-state" data-analytics-status>Loading</span>
       </div>
-      <div class="analytics-empty" data-analytics-empty>Loading funnel analytics.</div>
+      <div class="analytics-empty" data-analytics-empty>Loading decision insights.</div>
     </section>
 
-    <section class="analytics-panel" id="analytics-market" data-analytics-endpoint="/api/analytics/market-shifts">
+    <section class="analytics-panel" id="analytics-improve" data-insights-panel="improve">
       <div class="analytics-panel-header">
-        <h3>Market</h3>
+        <h3>Improve The Funnel</h3>
         <span class="analytics-state" data-analytics-status>Loading</span>
       </div>
-      <div class="analytics-empty" data-analytics-empty>Loading market analytics.</div>
+      <div class="analytics-empty" data-analytics-empty>Loading funnel quality.</div>
+    </section>
+
+    <section class="analytics-panel" id="analytics-market" data-insights-panel="market">
+      <div class="analytics-panel-header analytics-panel-header-with-filters">
+        <div>
+          <h3>Market Signals</h3>
+          <p class="analytics-panel-subtitle">Published-date trends by default.</p>
+        </div>
+        <div class="analytics-filters" aria-label="Market filters">
+          <label data-market-filter>
+            <span>Window</span>
+            <select data-market-window>
+              <option value="4">4w</option>
+              <option value="8">8w</option>
+              <option value="12" selected>12w</option>
+              <option value="26">26w</option>
+              <option value="52">52w</option>
+            </select>
+          </label>
+          <label data-market-filter>
+            <span>Topics</span>
+            <select data-market-topic-limit>
+              <option value="10">10</option>
+              <option value="20" selected>20</option>
+              <option value="50">50</option>
+            </select>
+          </label>
+          <label data-market-filter>
+            <span>Dates</span>
+            <select data-market-date-mode>
+              <option value="posted" selected>Posted</option>
+              <option value="fallback">Include fallback</option>
+            </select>
+          </label>
+        </div>
+        <span class="analytics-state" data-analytics-status>Loading</span>
+      </div>
+      <div class="analytics-empty" data-analytics-empty>Loading market signals.</div>
     </section>
   </div>
 </div>

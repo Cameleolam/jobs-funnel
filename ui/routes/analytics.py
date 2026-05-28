@@ -26,5 +26,13 @@ async def api_analytics_funnel(weeks: str = "12"):
 
 
 @router.get("/api/analytics/market-shifts")
-async def api_analytics_market_shifts(weeks: str = "12", limit: str = "20"):
-    return market_shifts.get_market_shifts(weeks=weeks, limit=limit)
+async def api_analytics_market_shifts(
+    weeks: str = "12",
+    limit: str = "20",
+    date_mode: str = "posted",
+):
+    return market_shifts.get_market_shifts(
+        weeks=weeks,
+        limit=limit,
+        date_mode=date_mode,
+    )

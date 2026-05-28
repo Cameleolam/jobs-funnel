@@ -9,7 +9,10 @@ from ui.config import EVENTS_TABLE, TABLE
 from ui.db import fetch_all
 
 
-EVENT_KINDS = ("application", "contact", "interview", "task", "decision", "note")
+MAIN_EVENT_KINDS = ("application", "contact", "interview", "task", "outcome", "note")
+TIMELINE_EVENT_KINDS = (*MAIN_EVENT_KINDS, "review_decision")
+QUERY_EVENT_KINDS = ("application", "contact", "interview", "task", "decision", "outcome", "note")
+OUTCOME_LABEL_TERMS = ("accept", "hire", "offer", "reject")
 APPLIED_STATUSES = {"applied", "in_process", "offer", "rejected"}
 OPEN_STATUSES = {"interested", "applied", "in_process", "offer"}
 
@@ -56,11 +59,24 @@ def _days_since(value: datetime | date, now: datetime) -> int:
     return (now.date() - value).days
 
 
+def _timeline_kind(kind: Any, label: Any) -> str | None:
+    if kind == "decision":
+        clean_label = str(label or "")
+        if clean_label.startswith("Reviewed:"):
+            return "review_decision"
+        if any(term in clean_label.lower() for term in OUTCOME_LABEL_TERMS):
+            return "outcome"
+        return "review_decision"
+    if kind in TIMELINE_EVENT_KINDS:
+        return str(kind)
+    return None
+
+
 def build_funnel_timeline(rows: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
     by_week: dict[str, dict[str, Any]] = {}
     for row in rows:
-        kind = row.get("kind")
-        if kind not in EVENT_KINDS:
+        kind = _timeline_kind(row.get("kind"), row.get("label"))
+        if kind is None:
             continue
         week = _iso(row.get("week"))
         if not week:
@@ -68,11 +84,12 @@ def build_funnel_timeline(rows: list[Mapping[str, Any]]) -> list[dict[str, Any]]
         week = week[:10]
         bucket = by_week.setdefault(
             week,
-            {"week": week, **{event_kind: 0 for event_kind in EVENT_KINDS}, "total": 0},
+            {"week": week, **{event_kind: 0 for event_kind in TIMELINE_EVENT_KINDS}, "total": 0},
         )
         count = int(row.get("count") or 0)
         bucket[kind] += count
-        bucket["total"] += count
+        if kind in MAIN_EVENT_KINDS:
+            bucket["total"] += count
     return [by_week[key] for key in sorted(by_week)]
 
 
@@ -150,20 +167,21 @@ def build_stuck_jobs(
             "tracked_at": _iso(row.get("tracked_at")),
             "last_event_at": _iso(row.get("last_event_at")),
             "days_since_last_event": days,
+            "job_url": f"/jobs/{row.get('id')}/view" if row.get("id") is not None else "",
         })
     return result
 
 
 def _timeline_query() -> str:
     return f"""
-        SELECT date_trunc('week', occurred_at)::date AS week, kind, COUNT(*) AS count
+        SELECT date_trunc('week', occurred_at)::date AS week, kind, label, COUNT(*) AS count
         FROM {EVENTS_TABLE}
         WHERE kind = ANY(%s)
           AND occurred_at >= date_trunc('week', CURRENT_DATE)::timestamptz
               - ((%s - 1) * interval '1 week')
           AND occurred_at < date_trunc('week', CURRENT_DATE)::timestamptz + interval '1 week'
-        GROUP BY 1, 2
-        ORDER BY 1 ASC, 2 ASC
+        GROUP BY 1, 2, 3
+        ORDER BY 1 ASC, 2 ASC, 3 ASC
     """
 
 
@@ -196,7 +214,7 @@ def _stuck_query() -> str:
 
 def get_funnel_summary(weeks: int = 12) -> dict[str, Any]:
     safe_weeks = _clamp_weeks(weeks)
-    timeline_rows = fetch_all(_timeline_query(), (list(EVENT_KINDS), safe_weeks))
+    timeline_rows = fetch_all(_timeline_query(), (list(QUERY_EVENT_KINDS), safe_weeks))
     weeks_payload = build_funnel_timeline(timeline_rows)
     interview_rows = fetch_all(_interview_count_query())
     interview_count = int(interview_rows[0].get("count") or 0) if interview_rows else 0

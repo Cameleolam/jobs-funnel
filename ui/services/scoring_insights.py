@@ -19,6 +19,8 @@ BUCKETS = (
 )
 APPLICATION_STATUSES = {"applied", "in_process", "offer", "rejected"}
 PURSUED_STATUSES = APPLICATION_STATUSES | {"interested"}
+GOOD_DECISIONS = {"pass", "maybe", "recommended"}
+CLOSED_STATUSES = {"dismissed", "rejected"}
 
 
 def _score(value: Any) -> float | None:
@@ -49,13 +51,15 @@ def _rate(part: int, total: int) -> float:
 
 
 def _job(row: Mapping[str, Any], score: float | None = None) -> dict[str, Any]:
+    job_id = row.get("id")
     return {
-        "id": row.get("id"),
+        "id": job_id,
         "title": row.get("title") or "",
         "company": row.get("company") or "",
         "fit_score": score if score is not None else row.get("fit_score"),
         "decision": row.get("decision"),
         "user_status": row.get("user_status"),
+        "job_url": f"/jobs/{job_id}/view" if job_id is not None else "",
     }
 
 
@@ -103,10 +107,15 @@ def build_scoring_summary(
     }
     decisions: Counter[str] = Counter()
     user_statuses: Counter[str] = Counter()
+    source_quality: dict[str, dict[str, Any]] = {}
     mismatches = {
         "high_score_dismissed": [],
         "low_score_applied": [],
         "pending_review": [],
+    }
+    action_queue = {
+        "apply_targets": [],
+        "review_candidates": [],
     }
 
     for row in rows:
@@ -119,6 +128,22 @@ def build_scoring_summary(
 
         decisions[decision] += 1
         user_statuses[user_status] += 1
+        source = _status(row.get("source")) or "unknown"
+        source_bucket = source_quality.setdefault(
+            source,
+            {
+                "source": source,
+                "total": 0,
+                "high_score": 0,
+                "pursued": 0,
+                "closed": 0,
+            },
+        )
+        source_bucket["total"] += 1
+        if is_application:
+            source_bucket["pursued"] += 1
+        if user_status in CLOSED_STATUSES:
+            source_bucket["closed"] += 1
         if is_application:
             summary["applied"] += 1
         if is_dismissed:
@@ -134,6 +159,9 @@ def build_scoring_summary(
         if score is None:
             continue
 
+        if score >= 7:
+            source_bucket["high_score"] += 1
+
         bucket = _bucket_for(score)
         if bucket is not None:
             bucket_counts[bucket]["total"] += 1
@@ -148,6 +176,11 @@ def build_scoring_summary(
         if score <= 5 and user_status in PURSUED_STATUSES:
             summary["low_score_applied"] += 1
             mismatches["low_score_applied"].append(_job(row, score))
+        if not _status(row.get("user_status")):
+            if score >= 7 and decision.lower() in GOOD_DECISIONS:
+                action_queue["apply_targets"].append(_job(row, score))
+            if 4 <= score <= 6:
+                action_queue["review_candidates"].append(_job(row, score))
 
     buckets = []
     for label, _lower, _upper in BUCKETS:
@@ -171,6 +204,20 @@ def build_scoring_summary(
             for key, count in sorted(user_statuses.items(), key=lambda item: (-item[1], item[0]))
         ],
         "mismatches": mismatches,
+        "action_queue": {
+            "apply_targets": action_queue["apply_targets"][:10],
+            "review_candidates": action_queue["review_candidates"][:10],
+        },
+        "source_quality": [
+            {
+                **bucket,
+                "high_score_rate": _rate(bucket["high_score"], bucket["total"]),
+            }
+            for bucket in sorted(
+                source_quality.values(),
+                key=lambda item: (-item["high_score"], -item["total"], item["source"]),
+            )
+        ],
     }
 
 
@@ -183,7 +230,7 @@ def _query(has_needs_human_review_column: bool, has_confidence_column: bool) -> 
     confidence_column = "confidence" if has_confidence_column else "NULL AS confidence"
     return f"""
         SELECT
-            id, title, company, fit_score, decision, user_status,
+            id, title, company, fit_score, decision, user_status, source,
             {needs_human_review_column}, {confidence_column}
         FROM {TABLE}
         WHERE status = 'analyzed'

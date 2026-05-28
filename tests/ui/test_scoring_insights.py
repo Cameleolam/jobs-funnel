@@ -110,6 +110,7 @@ def test_build_scoring_summary_counts_buckets_and_mismatches():
             "fit_score": 9.0,
             "decision": "recommended",
             "user_status": "dismissed",
+            "job_url": "/jobs/1/view",
         }
     ]
     assert [row["id"] for row in summary["mismatches"]["low_score_applied"]] == [2, 3]
@@ -203,6 +204,90 @@ def test_build_scoring_summary_counts_partial_review_columns_independently():
     assert [row["id"] for row in summary["mismatches"]["pending_review"]] == [9]
 
 
+def test_build_scoring_summary_returns_action_queue_and_source_quality():
+    rows = [
+        {
+            "id": 21,
+            "title": "Platform Engineer",
+            "company": "Acme",
+            "fit_score": 8,
+            "decision": "PASS",
+            "user_status": None,
+            "source": "arbeitnow",
+        },
+        {
+            "id": 22,
+            "title": "Backend Engineer",
+            "company": "Beta",
+            "fit_score": 5,
+            "decision": "MAYBE",
+            "user_status": None,
+            "source": "arbeitnow",
+        },
+        {
+            "id": 23,
+            "title": "Applied Engineer",
+            "company": "Core",
+            "fit_score": 9,
+            "decision": "PASS",
+            "user_status": "applied",
+            "source": "arbeitsagentur",
+        },
+        {
+            "id": 24,
+            "title": "Dismissed Engineer",
+            "company": "Delta",
+            "fit_score": 8,
+            "decision": "PASS",
+            "user_status": "dismissed",
+            "source": "arbeitnow",
+        },
+    ]
+
+    summary = build_scoring_summary(rows)
+
+    assert summary["action_queue"]["apply_targets"] == [
+        {
+            "id": 21,
+            "title": "Platform Engineer",
+            "company": "Acme",
+            "fit_score": 8.0,
+            "decision": "PASS",
+            "user_status": None,
+            "job_url": "/jobs/21/view",
+        }
+    ]
+    assert summary["action_queue"]["review_candidates"] == [
+        {
+            "id": 22,
+            "title": "Backend Engineer",
+            "company": "Beta",
+            "fit_score": 5.0,
+            "decision": "MAYBE",
+            "user_status": None,
+            "job_url": "/jobs/22/view",
+        }
+    ]
+    assert summary["source_quality"] == [
+        {
+            "source": "arbeitnow",
+            "total": 3,
+            "high_score": 2,
+            "pursued": 0,
+            "closed": 1,
+            "high_score_rate": 0.6667,
+        },
+        {
+            "source": "arbeitsagentur",
+            "total": 1,
+            "high_score": 1,
+            "pursued": 1,
+            "closed": 0,
+            "high_score_rate": 1.0,
+        },
+    ]
+
+
 def test_get_scoring_summary_queries_available_scoring_review_columns(monkeypatch):
     seen = {}
 
@@ -234,6 +319,7 @@ def test_get_scoring_summary_queries_available_scoring_review_columns(monkeypatc
 
     assert "needs_human_review" in seen["query"]
     assert "confidence" in seen["query"]
+    assert "source" in seen["query"]
     assert "explanation" not in seen["query"]
     assert "critique_count" not in seen["query"]
     assert summary["summary"]["needs_human_review"] == 1

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="page-header">
+  <a href="/" class="text-muted">Back to jobs</a>
+  <h1>{{ job.title }}</h1>
+  <p class="text-muted">{{ job.company }}{% if job.location %} - {{ job.location }}{% endif %}</p>
+</div>
+
+{% set fullscreen = true %}
+{% include "partials/job_detail.html" %}
+{% endblock %}

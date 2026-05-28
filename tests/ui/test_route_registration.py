@@ -13,6 +13,7 @@ EXPECTED_ROUTES = {
     ("/jobs/new", "GET"),
     ("/jobs/new", "POST"),
     ("/jobs/{job_id}", "GET"),
+    ("/jobs/{job_id}/view", "GET"),
     ("/jobs/{job_id}", "PATCH"),
     ("/jobs/{job_id}/status", "PATCH"),
     ("/jobs/{job_id}/notes", "PATCH"),

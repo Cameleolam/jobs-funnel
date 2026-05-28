@@ -1,29 +1,37 @@
 (function () {
-  var panels = document.querySelectorAll("[data-analytics-endpoint]");
+  var panels = document.querySelectorAll("[data-insights-panel]");
   if (!panels.length) return;
+
   var shell = document.querySelector(".analytics-shell");
   var viewButtons = document.querySelectorAll("[data-analytics-view-button]");
-  var windowSelect = document.querySelector("[data-analytics-window]");
-  var topicLimitSelect = document.querySelector("[data-analytics-topic-limit]");
+  var marketWindowSelect = document.querySelector("[data-market-window]");
+  var marketTopicLimitSelect = document.querySelector("[data-market-topic-limit]");
+  var marketDateModeSelect = document.querySelector("[data-market-date-mode]");
+  var state = { scoring: null, funnel: null, market: null };
+
+  function panelFor(name) {
+    return document.querySelector('[data-insights-panel="' + name + '"]');
+  }
 
   function setStatus(panel, text) {
-    var status = panel.querySelector("[data-analytics-status]");
+    var status = panel ? panel.querySelector("[data-analytics-status]") : null;
     if (status) status.textContent = text;
   }
 
   function renderEmptyState(panel, message) {
-    var empty = panel.querySelector("[data-analytics-empty]");
+    var empty = panel ? panel.querySelector("[data-analytics-empty]") : null;
     if (!empty) return;
     empty.textContent = message;
     empty.hidden = false;
   }
 
   function hideEmptyState(panel) {
-    var empty = panel.querySelector("[data-analytics-empty]");
+    var empty = panel ? panel.querySelector("[data-analytics-empty]") : null;
     if (empty) empty.hidden = true;
   }
 
   function clearRendered(panel) {
+    if (!panel) return;
     var rendered = panel.querySelector("[data-analytics-rendered]");
     if (rendered) rendered.remove();
   }
@@ -36,8 +44,28 @@
     return element;
   }
 
+  function formatRate(value) {
+    var number = Number(value);
+    if (!Number.isFinite(number)) return "0%";
+    return Math.round(number * 100) + "%";
+  }
+
+  function selectedValue(element, fallback) {
+    return element && element.value ? element.value : fallback;
+  }
+
+  function list(value) {
+    return Array.isArray(value) ? value : [];
+  }
+
+  function jobHref(job) {
+    if (job && job.job_url) return job.job_url;
+    if (job && job.id !== null && job.id !== undefined) return "/jobs/" + encodeURIComponent(job.id) + "/view";
+    return "#";
+  }
+
   function renderInsightCards(container, cards) {
-    var filtered = (cards || []).filter(function (card) {
+    var filtered = list(cards).filter(function (card) {
       return card && card.value !== null && card.value !== undefined && card.value !== "";
     });
     if (!filtered.length) return;
@@ -55,167 +83,149 @@
     container.appendChild(section);
   }
 
-  function formatRate(value) {
-    var number = Number(value);
-    if (!Number.isFinite(number)) return "0%";
-    return Math.round(number * 100) + "%";
-  }
-
-  function sumBy(items, key) {
-    return (items || []).reduce(function (total, item) {
-      return total + (Number(item[key]) || 0);
-    }, 0);
-  }
-
-  function renderCounters(container, summary) {
-    var counters = document.createElement("div");
-    counters.className = "scoring-counters";
-    [
-      ["Total", "total"],
-      ["Applied", "applied"],
-      ["Dismissed", "dismissed"],
-      ["Pending", "pending_review"],
-      ["Review", "needs_human_review"],
-      ["Low confidence", "low_confidence"],
-    ].forEach(function (item) {
-      var counter = document.createElement("div");
-      counter.className = "scoring-counter";
-      appendText(counter, "span", "scoring-counter-value", String(summary[item[1]] || 0));
-      appendText(counter, "span", "scoring-counter-label", item[0]);
-      counters.appendChild(counter);
-    });
-    container.appendChild(counters);
-  }
-
-  function renderBuckets(container, buckets) {
+  function renderJobList(container, title, jobs, emptyText, metaFn) {
     var section = document.createElement("div");
-    section.className = "scoring-section";
-    appendText(section, "h4", null, "Score buckets");
-
-    (buckets || []).forEach(function (bucket) {
-      var row = document.createElement("div");
-      row.className = "scoring-bucket";
-      appendText(row, "span", "scoring-bucket-label", bucket.bucket || "");
-
-      var track = document.createElement("div");
-      track.className = "scoring-bucket-track";
-      var applied = document.createElement("span");
-      applied.className = "scoring-bucket-fill";
-      applied.style.width = formatRate(bucket.application_rate || 0);
-      track.appendChild(applied);
-      row.appendChild(track);
-
-      appendText(
-        row,
-        "span",
-        "scoring-bucket-rate",
-        formatRate(bucket.application_rate || 0) + " applied"
-      );
-      section.appendChild(row);
-    });
-    container.appendChild(section);
-  }
-
-  function renderMismatchList(container, title, rows) {
-    var section = document.createElement("div");
-    section.className = "scoring-section";
+    section.className = "insights-section";
     appendText(section, "h4", null, title);
 
-    if (!rows || !rows.length) {
-      appendText(section, "p", "scoring-muted", "None");
+    if (!jobs || !jobs.length) {
+      appendText(section, "p", "analytics-muted", emptyText || "None");
       container.appendChild(section);
       return;
     }
 
-    var list = document.createElement("ul");
-    list.className = "scoring-list";
-    rows.forEach(function (row) {
+    var rows = document.createElement("ul");
+    rows.className = "insights-job-list";
+    jobs.forEach(function (job) {
       var item = document.createElement("li");
-      var titleText = (row.title || "Untitled") + " @ " + (row.company || "Unknown");
-      appendText(item, "span", "scoring-job-title", titleText);
+      var link = document.createElement("a");
+      link.className = "insights-job-link";
+      link.href = jobHref(job);
+      link.textContent = (job.title || "Untitled") + " @ " + (job.company || "Unknown");
+      item.appendChild(link);
       appendText(
         item,
         "span",
-        "scoring-job-meta",
-        "Score " + String(row.fit_score) + " - " + (row.user_status || "unknown")
+        "insights-job-meta",
+        metaFn ? metaFn(job) : "Score " + String(job.fit_score || "?")
       );
-      list.appendChild(item);
+      rows.appendChild(item);
     });
-    section.appendChild(list);
+    section.appendChild(rows);
     container.appendChild(section);
   }
 
-  function renderScoringInsights(container, data) {
-    var summary = data && data.summary ? data.summary : {};
-    var mismatches = data && data.mismatches ? data.mismatches : {};
-    var highDismissed = (mismatches.high_score_dismissed || []).length;
-    var lowPursued = (mismatches.low_score_applied || []).length;
-    var pending = (mismatches.pending_review || []).length;
-    var bestBucket = (data && data.buckets ? data.buckets : []).reduce(function (best, bucket) {
-      if (!best || Number(bucket.application_rate || 0) > Number(best.application_rate || 0)) {
-        return bucket;
-      }
-      return best;
-    }, null);
-
-    renderInsightCards(container, [
-      {
-        label: "Mismatch load",
-        value: highDismissed + lowPursued,
-        detail: "high-score dismissed + low-score pursued",
-      },
-      {
-        label: "Review queue",
-        value: pending || summary.pending_review || 0,
-        detail: "pending or human-review jobs",
-      },
-      bestBucket ? {
-        label: "Best bucket",
-        value: bestBucket.bucket,
-        detail: formatRate(bestBucket.application_rate || 0) + " applied",
-      } : null,
-    ]);
+  function renderPanel(panel, name, renderFn) {
+    clearRendered(panel);
+    hideEmptyState(panel);
+    var container = document.createElement("div");
+    container.className = "insights-content";
+    container.setAttribute("data-analytics-rendered", name);
+    renderFn(container);
+    panel.appendChild(container);
+    setStatus(panel, "Ready");
   }
 
-  function renderFunnelCounters(container, summary) {
-    var counters = document.createElement("div");
-    counters.className = "funnel-counters";
-    [
-      ["Tracked", "tracked_jobs"],
-      ["Applied", "applied"],
-      ["Open", "in_process"],
-      ["Rejected", "rejected"],
-      ["Closed", "closed"],
-      ["Interviews", "interviews"],
-    ].forEach(function (item) {
-      var counter = document.createElement("div");
-      counter.className = "funnel-counter";
-      appendText(counter, "span", "funnel-counter-value", String(summary[item[1]] || 0));
-      appendText(counter, "span", "funnel-counter-label", item[0]);
-      counters.appendChild(counter);
+  function renderActPanel(panel, scoring, funnel) {
+    var actionQueue = scoring && scoring.action_queue ? scoring.action_queue : {};
+    var applyTargets = list(actionQueue.apply_targets);
+    var reviewCandidates = list(actionQueue.review_candidates);
+    var stuckJobs = list(funnel && funnel.stuck_jobs);
+
+    renderPanel(panel, "act", function (container) {
+      renderInsightCards(container, [
+        { label: "Apply targets", value: applyTargets.length, detail: "high-fit jobs with no status" },
+        { label: "Review candidates", value: reviewCandidates.length, detail: "score 4-6 with no status" },
+        { label: "Follow-ups", value: stuckJobs.length, detail: "tracked jobs with no recent event" },
+      ]);
+      renderJobList(container, "Apply targets", applyTargets, "No high-fit unacted jobs.", function (job) {
+        return "Score " + String(job.fit_score || "?") + " - " + (job.decision || "unknown");
+      });
+      renderJobList(container, "Review candidates", reviewCandidates, "No review-band unacted jobs.", function (job) {
+        return "Score " + String(job.fit_score || "?") + " - needs decision";
+      });
+      renderJobList(container, "Follow-ups", stuckJobs, "No stuck tracked jobs.", function (job) {
+        return (job.user_status || "tracked") + " - " + String(job.days_since_last_event || 0) + " days";
+      });
     });
-    var closeText = summary.avg_days_to_close === null || summary.avg_days_to_close === undefined
-      ? "n/a"
-      : String(summary.avg_days_to_close);
-    var closeCounter = document.createElement("div");
-    closeCounter.className = "funnel-counter";
-    appendText(closeCounter, "span", "funnel-counter-value", closeText);
-    appendText(closeCounter, "span", "funnel-counter-label", "Avg days close");
-    counters.appendChild(closeCounter);
-    container.appendChild(counters);
   }
 
-  function renderFunnelLegend(section) {
-    var legend = document.createElement("div");
-    legend.className = "funnel-legend";
-    [
+  function renderLearnPanel(panel, scoring) {
+    var mismatches = scoring && scoring.mismatches ? scoring.mismatches : {};
+    var highDismissed = list(mismatches.high_score_dismissed);
+    var lowPursued = list(mismatches.low_score_applied);
+    var pendingReview = list(mismatches.pending_review);
+
+    renderPanel(panel, "learn", function (container) {
+      renderInsightCards(container, [
+        { label: "High-score dismissed", value: highDismissed.length, detail: "possible scorer false positives" },
+        { label: "Low-score pursued", value: lowPursued.length, detail: "possible scorer false negatives" },
+        { label: "Pending review", value: pendingReview.length, detail: "needs calibration decision" },
+      ]);
+      renderJobList(container, "High-score dismissed", highDismissed, "None.", function (job) {
+        return "Score " + String(job.fit_score || "?") + " - dismissed";
+      });
+      renderJobList(container, "Low-score pursued", lowPursued, "None.", function (job) {
+        return "Score " + String(job.fit_score || "?") + " - " + (job.user_status || "pursued");
+      });
+      renderJobList(container, "Pending review", pendingReview, "None.", function (job) {
+        return "Score " + String(job.fit_score || "?") + " - resolve review";
+      });
+    });
+  }
+
+  function renderSourceQuality(container, sources) {
+    var section = document.createElement("div");
+    section.className = "insights-section";
+    appendText(section, "h4", null, "Source quality");
+
+    if (!sources || !sources.length) {
+      appendText(section, "p", "analytics-muted", "No source quality data.");
+      container.appendChild(section);
+      return;
+    }
+
+    var rows = document.createElement("div");
+    rows.className = "source-quality-list";
+    sources.slice(0, 8).forEach(function (source) {
+      var row = document.createElement("div");
+      row.className = "source-quality-row";
+      appendText(row, "span", "source-quality-name", source.source || "unknown");
+      appendText(
+        row,
+        "span",
+        "source-quality-meta",
+        String(source.high_score || 0) + " high / " + String(source.total || 0)
+          + " jobs - " + formatRate(source.high_score_rate || 0)
+      );
+      rows.appendChild(row);
+    });
+    section.appendChild(rows);
+    container.appendChild(section);
+  }
+
+  function renderFunnelTimeline(container, weeks) {
+    var eventKinds = [
       ["application", "Application"],
       ["contact", "Contact"],
       ["interview", "Interview"],
       ["task", "Task"],
-      ["decision", "Decision"],
+      ["outcome", "Outcome"],
       ["note", "Note"],
-    ].forEach(function (item) {
+    ];
+    var section = document.createElement("div");
+    section.className = "insights-section";
+    appendText(section, "h4", null, "Weekly funnel events");
+
+    if (!weeks || !weeks.length) {
+      appendText(section, "p", "analytics-muted", "No events in this window.");
+      container.appendChild(section);
+      return;
+    }
+
+    var legend = document.createElement("div");
+    legend.className = "funnel-legend";
+    eventKinds.forEach(function (item) {
       var label = document.createElement("span");
       label.className = "funnel-legend-item";
       var swatch = document.createElement("span");
@@ -225,19 +235,6 @@
       legend.appendChild(label);
     });
     section.appendChild(legend);
-  }
-
-  function renderFunnelTimeline(container, weeks) {
-    var section = document.createElement("div");
-    section.className = "funnel-section";
-    appendText(section, "h4", null, "Weekly events");
-    renderFunnelLegend(section);
-
-    if (!weeks || !weeks.length) {
-      appendText(section, "p", "scoring-muted", "No events in this window.");
-      container.appendChild(section);
-      return;
-    }
 
     var maxTotal = weeks.reduce(function (max, week) {
       return Math.max(max, Number(week.total) || 0);
@@ -251,80 +248,48 @@
 
       var track = document.createElement("div");
       track.className = "funnel-week-track";
-      ["application", "contact", "interview", "task", "decision", "note"].forEach(function (kind) {
+      eventKinds.forEach(function (item) {
+        var kind = item[0];
         var count = Number(week[kind]) || 0;
         if (!count) return;
         var fill = document.createElement("span");
         fill.className = "funnel-week-fill funnel-week-fill-" + kind;
         fill.style.width = Math.max(4, Math.round((count / maxTotal) * 100)) + "%";
-        fill.title = kind + ": " + count;
+        fill.title = item[1] + ": " + count;
         track.appendChild(fill);
       });
       row.appendChild(track);
-      appendText(row, "span", "funnel-week-total", String(week.total || 0));
+
+      var detail = String(week.total || 0);
+      if (Number(week.review_decision) > 0) {
+        detail += " +" + String(week.review_decision) + "r";
+      }
+      appendText(row, "span", "funnel-week-total", detail);
       timeline.appendChild(row);
     });
     section.appendChild(timeline);
     container.appendChild(section);
   }
 
-  function renderFunnelInsights(container, data) {
-    var summary = data && data.summary ? data.summary : {};
-    var weeks = data && data.weeks ? data.weeks : [];
-    var stuck = data && data.stuck_jobs ? data.stuck_jobs : [];
-    var busiest = weeks.reduce(function (best, week) {
-      return !best || Number(week.total || 0) > Number(best.total || 0) ? week : best;
-    }, null);
-    var applications = sumBy(weeks, "application");
-    var interviews = Number(summary.interviews) || 0;
-    var ratio = applications > 0 ? Math.round((interviews / applications) * 100) + "%" : "n/a";
+  function renderImprovePanel(panel, scoring, funnel) {
+    var summary = funnel && funnel.summary ? funnel.summary : {};
+    var sources = list(scoring && scoring.source_quality);
 
-    renderInsightCards(container, [
-      {
-        label: "Stuck jobs",
-        value: stuck.length,
-        detail: "tracked with no recent event",
-      },
-      busiest ? {
-        label: "Busiest week",
-        value: String(busiest.week || ""),
-        detail: String(busiest.total || 0) + " events",
-      } : null,
-      {
-        label: "Interview ratio",
-        value: ratio,
-        detail: "interviews / weekly applications",
-      },
-    ]);
-  }
-
-  function renderStuckJobs(container, jobs) {
-    var section = document.createElement("div");
-    section.className = "funnel-section";
-    appendText(section, "h4", null, "Stuck jobs");
-
-    if (!jobs || !jobs.length) {
-      appendText(section, "p", "scoring-muted", "None");
-      container.appendChild(section);
-      return;
-    }
-
-    var list = document.createElement("ul");
-    list.className = "funnel-stuck-list";
-    jobs.forEach(function (job) {
-      var item = document.createElement("li");
-      var titleText = (job.title || "Untitled") + " @ " + (job.company || "Unknown");
-      appendText(item, "span", "scoring-job-title", titleText);
-      appendText(
-        item,
-        "span",
-        "scoring-job-meta",
-        (job.user_status || "unknown") + " - " + String(job.days_since_last_event || 0) + " days"
-      );
-      list.appendChild(item);
+    renderPanel(panel, "improve", function (container) {
+      renderInsightCards(container, [
+        { label: "Applied", value: summary.applied || 0, detail: "tracked or status-applied jobs" },
+        { label: "Interviews", value: summary.interviews || 0, detail: "recorded interview events" },
+        {
+          label: "Avg close",
+          value: summary.avg_days_to_close === null || summary.avg_days_to_close === undefined
+            ? "n/a"
+            : String(summary.avg_days_to_close) + "d",
+          detail: "application to closed",
+        },
+      ]);
+      renderSourceQuality(container, sources);
+      renderFunnelTimeline(container, list(funnel && funnel.weeks));
     });
-    section.appendChild(list);
-    container.appendChild(section);
   }
 
   function renderMarketCounters(container, summary) {
@@ -350,14 +315,14 @@
   }
 
   function renderMarketHeatmap(container, data) {
-    var topics = data && data.topics ? data.topics : [];
-    var weeks = data && data.weeks ? data.weeks : [];
+    var topics = list(data && data.topics);
+    var weeks = list(data && data.weeks);
     var section = document.createElement("div");
     section.className = "market-section";
-    appendText(section, "h4", null, "Weekly topics by publish date");
+    appendText(section, "h4", null, "Weekly topics");
 
     if (!topics.length || !weeks.length) {
-      appendText(section, "p", "scoring-muted", "No market topics in this window.");
+      appendText(section, "p", "analytics-muted", "No market topics in this window.");
       container.appendChild(section);
       return;
     }
@@ -367,7 +332,7 @@
     }, 1);
     var table = document.createElement("div");
     table.className = "market-heatmap";
-    table.style.gridTemplateColumns = "minmax(82px, 1fr) repeat(" + weeks.length + ", 34px)";
+    table.style.gridTemplateColumns = "minmax(96px, 1fr) repeat(" + weeks.length + ", 34px)";
     appendText(table, "span", "market-heatmap-heading", "Topic");
     weeks.forEach(function (week) {
       appendText(table, "span", "market-heatmap-week", shortWeekLabel(week));
@@ -376,7 +341,7 @@
     topics.forEach(function (topic) {
       var label = appendText(table, "span", "market-topic-label", topic.topic || "");
       label.title = String(topic.total || 0) + " jobs, " + String(topic.signal_total || 0) + " signals";
-      (topic.weeks || []).forEach(function (week) {
+      list(topic.weeks).forEach(function (week) {
         var count = Number(week.count) || 0;
         var signalCount = Number(week.signal_count) || 0;
         var cell = appendText(table, "span", "market-cell", String(count));
@@ -392,145 +357,108 @@
 
   function marketInsight(topic, value, detail) {
     if (!topic) return null;
-    return {
-      label: value,
-      value: topic.topic,
-      detail: detail(topic),
-    };
+    return { label: value, value: topic.topic, detail: detail(topic) };
   }
 
   function renderMarketInsights(container, data) {
     var insights = data && data.insights ? data.insights : {};
     var summary = data && data.summary ? data.summary : {};
     var basis = summary.date_basis || {};
+    var fallbackCount = Number(basis.crawled_at || 0) + Number(basis.analyzed_at || 0);
+    var totalJobs = Number(summary.total_jobs || 0);
+    var signalJobs = Number(summary.signal_jobs || 0);
+
     renderInsightCards(container, [
       marketInsight(
-        (insights.rising_topics || [])[0],
-        "Rising",
-        function (topic) { return "+" + topic.delta + " jobs vs previous week"; }
-      ),
-      marketInsight(
-        (insights.fading_topics || [])[0],
-        "Fading",
-        function (topic) { return String(topic.delta) + " jobs vs previous week"; }
-      ),
-      marketInsight(
-        (insights.high_signal_topics || [])[0],
+        list(insights.high_signal_topics)[0],
         "High-fit topic",
         function (topic) { return formatRate(topic.signal_rate || 0) + " PASS/MAYBE"; }
       ),
       marketInsight(
-        (insights.noisy_topics || [])[0],
+        list(insights.noisy_topics)[0],
         "Noisy topic",
         function (topic) { return String(topic.total || 0) + " jobs, " + formatRate(topic.signal_rate || 0) + " fit"; }
       ),
+      marketInsight(
+        list(insights.fading_topics).find(function (topic) {
+          return Number(topic.signal_total || 0) > 0;
+        }),
+        "Cooling signal",
+        function (topic) { return String(topic.delta || 0) + " jobs vs previous week"; }
+      ),
+      {
+        label: "Signal density",
+        value: totalJobs ? formatRate(signalJobs / totalJobs) : "0%",
+        detail: String(signalJobs) + " fit signals in this window",
+      },
       {
         label: "Date basis",
-        value: String(basis.posted_at || 0) + " posted",
-        detail: String(basis.crawled_at || 0) + " crawled fallback, "
-          + String(basis.analyzed_at || 0) + " analyzed fallback",
+        value: summary.date_mode === "fallback" ? "Fallback included" : "Posted only",
+        detail: String(basis.posted_at || 0) + " posted, " + String(fallbackCount) + " fallback",
       },
     ]);
   }
 
-  function renderScoringPanel(panel, data) {
-    var summary = data && data.summary ? data.summary : {};
-    var mismatches = data && data.mismatches ? data.mismatches : {};
-    clearRendered(panel);
-    hideEmptyState(panel);
-
-    var container = document.createElement("div");
-    container.className = "scoring-content";
-    container.setAttribute("data-analytics-rendered", "scoring");
-
-    renderCounters(container, summary);
-    renderScoringInsights(container, data || {});
-    renderBuckets(container, data && data.buckets ? data.buckets : []);
-    renderMismatchList(
-      container,
-      "High score dismissed",
-      mismatches.high_score_dismissed || []
-    );
-    renderMismatchList(
-      container,
-      "Low score pursued",
-      mismatches.low_score_applied || []
-    );
-    renderMismatchList(container, "Pending review", mismatches.pending_review || []);
-
-    panel.appendChild(container);
-  }
-
   function renderMarketPanel(panel, data) {
     var summary = data && data.summary ? data.summary : {};
-    clearRendered(panel);
-    hideEmptyState(panel);
-
-    var container = document.createElement("div");
-    container.className = "market-content";
-    container.setAttribute("data-analytics-rendered", "market");
-
-    renderMarketCounters(container, summary);
-    renderMarketInsights(container, data || {});
-    renderMarketHeatmap(container, data || {});
-
-    panel.appendChild(container);
-  }
-
-  function renderFunnelPanel(panel, data) {
-    var summary = data && data.summary ? data.summary : {};
-    clearRendered(panel);
-    hideEmptyState(panel);
-
-    var container = document.createElement("div");
-    container.className = "funnel-content";
-    container.setAttribute("data-analytics-rendered", "funnel");
-
-    renderFunnelCounters(container, summary);
-    renderFunnelInsights(container, data || {});
-    renderFunnelTimeline(container, data && data.weeks ? data.weeks : []);
-    renderStuckJobs(container, data && data.stuck_jobs ? data.stuck_jobs : []);
-
-    panel.appendChild(container);
-  }
-
-  function hasContent(data) {
-    if (!data || typeof data !== "object") return false;
-    return Object.keys(data).some(function (key) {
-      var value = data[key];
-      if (Array.isArray(value)) return value.length > 0;
-      if (value && typeof value === "object") return hasContent(value);
-      return value !== null && value !== undefined && value !== "";
+    renderPanel(panel, "market", function (container) {
+      renderMarketCounters(container, summary);
+      renderMarketInsights(container, data || {});
+      renderMarketHeatmap(container, data || {});
     });
   }
 
-  function selectedValue(element, fallback) {
-    return element && element.value ? element.value : fallback;
-  }
-
-  function buildEndpoint(panel) {
-    var endpoint = panel.getAttribute("data-analytics-endpoint");
-    if (!endpoint) return "";
-    if (endpoint.indexOf("/api/analytics/funnel") === 0) {
-      return endpoint + "?weeks=" + encodeURIComponent(selectedValue(windowSelect, "12"));
-    }
-    if (endpoint.indexOf("/api/analytics/market-shifts") === 0) {
-      return endpoint + "?weeks=" + encodeURIComponent(selectedValue(windowSelect, "12"))
-        + "&limit=" + encodeURIComponent(selectedValue(topicLimitSelect, "20"));
-    }
-    return endpoint;
-  }
-
-  function setPanelLoading(panel) {
+  function setPanelLoading(panel, text) {
     setStatus(panel, "Loading");
     clearRendered(panel);
-    renderEmptyState(panel, "Loading analytics.");
+    renderEmptyState(panel, text || "Loading insights.");
   }
 
-  function reloadPanels() {
-    panels.forEach(function (panel) {
-      setPanelLoading(panel);
-      loadPanel(panel);
+  function fetchJson(url) {
+    return fetch(url, { headers: { "Accept": "application/json" } }).then(function (response) {
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      return response.json();
+    });
+  }
+
+  function loadCore() {
+    ["act", "learn", "improve"].forEach(function (name) {
+      setPanelLoading(panelFor(name), "Loading insights.");
+    });
+
+    Promise.all([
+      fetchJson("/api/analytics/scoring"),
+      fetchJson("/api/analytics/funnel?weeks=12"),
+    ]).then(function (results) {
+      state.scoring = results[0];
+      state.funnel = results[1];
+      renderActPanel(panelFor("act"), state.scoring, state.funnel);
+      renderLearnPanel(panelFor("learn"), state.scoring);
+      renderImprovePanel(panelFor("improve"), state.scoring, state.funnel);
+    }).catch(function () {
+      ["act", "learn", "improve"].forEach(function (name) {
+        var panel = panelFor(name);
+        setStatus(panel, "Unavailable");
+        renderEmptyState(panel, "Insights data is unavailable.");
+      });
+    });
+  }
+
+  function marketEndpoint() {
+    return "/api/analytics/market-shifts?weeks=" + encodeURIComponent(selectedValue(marketWindowSelect, "12"))
+      + "&limit=" + encodeURIComponent(selectedValue(marketTopicLimitSelect, "20"))
+      + "&date_mode=" + encodeURIComponent(selectedValue(marketDateModeSelect, "posted"));
+  }
+
+  function loadMarket() {
+    var panel = panelFor("market");
+    setPanelLoading(panel, "Loading market signals.");
+    fetchJson(marketEndpoint()).then(function (data) {
+      state.market = data;
+      renderMarketPanel(panel, state.market);
+    }).catch(function () {
+      setStatus(panel, "Unavailable");
+      renderEmptyState(panel, "Market data is unavailable.");
     });
   }
 
@@ -538,7 +466,7 @@
     var normalized = view || "all";
     if (shell) {
       shell.setAttribute("data-analytics-view", normalized);
-      ["all", "scoring", "funnel", "market"].forEach(function (option) {
+      ["all", "act", "learn", "improve", "market"].forEach(function (option) {
         shell.classList.toggle("view-" + option, option === normalized);
       });
     }
@@ -547,45 +475,18 @@
     });
   }
 
-  function loadPanel(panel) {
-    var endpoint = buildEndpoint(panel);
-    var baseEndpoint = panel.getAttribute("data-analytics-endpoint") || "";
-    if (!endpoint || typeof fetch !== "function") {
-      setStatus(panel, "Empty");
-      renderEmptyState(panel, "No analytics data yet.");
-      return;
-    }
-
-    fetch(endpoint, { headers: { "Accept": "application/json" } })
-      .then(function (response) {
-        if (!response.ok) throw new Error("HTTP " + response.status);
-        return response.json();
-      })
-      .then(function (data) {
-        setStatus(panel, hasContent(data) ? "Ready" : "Empty");
-        if (baseEndpoint === "/api/analytics/scoring") {
-          renderScoringPanel(panel, data);
-        } else if (baseEndpoint.indexOf("/api/analytics/funnel") === 0) {
-          renderFunnelPanel(panel, data);
-        } else if (baseEndpoint.indexOf("/api/analytics/market-shifts") === 0) {
-          renderMarketPanel(panel, data);
-        } else {
-          renderEmptyState(panel, "No analytics data yet.");
-        }
-      })
-      .catch(function () {
-        setStatus(panel, "Unavailable");
-        renderEmptyState(panel, "Analytics data is unavailable.");
-      });
-  }
-
   viewButtons.forEach(function (button) {
     button.addEventListener("click", function () {
       setView(button.getAttribute("data-analytics-view-button"));
     });
   });
-  if (windowSelect) windowSelect.addEventListener("change", reloadPanels);
-  if (topicLimitSelect) topicLimitSelect.addEventListener("change", reloadPanels);
+  [marketWindowSelect, marketTopicLimitSelect, marketDateModeSelect].forEach(function (element) {
+    if (element) element.addEventListener("change", loadMarket);
+  });
+
   setView(shell ? shell.getAttribute("data-analytics-view") : "all");
-  panels.forEach(loadPanel);
+  if (typeof fetch === "function") {
+    loadCore();
+    loadMarket();
+  }
 }());

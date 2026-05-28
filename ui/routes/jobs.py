@@ -403,6 +403,14 @@ async def create_manual_job(
     return RedirectResponse(url=f"/?new={new_id}", status_code=303)
 
 
+@router.get("/jobs/{job_id}/view", response_class=HTMLResponse)
+async def job_view(request: Request, job_id: int):
+    job = fetch_one(f"SELECT * FROM {TABLE} WHERE id = %s", (job_id,))
+    if not job:
+        return HTMLResponse("Job not found", status_code=404)
+    return render(request, "job_view.html", {"job": job})
+
+
 @router.get("/jobs/{job_id}", response_class=HTMLResponse)
 async def job_detail(request: Request, job_id: int):
     job = fetch_one(f"SELECT * FROM {TABLE} WHERE id = %s", (job_id,))

@@ -18,8 +18,9 @@ def test_build_funnel_timeline_counts_events_by_week_and_fills_missing_kinds():
             "contact": 0,
             "interview": 1,
             "task": 0,
-            "decision": 0,
+            "outcome": 0,
             "note": 0,
+            "review_decision": 0,
             "total": 3,
         },
         {
@@ -28,11 +29,43 @@ def test_build_funnel_timeline_counts_events_by_week_and_fills_missing_kinds():
             "contact": 0,
             "interview": 0,
             "task": 0,
-            "decision": 0,
+            "outcome": 0,
             "note": 3,
+            "review_decision": 0,
             "total": 3,
         },
     ]
+
+
+def test_build_funnel_timeline_splits_decisions_without_counting_reviews_in_total():
+    rows = [
+        {"week": date(2026, 5, 4), "kind": "decision", "label": "Reviewed: accepted", "count": 2},
+        {"week": date(2026, 5, 4), "kind": "decision", "label": "Rejected by employer", "count": 1},
+        {"week": date(2026, 5, 4), "kind": "decision", "label": "Offer received", "count": 1},
+        {"week": date(2026, 5, 4), "kind": "decision", "label": "Manual follow-up", "count": 3},
+        {"week": date(2026, 5, 4), "kind": "application", "label": None, "count": 4},
+    ]
+
+    assert funnel_analytics.build_funnel_timeline(rows) == [
+        {
+            "week": "2026-05-04",
+            "application": 4,
+            "contact": 0,
+            "interview": 0,
+            "task": 0,
+            "outcome": 2,
+            "note": 0,
+            "review_decision": 5,
+            "total": 6,
+        },
+    ]
+
+
+def test_timeline_query_selects_and_groups_by_label():
+    query = funnel_analytics._timeline_query()
+
+    assert "label" in query
+    assert "GROUP BY 1, 2, 3" in query
 
 
 def test_build_summary_counts_jobs_and_interviews():
@@ -128,6 +161,7 @@ def test_build_stuck_jobs_uses_latest_event_or_tracked_at_and_limits_results():
             "tracked_at": "2026-04-10T00:00:00+00:00",
             "last_event_at": None,
             "days_since_last_event": 48,
+            "job_url": "/jobs/4/view",
         },
         {
             "id": 1,
@@ -137,6 +171,7 @@ def test_build_stuck_jobs_uses_latest_event_or_tracked_at_and_limits_results():
             "tracked_at": "2026-04-01T00:00:00+00:00",
             "last_event_at": "2026-04-15T00:00:00+00:00",
             "days_since_last_event": 43,
+            "job_url": "/jobs/1/view",
         }
     ]
 
@@ -184,8 +219,9 @@ def test_get_funnel_summary_counts_all_time_interviews_independent_from_timeline
             "contact": 0,
             "interview": 0,
             "task": 0,
-            "decision": 0,
+            "outcome": 0,
             "note": 0,
+            "review_decision": 0,
             "total": 1,
         }
     ]
