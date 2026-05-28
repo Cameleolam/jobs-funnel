@@ -35,7 +35,7 @@ def test_build_funnel_timeline_counts_events_by_week_and_fills_missing_kinds():
     ]
 
 
-def test_build_summary_counts_jobs_and_selected_window_interviews():
+def test_build_summary_counts_jobs_and_interviews():
     rows = [
         {
             "tracked_at": datetime(2026, 4, 1, tzinfo=timezone.utc),
@@ -158,3 +158,36 @@ def test_get_funnel_summary_normalizes_and_clamps_weeks(monkeypatch):
     funnel_analytics.get_funnel_summary(weeks=-3)
 
     assert seen_weeks == [12, 12, 52, 1]
+
+
+def test_get_funnel_summary_counts_all_time_interviews_independent_from_timeline(monkeypatch):
+    calls = []
+
+    def fake_fetch_all(query, params=()):
+        calls.append((query, params))
+        if params:
+            return [
+                {"week": date(2026, 5, 4), "kind": "application", "count": 1},
+            ]
+        if "COUNT(*) AS count" in query:
+            return [{"count": 3}]
+        return []
+
+    monkeypatch.setattr(funnel_analytics, "fetch_all", fake_fetch_all)
+
+    payload = funnel_analytics.get_funnel_summary(weeks=1)
+
+    assert payload["weeks"] == [
+        {
+            "week": "2026-05-04",
+            "application": 1,
+            "contact": 0,
+            "interview": 0,
+            "task": 0,
+            "decision": 0,
+            "note": 0,
+            "total": 1,
+        }
+    ]
+    assert payload["summary"]["interviews"] == 3
+    assert len(calls) == 4

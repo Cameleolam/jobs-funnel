@@ -174,6 +174,14 @@ def _jobs_query() -> str:
     """
 
 
+def _interview_count_query() -> str:
+    return f"""
+        SELECT COUNT(*) AS count
+        FROM {EVENTS_TABLE}
+        WHERE kind = 'interview'
+    """
+
+
 def _stuck_query() -> str:
     return f"""
         SELECT
@@ -190,7 +198,8 @@ def get_funnel_summary(weeks: int = 12) -> dict[str, Any]:
     safe_weeks = _clamp_weeks(weeks)
     timeline_rows = fetch_all(_timeline_query(), (list(EVENT_KINDS), safe_weeks))
     weeks_payload = build_funnel_timeline(timeline_rows)
-    interview_count = sum(row["interview"] for row in weeks_payload)
+    interview_rows = fetch_all(_interview_count_query())
+    interview_count = int(interview_rows[0].get("count") or 0) if interview_rows else 0
     job_rows = fetch_all(_jobs_query())
     stuck_rows = fetch_all(_stuck_query())
     return {
