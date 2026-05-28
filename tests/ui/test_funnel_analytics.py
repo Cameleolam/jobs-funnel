@@ -139,3 +139,22 @@ def test_build_stuck_jobs_uses_latest_event_or_tracked_at_and_limits_results():
             "days_since_last_event": 43,
         }
     ]
+
+
+def test_get_funnel_summary_normalizes_and_clamps_weeks(monkeypatch):
+    seen_weeks = []
+
+    def fake_fetch_all(query, params=()):
+        if params:
+            seen_weeks.append(params[1])
+            return []
+        return []
+
+    monkeypatch.setattr(funnel_analytics, "fetch_all", fake_fetch_all)
+
+    funnel_analytics.get_funnel_summary(weeks="abc")
+    funnel_analytics.get_funnel_summary(weeks="12.5")
+    funnel_analytics.get_funnel_summary(weeks=999)
+    funnel_analytics.get_funnel_summary(weeks=-3)
+
+    assert seen_weeks == [12, 12, 52, 1]

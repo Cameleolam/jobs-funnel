@@ -1,6 +1,6 @@
 """Analytics shell routes."""
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
 from ui.rendering import render
@@ -21,7 +21,7 @@ async def api_analytics_scoring():
 
 
 @router.get("/api/analytics/funnel")
-async def api_analytics_funnel(weeks: int = Query(12)):
+async def api_analytics_funnel(weeks: str = "12"):
     return funnel_analytics.get_funnel_summary(weeks=weeks)
 
 

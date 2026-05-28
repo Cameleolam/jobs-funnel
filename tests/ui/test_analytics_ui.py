@@ -111,7 +111,27 @@ def test_analytics_api_funnel_returns_service_payload(monkeypatch):
     response = TestClient(app).get("/api/analytics/funnel?weeks=12")
 
     assert response.status_code == 200
-    assert seen["payload"][0] == 12
+    assert seen["payload"][0] == "12"
+    assert response.json() == payload
+
+
+def test_analytics_api_funnel_tolerates_invalid_weeks(monkeypatch):
+    payload = {
+        "summary": {},
+        "weeks": [],
+        "stuck_jobs": [],
+    }
+    seen = {}
+    monkeypatch.setattr(
+        analytics.funnel_analytics,
+        "get_funnel_summary",
+        lambda weeks=12: seen.setdefault("payload", (weeks, payload))[1],
+    )
+
+    response = TestClient(app).get("/api/analytics/funnel?weeks=abc")
+
+    assert response.status_code == 200
+    assert seen["payload"][0] == "abc"
     assert response.json() == payload
 
 

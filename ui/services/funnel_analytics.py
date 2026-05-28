@@ -14,8 +14,12 @@ APPLIED_STATUSES = {"applied", "in_process", "offer", "rejected"}
 OPEN_STATUSES = {"interested", "applied", "in_process", "offer"}
 
 
-def _clamp_weeks(value: int) -> int:
-    return max(1, min(int(value), 52))
+def _clamp_weeks(value: Any) -> int:
+    try:
+        weeks = int(value)
+    except (TypeError, ValueError):
+        weeks = 12
+    return max(1, min(weeks, 52))
 
 
 def _status(value: Any) -> str | None:
