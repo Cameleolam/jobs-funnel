@@ -1,3 +1,4 @@
+from ui.services import scoring_insights
 from ui.services.scoring_insights import build_scoring_summary
 
 
@@ -163,4 +164,77 @@ def test_build_scoring_summary_counts_categorical_low_confidence():
 
     summary = build_scoring_summary(rows, has_human_review_columns=True)
 
+    assert summary["summary"]["low_confidence"] == 1
+
+
+def test_build_scoring_summary_counts_partial_review_columns_independently():
+    rows = [
+        {
+            "id": 9,
+            "title": "Search Engineer",
+            "company": "India",
+            "fit_score": 7,
+            "decision": "recommended",
+            "user_status": "new",
+            "needs_human_review": True,
+            "confidence": "low",
+        },
+        {
+            "id": 10,
+            "title": "Data Platform Engineer",
+            "company": "Juliet",
+            "fit_score": 6,
+            "decision": "recommended",
+            "user_status": "new",
+            "needs_human_review": False,
+            "confidence": 0.4,
+        },
+    ]
+
+    summary = build_scoring_summary(
+        rows,
+        has_needs_human_review_column=True,
+        has_confidence_column=True,
+    )
+
+    assert summary["summary"]["pending_review"] == 1
+    assert summary["summary"]["needs_human_review"] == 1
+    assert summary["summary"]["low_confidence"] == 2
+    assert [row["id"] for row in summary["mismatches"]["pending_review"]] == [9]
+
+
+def test_get_scoring_summary_queries_available_scoring_review_columns(monkeypatch):
+    seen = {}
+
+    monkeypatch.setattr(
+        scoring_insights.schema,
+        "OPTIONAL_COLUMNS",
+        {"needs_human_review", "confidence"},
+    )
+    monkeypatch.setattr(scoring_insights.schema, "HAS_HUMAN_REVIEW_COLUMNS", False)
+
+    def fake_fetch_all(query):
+        seen["query"] = query
+        return [
+            {
+                "id": 11,
+                "title": "Backend Engineer",
+                "company": "Kilo",
+                "fit_score": 8,
+                "decision": "recommended",
+                "user_status": "new",
+                "needs_human_review": True,
+                "confidence": 0.3,
+            }
+        ]
+
+    monkeypatch.setattr(scoring_insights, "fetch_all", fake_fetch_all)
+
+    summary = scoring_insights.get_scoring_summary()
+
+    assert "needs_human_review" in seen["query"]
+    assert "confidence" in seen["query"]
+    assert "explanation" not in seen["query"]
+    assert "critique_count" not in seen["query"]
+    assert summary["summary"]["needs_human_review"] == 1
     assert summary["summary"]["low_confidence"] == 1

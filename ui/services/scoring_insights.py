@@ -59,14 +59,14 @@ def _job(row: Mapping[str, Any], score: float | None = None) -> dict[str, Any]:
     }
 
 
-def _is_pending_review(row: Mapping[str, Any], has_human_review_columns: bool) -> bool:
+def _is_pending_review(row: Mapping[str, Any], has_needs_human_review_column: bool) -> bool:
     if row.get("decision") == "pending_review":
         return True
-    return bool(has_human_review_columns and row.get("needs_human_review"))
+    return bool(has_needs_human_review_column and row.get("needs_human_review"))
 
 
-def _is_low_confidence(row: Mapping[str, Any], has_human_review_columns: bool) -> bool:
-    if not has_human_review_columns:
+def _is_low_confidence(row: Mapping[str, Any], has_confidence_column: bool) -> bool:
+    if not has_confidence_column:
         return False
     raw_confidence = row.get("confidence")
     if isinstance(raw_confidence, str) and raw_confidence.strip().lower() == "low":
@@ -77,8 +77,16 @@ def _is_low_confidence(row: Mapping[str, Any], has_human_review_columns: bool) -
 
 def build_scoring_summary(
     rows: list[Mapping[str, Any]],
-    has_human_review_columns: bool,
+    has_human_review_columns: bool = False,
+    *,
+    has_needs_human_review_column: bool | None = None,
+    has_confidence_column: bool | None = None,
 ) -> dict[str, Any]:
+    if has_needs_human_review_column is None:
+        has_needs_human_review_column = has_human_review_columns
+    if has_confidence_column is None:
+        has_confidence_column = has_human_review_columns
+
     summary = {
         "total": len(rows),
         "applied": 0,
@@ -107,7 +115,7 @@ def build_scoring_summary(
         score = _score(row.get("fit_score"))
         is_application = user_status in APPLICATION_STATUSES
         is_dismissed = user_status == "dismissed"
-        is_pending = _is_pending_review(row, has_human_review_columns)
+        is_pending = _is_pending_review(row, has_needs_human_review_column)
 
         decisions[decision] += 1
         user_statuses[user_status] += 1
@@ -118,9 +126,9 @@ def build_scoring_summary(
         if is_pending:
             summary["pending_review"] += 1
             mismatches["pending_review"].append(_job(row, score))
-        if has_human_review_columns and row.get("needs_human_review"):
+        if has_needs_human_review_column and row.get("needs_human_review"):
             summary["needs_human_review"] += 1
-        if _is_low_confidence(row, has_human_review_columns):
+        if _is_low_confidence(row, has_confidence_column):
             summary["low_confidence"] += 1
 
         if score is None:
@@ -166,16 +174,17 @@ def build_scoring_summary(
     }
 
 
-def _query(has_human_review_columns: bool) -> str:
-    review_columns = (
-        "needs_human_review, confidence"
-        if has_human_review_columns
-        else "FALSE AS needs_human_review, NULL AS confidence"
+def _query(has_needs_human_review_column: bool, has_confidence_column: bool) -> str:
+    needs_human_review_column = (
+        "needs_human_review"
+        if has_needs_human_review_column
+        else "FALSE AS needs_human_review"
     )
+    confidence_column = "confidence" if has_confidence_column else "NULL AS confidence"
     return f"""
         SELECT
             id, title, company, fit_score, decision, user_status,
-            {review_columns}
+            {needs_human_review_column}, {confidence_column}
         FROM {TABLE}
         WHERE status = 'analyzed'
         ORDER BY analyzed_at DESC NULLS LAST, id DESC
@@ -183,6 +192,11 @@ def _query(has_human_review_columns: bool) -> str:
 
 
 def get_scoring_summary() -> dict[str, Any]:
-    has_human_review_columns = schema.HAS_HUMAN_REVIEW_COLUMNS
-    rows = fetch_all(_query(has_human_review_columns))
-    return build_scoring_summary(rows, has_human_review_columns)
+    has_needs_human_review_column = "needs_human_review" in schema.OPTIONAL_COLUMNS
+    has_confidence_column = "confidence" in schema.OPTIONAL_COLUMNS
+    rows = fetch_all(_query(has_needs_human_review_column, has_confidence_column))
+    return build_scoring_summary(
+        rows,
+        has_needs_human_review_column=has_needs_human_review_column,
+        has_confidence_column=has_confidence_column,
+    )
