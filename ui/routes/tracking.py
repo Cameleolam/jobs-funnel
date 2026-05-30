@@ -116,6 +116,7 @@ class EventCreate(BaseModel):
     kind: str
     label: str
     notes: str | None = None
+    mark_rejected: bool = False
 
 
 class EventUpdate(BaseModel):
@@ -123,6 +124,7 @@ class EventUpdate(BaseModel):
     kind: str | None = None
     label: str | None = None
     notes: str | None = None
+    mark_rejected: bool = False
 
 
 VALID_EVENT_KINDS = {"application", "contact", "interview", "task", "decision", "note"}
@@ -137,6 +139,17 @@ def _serialize_event(row):
         "label": row["label"],
         "notes": row["notes"],
     }
+
+
+def _mark_job_rejected(job_id: int):
+    execute(
+        f"UPDATE {TABLE} "
+        f"SET user_status = 'rejected', "
+        f"closed_at = COALESCE(closed_at, NOW()), "
+        f"sheet_synced = FALSE "
+        f"WHERE id = %s",
+        (job_id,),
+    )
 
 
 @router.post("/api/tracking/events")
@@ -155,6 +168,8 @@ async def api_create_event(payload: EventCreate):
         (payload.job_id, payload.occurred_at, payload.kind,
          payload.label.strip(), payload.notes),
     )
+    if payload.mark_rejected:
+        _mark_job_rejected(payload.job_id)
     return _serialize_event(row)
 
 
@@ -183,6 +198,8 @@ async def api_update_event(event_id: int, payload: EventUpdate):
         f"RETURNING id, job_id, occurred_at, kind, label, notes",
         tuple(values),
     )
+    if payload.mark_rejected:
+        _mark_job_rejected(row["job_id"])
     return _serialize_event(row)
 
 

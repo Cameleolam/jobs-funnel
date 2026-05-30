@@ -186,11 +186,19 @@
 }
 .modal h3 { margin: 0 0 0.3rem; font-size: 1.1rem; }
 .modal label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; }
+.modal label.checkbox-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.45rem;
+}
 .modal input, .modal select, .modal textarea {
   padding: 0.4rem 0.5rem;
   border: 1px solid #ddd;
   border-radius: 4px;
   font: inherit;
+}
+.modal .checkbox-row input {
+  width: auto;
 }
 .modal .link-btn {
   background: none;

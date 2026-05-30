@@ -3,6 +3,7 @@ from pathlib import Path
 
 JOBS = Path("ui/templates/jobs.html").read_text(encoding="utf-8")
 ROWS = Path("ui/templates/partials/job_rows.html").read_text(encoding="utf-8")
+EVENT_MODAL = Path("ui/static/tracking/components/EventModal.js").read_text(encoding="utf-8")
 
 
 def test_jobs_template_has_review_queue_shortcut():
@@ -21,3 +22,8 @@ def test_jobs_template_groups_secondary_filters():
 
 def test_hide_rejected_checkbox_has_hidden_false_value():
     assert 'name="hide_rejected" value="false"' in JOBS
+
+
+def test_tracking_event_modal_has_rejection_checkbox():
+    assert "Mark this job as rejected" in EVENT_MODAL
+    assert "mark_rejected" in EVENT_MODAL

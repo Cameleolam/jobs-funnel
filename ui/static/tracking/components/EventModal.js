@@ -22,6 +22,7 @@ export const EventModal = {
     const date = ref(todayInputValue());
     const notes = ref('');
     const showNotes = ref(false);
+    const markRejected = ref(false);
     const saving = ref(false);
     const error = ref(null);
 
@@ -37,17 +38,20 @@ export const EventModal = {
         date.value = props.event.occurred_at.slice(0, 10);
         notes.value = props.event.notes || '';
         showNotes.value = !!props.event.notes;
+        markRejected.value = false;
       } else {
         kind.value = 'application';
         label.value = '';
         date.value = todayInputValue();
         notes.value = '';
         showNotes.value = false;
+        markRejected.value = false;
       }
     });
 
     async function onSave() {
-      if (!label.value.trim()) {
+      const cleanLabel = label.value.trim() || (markRejected.value ? 'Rejected' : '');
+      if (!cleanLabel) {
         error.value = 'Label is required';
         return;
       }
@@ -57,17 +61,19 @@ export const EventModal = {
         if (isEdit.value) {
           await updateEvent(props.event.id, {
             kind: kind.value,
-            label: label.value.trim(),
+            label: cleanLabel,
             occurred_at: occurredAt,
             notes: notes.value.trim() || null,
+            mark_rejected: markRejected.value,
           });
         } else {
           await createEvent({
             job_id: props.jobId,
             kind: kind.value,
-            label: label.value.trim(),
+            label: cleanLabel,
             occurred_at: occurredAt,
             notes: notes.value.trim() || null,
+            mark_rejected: markRejected.value,
           });
         }
         emit('saved');
@@ -94,7 +100,7 @@ export const EventModal = {
       }
     }
 
-    return { kind, label, date, notes, showNotes, saving, error,
+    return { kind, label, date, notes, showNotes, markRejected, saving, error,
              isEdit, KINDS, onSave, onDelete };
   },
   template: `
@@ -114,6 +120,11 @@ export const EventModal = {
 
         <label>Date
           <input type="date" v-model="date">
+        </label>
+
+        <label class="checkbox-row">
+          <input type="checkbox" v-model="markRejected">
+          Mark this job as rejected
         </label>
 
         <button type="button" class="link-btn" @click="showNotes = !showNotes">

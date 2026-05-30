@@ -236,6 +236,7 @@ def test_job_detail_renders_review_resolution_controls(monkeypatch):
     assert 'name="review_action" value="apply_target"' in response.text
     assert 'name="review_action" value="maybe"' in response.text
     assert 'name="review_action" value="skip"' in response.text
+    assert 'name="review_action" value="rejected"' not in response.text
     assert "Score stayed in the review band after critique." in response.text
     assert "codex_gpt55_high" in response.text
     assert "claude_sonnet" in response.text
