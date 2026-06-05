@@ -33,13 +33,14 @@ profiles/
    - `an_location_keywords`: Location keywords to match
    - `an_negative_keywords`: Job titles to auto-skip (e.g., "manager", "consultant")
 
-3. Edit `filter_prompt.md` - this is the full candidate profile that the scoring provider uses to score jobs. The template includes a fictional example; replace it with your own profile. The prompt structure is fully customizable - adapt it to your background or refine it with AI. Key sections to fill in:
-   - Target roles, location preference, visa status
-   - Core tech stack and experience level
-   - Honest gaps (what you DON'T know)
-   - Hard blockers (language requirements, seniority, etc.)
-   - Scoring rubric with examples
-   - CV variant selection rules (match the names of your HTML files in cvs/)
+3. Edit `filter_prompt.md` - this is the full candidate profile that the scoring provider uses to score jobs. The template includes a fictional example; replace it with your own profile. The prompt structure is fully customizable - adapt it to your background or refine it with AI. Recommended sections to fill in:
+   - Candidate profile summary: target roles, location preference, visa status, availability, and experience level
+   - Claim policy: which evidence can be treated as proven, adjacent, side-project, academic, or not claimable
+   - Evidence map: compact claim-to-proof table with source, strength, limits, and reusable stories
+   - Skills inventory: core stack, demonstrated patterns, honest gaps, adjacent foundations, projects, and education
+   - Preference model: energizers, acceptable-under-condition roles, drainers, work styles, domain interests, and trajectory preferences
+   - Constraints and dealbreakers/caps: language requirements, seniority limits, location rules, hard blockers, and score ceilings
+   - Scoring rubric, output schema, review/confidence rules, examples, and CV variant selection rules (match the names of your HTML files in cvs/)
 
 4. Edit `generate_prompt.md` - your work history for CV/cover letter tailoring (optional, only needed if using the generate workflow).
 
