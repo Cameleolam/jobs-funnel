@@ -212,6 +212,7 @@ def _review_job_row():
         "soft_gaps": ["unclear location"],
         "tags": [],
         "priority_notes": None,
+        "scoring_details": {},
         "notes": "Ask about EU remote.",
         "possible_duplicate_of": None,
         "duplicate_confirmed": None,
@@ -241,6 +242,50 @@ def test_job_detail_renders_review_resolution_controls(monkeypatch):
     assert "codex_gpt55_high" in response.text
     assert "claude_sonnet" in response.text
     assert "Ask about EU remote." in response.text
+
+
+def test_job_detail_renders_scoring_details():
+    html = templates.get_template("partials/job_detail.html").render(
+        request={},
+        job={
+            **_review_job_row(),
+            "scoring_details": {
+                "action_label": "strong_consider",
+                "postulability_note": "Check application channel",
+                "source_assessment": {
+                    "description_quality": "good",
+                    "source_sufficiency": "full",
+                    "confidence_reason": "full posting",
+                },
+                "score_breakdown": {
+                    "capability": 8,
+                    "preference": 7,
+                    "actionability": 6,
+                    "strategic_value": 5,
+                    "mastery_learning_estimate": "70/30",
+                },
+                "requirement_map": [{
+                    "requirement": "Python",
+                    "importance": "required",
+                    "candidate_status": "proven",
+                    "evidence": "Backend APIs",
+                    "score_impact": "positive",
+                }],
+                "evidence_used": ["Backend APIs"],
+                "questions": [{"question": "Is EU remote acceptable?"}],
+            },
+        },
+        fullscreen=True,
+    )
+
+    assert "Scoring Details" in html
+    assert "strong_consider" in html
+    assert "Check application channel" in html
+    assert "full posting" in html
+    assert "70/30" in html
+    assert "Python" in html
+    assert "Backend APIs" in html
+    assert "Is EU remote acceptable?" in html
 
 
 def test_job_view_renders_full_page(monkeypatch):

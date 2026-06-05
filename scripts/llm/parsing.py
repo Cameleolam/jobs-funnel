@@ -64,6 +64,7 @@ def fallback_assessment(blocker: str, reasoning: str, error_code: str) -> dict[s
         "strong_matches": [],
         "reasoning": reasoning,
         "priority_notes": None,
+        "scoring_details": {},
         "error_code": error_code,
     }
 
@@ -78,6 +79,7 @@ def batch_padding_assessment(index: int, expected_count: int) -> dict[str, Any]:
         "strong_matches": [],
         "reasoning": f"Missing from batch response (job {index} of {expected_count})",
         "priority_notes": "BATCH_PADDING",
+        "scoring_details": {},
         "error_code": "BATCH_PADDING",
     }
 

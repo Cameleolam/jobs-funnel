@@ -140,6 +140,29 @@ def test_text_for_calibration_normalizes_description():
     assert "Jobs in Germany" not in txt
 
 
+def test_text_for_calibration_accepts_scoring_envelope():
+    job = {
+        "job": {
+            "title": "Python Engineer",
+            "company": "Acme",
+            "location": "Hamburg",
+            "seniority_level": "mid",
+            "employment_type": "full-time",
+        },
+        "content": {"description": "<p>Python &amp; PostgreSQL</p>"},
+        "signals": {"remote": True, "likely_english": True},
+    }
+
+    txt = embed_mod.text_for_calibration(job)
+
+    assert "TITLE: Python Engineer" in txt
+    assert "COMPANY: Acme" in txt
+    assert "LOCATION: Hamburg" in txt
+    assert "REMOTE: yes" in txt
+    assert "LANGUAGE: english" in txt
+    assert "Python & PostgreSQL" in txt
+
+
 def test_cli_job_id_success(monkeypatch, capsys):
     """CLI mode reads job, computes both embeddings, writes back, prints JSON."""
     from scripts import embed as embed_mod

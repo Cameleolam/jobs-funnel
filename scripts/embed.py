@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import httpx
 
-from scripts.lib.job_text import normalize_description
+from scripts.lib.job_text import job_description, job_field, job_signal, normalize_description
 
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/") + "/api/embeddings"
@@ -54,9 +54,9 @@ def embed(text: str) -> list[float]:
 
 def text_for_dedup(job: dict) -> str:
     """Title-heavy text for the dedup vector. Title repeated to weight it."""
-    title = (job.get("title") or "")
-    company = (job.get("company") or "")
-    description = normalize_description(job.get("description"))[:DESC_MAX_CHARS]
+    title = (job_field(job, "title") or "")
+    company = (job_field(job, "company") or "")
+    description = normalize_description(job_description(job))[:DESC_MAX_CHARS]
     return f"{title}\n{title}\n{company}\n{description}"
 
 
@@ -67,16 +67,16 @@ def text_for_calibration(job: dict) -> str:
     type / language without those signals being drowned out by the description.
     """
     fields = {
-        "TITLE":      job.get("title") or "",
-        "COMPANY":    job.get("company") or "",
-        "LOCATION":   job.get("location") or "",
-        "REMOTE":     "yes" if job.get("remote") else "no",
-        "SENIORITY":  job.get("seniority_level") or "unspecified",
-        "EMPLOYMENT": job.get("employment_type") or "unspecified",
-        "LANGUAGE":   "english" if job.get("likely_english") else "german",
+        "TITLE":      job_field(job, "title") or "",
+        "COMPANY":    job_field(job, "company") or "",
+        "LOCATION":   job_field(job, "location") or "",
+        "REMOTE":     "yes" if job_signal(job, "remote") else "no",
+        "SENIORITY":  job_field(job, "seniority_level") or "unspecified",
+        "EMPLOYMENT": job_field(job, "employment_type") or "unspecified",
+        "LANGUAGE":   "english" if job_signal(job, "likely_english") else "german",
     }
     header = "\n".join(f"{k}: {v}" for k, v in fields.items())
-    description = normalize_description(job.get("description"))[:DESC_MAX_CHARS]
+    description = normalize_description(job_description(job))[:DESC_MAX_CHARS]
     return f"{header}\n---\n{description}"
 
 

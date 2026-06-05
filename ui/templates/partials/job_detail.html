@@ -116,6 +116,71 @@
   <p>{{ job.priority_notes }}</p>
   {% endif %}
 
+  {% set raw_details = job.scoring_details|default({}) %}
+  {% set details = raw_details if raw_details is mapping else {} %}
+  {% set source_assessment = details.source_assessment if details.source_assessment is mapping else {} %}
+  {% set score_breakdown = details.score_breakdown if details.score_breakdown is mapping else {} %}
+  {% set requirement_map = details.requirement_map if details.requirement_map is sequence and details.requirement_map is not string else [] %}
+  {% set evidence_used = details.evidence_used if details.evidence_used is sequence and details.evidence_used is not string else [] %}
+  {% set questions = details.questions if details.questions is sequence and details.questions is not string else [] %}
+  {% if source_assessment or score_breakdown or requirement_map or evidence_used or questions or details.postulability_note or details.action_label %}
+  <h4>Scoring Details</h4>
+  {% if details.action_label %}<p><strong>Action label:</strong> {{ details.action_label }}</p>{% endif %}
+  {% if details.postulability_note %}<p><strong>Postulability:</strong> {{ details.postulability_note }}</p>{% endif %}
+  {% if source_assessment %}
+  <p>
+    <strong>Source:</strong>
+    {{ source_assessment.source_sufficiency or 'unknown' }}
+    {% if source_assessment.description_quality %} / {{ source_assessment.description_quality }}{% endif %}
+    {% if source_assessment.confidence_reason %}- {{ source_assessment.confidence_reason }}{% endif %}
+  </p>
+  {% endif %}
+  {% if score_breakdown %}
+  <table class="mini-table">
+    <thead><tr><th>Capability</th><th>Preference</th><th>Actionability</th><th>Strategic</th><th>Mastery/Learning</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>{{ score_breakdown.capability if score_breakdown.capability is not none else '-' }}</td>
+        <td>{{ score_breakdown.preference if score_breakdown.preference is not none else '-' }}</td>
+        <td>{{ score_breakdown.actionability if score_breakdown.actionability is not none else '-' }}</td>
+        <td>{{ score_breakdown.strategic_value if score_breakdown.strategic_value is not none else '-' }}</td>
+        <td>{{ score_breakdown.mastery_learning_estimate or '-' }}</td>
+      </tr>
+    </tbody>
+  </table>
+  {% endif %}
+  {% if requirement_map %}
+  <table class="mini-table">
+    <thead><tr><th>Requirement</th><th>Importance</th><th>Status</th><th>Evidence</th><th>Impact</th></tr></thead>
+    <tbody>
+      {% for item in requirement_map %}
+      {% if item is mapping %}
+      <tr>
+        <td>{{ item.requirement or '-' }}</td>
+        <td>{{ item.importance or '-' }}</td>
+        <td>{{ item.candidate_status or '-' }}</td>
+        <td>{{ item.evidence or '-' }}</td>
+        <td>{{ item.score_impact or '-' }}</td>
+      </tr>
+      {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% if evidence_used %}
+  <h4>Evidence Used</h4>
+  <ul>
+    {% for item in evidence_used %}<li>{{ item.evidence if item is mapping and item.evidence else item }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+  {% if questions %}
+  <h4>Decision-Changing Questions</h4>
+  <ul>
+    {% for item in questions %}<li>{{ item.question if item is mapping and item.question else item }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+  {% endif %}
+
   <h4>My Notes</h4>
   {% if is_fullscreen %}
   <p>{{ job.notes or 'No personal notes.' }}</p>

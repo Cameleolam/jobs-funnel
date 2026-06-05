@@ -95,5 +95,6 @@ def test_fallback_assessment_has_parse_update_compatible_shape():
         "strong_matches": [],
         "reasoning": "Parse error: bad output",
         "priority_notes": None,
+        "scoring_details": {},
         "error_code": "PARSE_FAIL",
     }

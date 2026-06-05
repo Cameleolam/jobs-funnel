@@ -18,24 +18,45 @@ try {
 const batches = [];
 for (let i = 0; i < all.length; i += BATCH_SIZE) {
   const chunk = all.slice(i, i + BATCH_SIZE);
-  const batchJobs = chunk.map(item => ({
-    title: item.json.title || '',
-    company: item.json.company || '',
-    location: item.json.location || '',
-    description: item.json.description || '',
-    tags: item.json.tags || [],
-    url: item.json.url || '',
-    remote: item.json.remote || false,
-    source: item.json.source || '',
-    salary_min: item.json.salary_min || null,
-    salary_max: item.json.salary_max || null,
-    salary_currency: item.json.salary_currency || null,
-    start_date: item.json.start_date || null,
-    _likely_english: item.json.likely_english || false,
-    _staffing_agency: item.json.staffing_agency || false,
-    _geo_mismatch: item.json.geo_mismatch || false,
-    _embedding_calibration_present: item.json.embedding_calibration != null
-  }));
+  const batchJobs = chunk.map(item => {
+    const j = item.json || {};
+    return {
+      job: {
+        title: j.title || '',
+        company: j.company || '',
+        location: j.location || '',
+        url: j.url || '',
+        source: j.source || '',
+        external_id: j.external_id || '',
+        tags: j.tags || [],
+        salary_min: j.salary_min || null,
+        salary_max: j.salary_max || null,
+        salary_currency: j.salary_currency || null,
+        employment_type: j.employment_type || null,
+        seniority_level: j.seniority_level || null,
+        start_date: j.start_date || null,
+        posted_at: j.posted_at || null
+      },
+      content: {
+        description: j.description || '',
+        description_quality: j.description_quality || 'unknown'
+      },
+      signals: {
+        remote: j.remote || false,
+        likely_english: j.likely_english || false,
+        staffing_agency: j.staffing_agency || false,
+        geo_mismatch: j.geo_mismatch || false,
+        embedding_calibration_present: j.embedding_calibration != null
+      },
+      source_context: {
+        source: j.source || '',
+        url: j.url || '',
+        description_quality: j.description_quality || 'unknown',
+        application_channel: null,
+        postulability: null
+      }
+    };
+  });
   const tmpPath = tmpDir + '/n8n_batch_' + Date.now() + '_' + i + '.json';
   fs.writeFileSync(tmpPath, JSON.stringify(batchJobs), 'utf-8');
   const originals = chunk.map(item => ({

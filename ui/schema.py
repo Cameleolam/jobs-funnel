@@ -17,6 +17,7 @@ def _detect_optional_columns():
         "explanation",
         "confidence",
         "critique_count",
+        "scoring_details",
     }
     conn = None
     try:
@@ -44,6 +45,7 @@ HAS_HUMAN_REVIEW_COLUMNS = {
     "confidence",
     "critique_count",
 }.issubset(OPTIONAL_COLUMNS)
+HAS_SCORING_DETAILS_COLUMN = "scoring_details" in OPTIONAL_COLUMNS
 
 _BASE_ROW_COLS = (
     "id, url, title, company, location, source, fit_score, decision, "
@@ -77,3 +79,8 @@ else:
         f"{ROW_COLS}, FALSE AS needs_human_review, NULL AS explanation, "
         "NULL AS confidence, 0 AS critique_count"
     )
+
+if HAS_SCORING_DETAILS_COLUMN:
+    ROW_COLS = f"{ROW_COLS}, scoring_details"
+else:
+    ROW_COLS = f"{ROW_COLS}, '{{}}'::jsonb AS scoring_details"

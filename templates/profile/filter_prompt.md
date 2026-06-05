@@ -127,6 +127,25 @@ Given a job posting, return ONLY a JSON object with this exact structure:
   "confidence": "high | medium | low",
   "needs_human_review": false,
   "explanation": "string | null",
+  "scoring_details": {
+    "source_assessment": {
+      "description_quality": "good | poor | empty | unknown",
+      "source_sufficiency": "full | partial | snippet | metadata_only",
+      "confidence_reason": "string"
+    },
+    "score_breakdown": {
+      "capability": 0,
+      "preference": 0,
+      "actionability": 0,
+      "strategic_value": 0,
+      "mastery_learning_estimate": "70/30"
+    },
+    "requirement_map": [],
+    "evidence_used": [],
+    "questions": [],
+    "postulability_note": null,
+    "action_label": "apply | strong_consider | consider | hold | reject | blocked"
+  },
   "extracted_salary_min": null,
   "extracted_salary_max": null,
   "extracted_salary_currency": "EUR",
@@ -149,6 +168,15 @@ Given a job posting, return ONLY a JSON object with this exact structure:
 - Set `needs_human_review=true` when a human answer could change the score, confidence, or decision.
 - Put decision-changing questions or review notes in `priority_notes`, not generic questions.
 - Do not ask the candidate to analyze the job text when the posting itself already answers the question.
+
+### Scoring details fields
+- Keep `fit_score` on the 1-10 scale. Use `scoring_details.score_breakdown` only to explain the score.
+- Use `capability`, `preference`, `actionability`, and `strategic_value` as 0-10 supporting dimensions.
+- Use `requirement_map` for the most decision-relevant requirements, not every word in the posting.
+- Each `requirement_map` item should include `requirement`, `importance`, `candidate_status`, `evidence`, and `score_impact`.
+- Use `evidence_used` for profile evidence that materially affected the score.
+- Put candidate-facing questions in both `scoring_details.questions` and `priority_notes` only when they can change the score, confidence, or decision.
+- Use `postulability_note` for application-channel uncertainty. Do not lower technical fit just because the application channel needs verification.
 
 ## Scoring Rubric
 **9-10 - Strong fit:** Core stack matches, experience level aligns, location works, language OK.
@@ -229,10 +257,13 @@ When in doubt, prefer "frontend" as the safest default.
 Status: **ready**. The profile has enough evidence, preferences, constraints, blockers, and scoring rules for reliable first-pass scoring. Use lower confidence when a posting is thin or when a central requirement cannot be mapped to the evidence map.
 
 ## Input Fields
-The job JSON you receive may include these special fields:
-- `_likely_english` (bool): heuristic guess whether the posting is in English.
-- `_staffing_agency` (bool): heuristic guess that the posting is from a staffing agency / Zeitarbeit / Personaldienstleister.
-- `_geo_mismatch` (bool): heuristic guess that the role is on-site outside Germany/DACH/EU and not remote.
+The job JSON may be a structured envelope:
+- `job`: title, company, location, URL, source, tags, salary, seniority, employment type, start date, posted date.
+- `content`: normalized description and `description_quality`.
+- `signals`: remote, likely English, staffing-agency, geo-mismatch, and calibration signals.
+- `source_context`: currently available source/application-channel hints.
+
+Older flat job JSON may still include `_likely_english`, `_staffing_agency`, and `_geo_mismatch`; use them the same way as `signals`.
 
 ## Important Rules
 1. Do NOT inflate the score to be encouraging. A 6 is a 6.

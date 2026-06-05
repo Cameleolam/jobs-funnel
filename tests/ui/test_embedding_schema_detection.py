@@ -24,13 +24,19 @@ def _fake_conn(present_cols):
 
 
 def test_detect_returns_optional_columns_when_present(monkeypatch):
-    conn = _fake_conn(["embedding", "embedding_calibration", "scored_uncalibrated"])
+    conn = _fake_conn([
+        "embedding",
+        "embedding_calibration",
+        "scored_uncalibrated",
+        "scoring_details",
+    ])
     monkeypatch.setattr(schema.scripts_db, "get_conn", lambda: conn)
 
     assert schema._detect_optional_columns() == {
         "embedding",
         "embedding_calibration",
         "scored_uncalibrated",
+        "scoring_details",
     }
     conn.close.assert_called_once_with()
 
@@ -102,6 +108,11 @@ def test_row_cols_at_module_load_matches_detection_flag():
         assert "NULL AS confidence" in schema.ROW_COLS
         assert "0 AS critique_count" in schema.ROW_COLS
 
+    if schema.HAS_SCORING_DETAILS_COLUMN:
+        assert "scoring_details" in schema.ROW_COLS
+    else:
+        assert "'{}'::jsonb AS scoring_details" in schema.ROW_COLS
+
 
 def test_row_cols_include_human_review_when_columns_exist(monkeypatch):
     monkeypatch.setattr(
@@ -114,6 +125,7 @@ def test_row_cols_include_human_review_when_columns_exist(monkeypatch):
             "explanation",
             "confidence",
             "critique_count",
+            "scoring_details",
         ]),
     )
     importlib.reload(schema)
@@ -122,7 +134,9 @@ def test_row_cols_include_human_review_when_columns_exist(monkeypatch):
     assert "explanation" in schema.ROW_COLS
     assert "confidence" in schema.ROW_COLS
     assert "critique_count" in schema.ROW_COLS
+    assert "scoring_details" in schema.ROW_COLS
     assert "FALSE AS needs_human_review" not in schema.ROW_COLS
+    assert "'{}'::jsonb AS scoring_details" not in schema.ROW_COLS
 
 
 def test_row_cols_alias_human_review_when_columns_missing(monkeypatch):
@@ -133,6 +147,7 @@ def test_row_cols_alias_human_review_when_columns_missing(monkeypatch):
     assert "NULL AS explanation" in schema.ROW_COLS
     assert "NULL AS confidence" in schema.ROW_COLS
     assert "0 AS critique_count" in schema.ROW_COLS
+    assert "'{}'::jsonb AS scoring_details" in schema.ROW_COLS
 
 
 def test_review_filter_uses_human_review_columns_when_available(monkeypatch):

@@ -191,8 +191,38 @@ def normalize_description(raw: Any) -> str:
     return _normalize_whitespace(text)
 
 
+def job_field(job: dict[str, Any], key: str, default: Any = "") -> Any:
+    nested = job.get("job")
+    if isinstance(nested, dict) and key in nested:
+        return nested.get(key, default)
+    return job.get(key, default)
+
+
+def job_signal(job: dict[str, Any], key: str, default: Any = None) -> Any:
+    signals = job.get("signals")
+    if isinstance(signals, dict) and key in signals:
+        return signals.get(key, default)
+    if key == "likely_english":
+        return job.get("_likely_english", job.get("likely_english", default))
+    if key == "embedding_calibration_present":
+        return job.get("_embedding_calibration_present", default)
+    return job.get(key, default)
+
+
+def job_description(job: dict[str, Any]) -> Any:
+    content = job.get("content")
+    if isinstance(content, dict):
+        return content.get("description")
+    return job.get("description")
+
+
 def normalize_job_for_llm(job: dict[str, Any]) -> dict[str, Any]:
-    """Return a shallow copy of a job with only description normalized."""
+    """Return a shallow copy of a job/envelope with only description normalized."""
     cleaned = dict(job)
-    cleaned["description"] = normalize_description(job.get("description"))
+    if isinstance(cleaned.get("content"), dict):
+        content = dict(cleaned["content"])
+        content["description"] = normalize_description(content.get("description"))
+        cleaned["content"] = content
+        return cleaned
+    cleaned["description"] = normalize_description(job_description(job))
     return cleaned

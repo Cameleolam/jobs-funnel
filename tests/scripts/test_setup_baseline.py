@@ -27,6 +27,7 @@ def test_setup_db_contains_provider_and_review_columns():
     assert "scoring_provider TEXT" in SQL
     assert "review_provider  TEXT" in SQL
     assert "needs_human_review BOOLEAN NOT NULL DEFAULT FALSE" in SQL
+    assert "scoring_details    JSONB NOT NULL DEFAULT '{}'::jsonb" in SQL
 
 
 def test_setup_db_contains_existing_profile_table_upgrade_alters_before_indexes():
@@ -52,6 +53,7 @@ def test_setup_db_contains_existing_profile_table_upgrade_alters_before_indexes(
         "ADD COLUMN IF NOT EXISTS explanation        TEXT",
         "ADD COLUMN IF NOT EXISTS confidence         TEXT",
         "ADD COLUMN IF NOT EXISTS critique_count     INTEGER NOT NULL DEFAULT 0",
+        "ADD COLUMN IF NOT EXISTS scoring_details    JSONB NOT NULL DEFAULT '{}'::jsonb",
     ]:
         assert column in SQL
 

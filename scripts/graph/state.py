@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Literal, Optional, TypedDict
 
+from scripts.lib.job_text import job_signal
+
 
 Confidence = Literal["low", "medium", "high"]
 FinalDecision = Literal["apply", "maybe", "skip", "pending_review"]
@@ -30,7 +32,7 @@ class FilterState(TypedDict, total=False):
 
 
 def has_calibration(job: dict[str, Any]) -> bool:
-    return job.get("_embedding_calibration_present", True) is not False
+    return job_signal(job, "embedding_calibration_present", True) is not False
 
 
 def initial_state(job: dict[str, Any]) -> FilterState:

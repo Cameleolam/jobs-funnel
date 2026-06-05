@@ -91,3 +91,23 @@ def test_normalize_job_for_llm_returns_shallow_copy_with_clean_description():
     assert cleaned["tags"] is job["tags"]
     assert cleaned["description"] == "Python & APIs"
     assert job["description"].startswith("<p>")
+
+
+def test_normalize_job_for_llm_cleans_envelope_content_description():
+    job = {
+        "job": {"title": "Backend Engineer"},
+        "content": {
+            "description": "<p>Python &amp; APIs</p><p>Find Jobs in Germany on Arbeitnow</p>",
+            "description_quality": "good",
+        },
+        "signals": {"likely_english": True},
+    }
+
+    cleaned = normalize_job_for_llm(job)
+
+    assert cleaned is not job
+    assert cleaned["job"] is job["job"]
+    assert cleaned["signals"] is job["signals"]
+    assert cleaned["content"] is not job["content"]
+    assert cleaned["content"]["description"] == "Python & APIs"
+    assert job["content"]["description"].startswith("<p>")

@@ -9,6 +9,7 @@ import psycopg2.extras
 from scripts import calibration_settings
 from scripts import db
 from scripts import embed as embed_mod
+from scripts.lib.job_text import job_field
 
 
 def calibration_k() -> int:
@@ -99,7 +100,7 @@ def retrieve_similar_decisions(new_job: dict[str, Any], k: int | None = None) ->
     try:
         table = db.table_name()
         events_table = db.events_table_name()
-        seniority = new_job.get("seniority_level") or "unspecified"
+        seniority = job_field(new_job, "seniority_level") or "unspecified"
         w = weights()
 
         conn = db.get_vector_conn()

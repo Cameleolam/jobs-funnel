@@ -311,6 +311,26 @@ a { color: var(--accent); }
 .jobs-table tr.status-error > td:first-child { border-left: 3px solid #ea580c; }
 .jobs-table tr.status-dead > td:first-child { border-left: 3px solid #dc2626; }
 .jobs-table tr.status-review > td:first-child { border-left: 3px solid #f59e0b; }
+
+.mini-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0 0.75rem;
+  font-size: 0.85rem;
+}
+
+.mini-table th,
+.mini-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.35rem 0.4rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.mini-table th {
+  color: var(--text-soft);
+  font-weight: 600;
+}
 tr.needs-action { background: #fff7ed; }
 tr.needs-action:hover { background: #ffedd5; }
 tr.status-interested { background: #fefce8; }

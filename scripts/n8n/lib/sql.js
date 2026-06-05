@@ -33,3 +33,8 @@ function jsonbLiteral(value) {
   const arr = Array.isArray(value) ? value : [];
   return dollarQuote(JSON.stringify(arr), 'jb') + '::jsonb';
 }
+
+function jsonbValueLiteral(value) {
+  const safeValue = value === null || value === undefined ? {} : value;
+  return dollarQuote(JSON.stringify(safeValue), 'jb') + '::jsonb';
+}

@@ -6,14 +6,14 @@ from pathlib import Path
 from typing import Any
 
 from scripts import retrieval
-from scripts.lib.job_text import normalize_job_for_llm
+from scripts.lib.job_text import job_signal, normalize_job_for_llm
 from scripts.llm.parsing import coerce_assessment_list, fallback_assessment, loads_jsonish
 from scripts.llm.providers import provider_from_key, review_band
 from scripts.llm.types import ProviderRequest
 
 
 def _has_calibration(job: dict[str, Any]) -> bool:
-    return job.get("_embedding_calibration_present", True)
+    return job_signal(job, "embedding_calibration_present", True) is not False
 
 
 def normalize_filter_input(parsed_input: Any) -> Any:

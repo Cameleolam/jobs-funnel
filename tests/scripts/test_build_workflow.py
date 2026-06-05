@@ -36,6 +36,11 @@ def prep_insert_code(wf):
     return prep["parameters"]["jsCode"]
 
 
+def batch_items_code(wf):
+    batch = next(n for n in wf["nodes"] if n["name"] == "Batch Items")
+    return batch["parameters"]["jsCode"]
+
+
 def dedup_semantic_prep_code(wf):
     prep = next(n for n in wf["nodes"] if n["name"] == "Dedup: Semantic Prep")
     return prep["parameters"]["jsCode"]
@@ -189,6 +194,51 @@ Promise.resolve(fn($input, $env, $, fakeRequire)).then(
 
 def run_parse_update(code: str, assessment: dict, *, table: str = "jobs"):
     result = run_parse_update_process(code, assessment, table=table)
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)
+
+
+def run_batch_items(code: str, rows):
+    harness = """
+const input = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+const writes = {};
+const fakeRequire = (name) => {
+  if (name === 'fs') {
+    return {
+      readFileSync() { return JSON.stringify({ batch_size: 8 }); },
+      mkdirSync() {},
+      readdirSync() { return []; },
+      unlinkSync() {},
+      writeFileSync(path, contents) {
+        writes[path] = JSON.parse(contents);
+      },
+    };
+  }
+  throw new Error(`unexpected require ${name}`);
+};
+const fn = new Function('$input', '$env', 'require', 'Date', input.code);
+const $input = {
+  all() {
+    return input.rows.map(json => ({ json }));
+  }
+};
+const $env = { JOBS_FUNNEL_PROJECT_DIR: 'D:/projects/jobs_funnel' };
+const fakeDate = { now() { return 1234567890; } };
+Promise.resolve(fn($input, $env, fakeRequire, fakeDate)).then(
+  result => process.stdout.write(JSON.stringify({ result, writes })),
+  error => {
+    console.error(error && error.stack ? error.stack : String(error));
+    process.exit(1);
+  }
+);
+"""
+    result = subprocess.run(
+        ["node", "-e", harness],
+        input=json.dumps({"code": code, "rows": rows}),
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+    )
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)
 
@@ -589,6 +639,55 @@ def test_run_end_counts_graph_review_metrics():
     assert "score_human_flagged" in code
 
 
+def test_batch_items_emits_structured_scoring_envelope():
+    wf = run_build("profile1")
+    code = batch_items_code(wf)
+
+    out = run_batch_items(code, [{
+        "id": 42,
+        "url": "https://example.test/job",
+        "title": "Backend Engineer",
+        "company": "Acme",
+        "location": "Remote EU",
+        "description": "Build APIs",
+        "description_quality": "good",
+        "source": "manual",
+        "external_id": "ext-1",
+        "tags": ["python"],
+        "remote": True,
+        "likely_english": True,
+        "staffing_agency": False,
+        "geo_mismatch": False,
+        "embedding_calibration": [0.1],
+        "salary_min": 70000,
+        "salary_max": 85000,
+        "salary_currency": "EUR",
+        "employment_type": "full-time",
+        "seniority_level": "senior",
+        "start_date": "2026-07-01",
+        "posted_at": "2026-06-01T00:00:00Z",
+    }])
+
+    batch_path = out["result"][0]["json"]["_tmpPath"]
+    payload = out["writes"][batch_path]
+    job = payload[0]
+    assert job["job"]["title"] == "Backend Engineer"
+    assert job["job"]["salary_currency"] == "EUR"
+    assert job["content"] == {
+        "description": "Build APIs",
+        "description_quality": "good",
+    }
+    assert job["signals"] == {
+        "remote": True,
+        "likely_english": True,
+        "staffing_agency": False,
+        "geo_mismatch": False,
+        "embedding_calibration_present": True,
+    }
+    assert job["source_context"]["description_quality"] == "good"
+    assert job["source_context"]["application_channel"] is None
+
+
 def test_phase2_dedup_parse_empty_stdout_returns_select_one_before_metrics():
     wf = run_build("profile1")
     code = dedup_parse_code(wf)
@@ -674,6 +773,33 @@ def test_parse_update_persists_provider_metadata():
     assert "base_fit_score = 5" in query
     assert "base_decision = 'MAYBE'" in query
     assert "review_error = 'kept base'" in query
+
+
+def test_parse_update_persists_scoring_details_jsonb():
+    wf = run_build("profile1")
+    code = parse_update_code(wf)
+    result = run_parse_update(code, {
+        "fit_score": 7,
+        "decision": "PASS",
+        "cv_variant": "software",
+        "hard_blockers": [],
+        "soft_gaps": ["application channel unclear"],
+        "strong_matches": ["Python"],
+        "reasoning": "good fit",
+        "scoring_details": {
+            "score_breakdown": {"capability": 8, "preference": 7},
+            "postulability_note": "Check channel",
+            "requirement_map": [
+                {"requirement": "Python", "candidate_status": "proven"}
+            ],
+        },
+    })
+
+    query = result[0]["json"]["_updateQuery"]
+    assert "scoring_details =" in query
+    assert '"postulability_note":"Check channel"' in query
+    assert '"requirement":"Python"' in query
+    assert "::jsonb" in query
 
 
 def test_parse_update_escapes_unconstrained_cv_variant():

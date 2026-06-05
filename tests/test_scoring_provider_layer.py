@@ -103,6 +103,25 @@ def test_build_user_prompt_uses_normalized_descriptions_and_removes_arbeitnow_fo
     assert "English Speaking Jobs in Germany" not in prompt
 
 
+def test_build_user_prompt_normalizes_structured_envelope_content():
+    job = {
+        "job": {"title": "Backend Engineer", "company": "Acme"},
+        "content": {
+            "description": "<p>Python &amp; APIs</p><p>Find Jobs in Germany on Arbeitnow</p>",
+            "description_quality": "good",
+        },
+        "signals": {"likely_english": True},
+    }
+
+    prompt = build_user_prompt(job, is_batch=False)
+
+    assert "<p>" not in prompt
+    assert "Python & APIs" in prompt
+    assert "Jobs in Germany" not in prompt
+    assert '"description_quality": "good"' in prompt
+    assert '"signals": {"likely_english": true}' in prompt
+
+
 def test_system_prompt_with_calibration_returns_original_prompt_when_no_anchors(monkeypatch):
     monkeypatch.setattr("scripts.scoring.retrieval.retrieve_similar_decisions", lambda job: [])
 

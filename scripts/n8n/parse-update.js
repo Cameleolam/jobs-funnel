@@ -125,6 +125,11 @@ for (let b = 0; b < $input.all().length; b++) {
     const explanation = assessment.explanation || null;
     const confidence = assessment.confidence || null;
     const critiqueCount = Number(assessment.critique_count || 0);
+    const scoringDetails = (
+      assessment.scoring_details
+      && typeof assessment.scoring_details === 'object'
+      && !Array.isArray(assessment.scoring_details)
+    ) ? assessment.scoring_details : {};
 
     // Conditional salary: only update if DB has no salary (don't overwrite API-provided values)
     const salaryMin = sqlInt(exSalMin);
@@ -146,7 +151,8 @@ for (let b = 0; b < $input.all().length; b++) {
       `, needs_human_review = ${needsHumanReview ? 'TRUE' : 'FALSE'}` +
       `, explanation = ${sqlStr(explanation)}` +
       `, confidence = ${sqlStr(confidence)}` +
-      `, critique_count = ${Number.isFinite(critiqueCount) && critiqueCount >= 0 ? Math.floor(critiqueCount) : 0}`;
+      `, critique_count = ${Number.isFinite(critiqueCount) && critiqueCount >= 0 ? Math.floor(critiqueCount) : 0}` +
+      `, scoring_details = ${jsonbValueLiteral(scoringDetails)}`;
     results.push({ json: {
       _updateQuery: `UPDATE ${table} SET status = 'analyzed', analyzed_at = NOW(), error = NULL, error_code = NULL, retry_count = 0, fit_score = ${score}, decision = '${decision}', cv_variant = ${sqlStr(cvVariant)}, hard_blockers = ${jsonbLiteral(assessment.hard_blockers)}, soft_gaps = ${jsonbLiteral(assessment.soft_gaps)}, strong_matches = ${jsonbLiteral(assessment.strong_matches)}, reasoning = ${sqlStr(assessment.reasoning || '')}, priority_notes = ${sqlStr(assessment.priority_notes || null)}, employment_type = ${sqlStr(empType)}, seniority_level = ${sqlStr(senLevel)}, start_date = COALESCE(start_date, ${sqlStr(startDate)})${salaryClause}, scored_uncalibrated = ${uncalibrated ? 'TRUE' : 'FALSE'}${providerMetadataClause}${graphMetadataClause} WHERE id = ${orig.id}`
     }});

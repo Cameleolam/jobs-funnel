@@ -37,6 +37,7 @@ def _pending_review_assessment(blocker: str, reasoning: str) -> dict[str, Any]:
         "priority_notes": None,
         "confidence": "medium",
         "needs_human_review": True,
+        "scoring_details": {},
     }
 
 

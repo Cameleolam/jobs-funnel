@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS {{TABLE}} (
     explanation        TEXT,
     confidence         TEXT,
     critique_count     INTEGER NOT NULL DEFAULT 0,
+    scoring_details    JSONB NOT NULL DEFAULT '{}'::jsonb,
 
     retry_count     INTEGER DEFAULT 0,
     sheet_synced    BOOLEAN DEFAULT FALSE,
@@ -95,7 +96,8 @@ ALTER TABLE {{TABLE}}
     ADD COLUMN IF NOT EXISTS needs_human_review BOOLEAN NOT NULL DEFAULT FALSE,
     ADD COLUMN IF NOT EXISTS explanation        TEXT,
     ADD COLUMN IF NOT EXISTS confidence         TEXT,
-    ADD COLUMN IF NOT EXISTS critique_count     INTEGER NOT NULL DEFAULT 0;
+    ADD COLUMN IF NOT EXISTS critique_count     INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS scoring_details    JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_status ON {{TABLE}}(status);
 CREATE INDEX IF NOT EXISTS idx_{{TABLE}}_sheet_synced ON {{TABLE}}(sheet_synced) WHERE sheet_synced = FALSE;
