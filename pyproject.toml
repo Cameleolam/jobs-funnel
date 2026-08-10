@@ -4,18 +4,24 @@ packages = []
 [project]
 name = "jobs-funnel"
 version = "0.1.0"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "fastapi",
+    "starlette>=1.3.1",
     "uvicorn[standard]",
+    "click>=8.3.3",
     "psycopg2-binary",
     "python-dotenv",
     "jinja2",
-    "python-multipart>=0.0.27",
+    "python-multipart>=0.0.31",
     "openpyxl",
     "httpx>=0.27",
+    "idna>=3.15",
     "pgvector>=0.3",
     "langgraph>=0.2.0",
+    "langgraph-checkpoint>=4.1.1",
+    "langgraph-sdk>=0.3.15",
+    "langsmith>=0.8.18",
 ]
 
 [project.optional-dependencies]
