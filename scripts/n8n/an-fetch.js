@@ -99,7 +99,7 @@ for (let page = 1; page <= MAX_PAGES; page++) {
     const locMatch = locKw.some(k => l.includes(k)) || job.remote;
     const negMatch = negKw.some(k => t.includes(k));
 
-    if (!negMatch && (titleMatch || tagMatch || locMatch) && created > cutoff) {
+    if (!negMatch && ((titleMatch || tagMatch) && locMatch) && created > cutoff) {
       const key = job.slug || job.url || job.title;
       if (!seen.has(key)) {
         seen.add(key);
