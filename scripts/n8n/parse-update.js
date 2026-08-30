@@ -33,8 +33,33 @@ const DEAD_STATUS_EXPR = "CASE WHEN retry_count + 1 >= 3 THEN 'dead' ELSE 'error
 const results = [];
 for (let b = 0; b < $input.all().length; b++) {
   const item = $input.all()[b];
-  const stdout = item.json.stdout || '[]';
-  const originals = (batchItems[b] && batchItems[b].json._batchOriginals) || [];
+  const batchItem = batchItems[b] && batchItems[b].json;
+  const originals = (batchItem && batchItem._batchOriginals) || [];
+  const resultPath = batchItem && batchItem._tmpPath
+    ? batchItem._tmpPath + '.result.json'
+    : null;
+  let stdout = String((item.json && item.json.stdout) || '').trim();
+  if (!stdout && resultPath) {
+    try {
+      stdout = String(fs.readFileSync(resultPath, 'utf-8')).trim();
+    } catch (e) {}
+  }
+  if (resultPath) {
+    try { fs.unlinkSync(resultPath); } catch (e) {}
+  }
+
+  if (!stdout) {
+    const stderr = String((item.json && item.json.stderr) || '').trim();
+    const error = stderr
+      ? `Filter command returned no stdout and no result file: ${stderr.slice(0, 200)}`
+      : 'Filter command returned no stdout and no result file';
+    for (const orig of originals) {
+      results.push({ json: {
+        _updateQuery: `UPDATE ${table} SET status = ${DEAD_STATUS_EXPR}, error = ${sqlStr(error)}, error_code = 'EMPTY_OUTPUT', retry_count = retry_count + 1 WHERE id = ${orig.id}`
+      }});
+    }
+    continue;
+  }
 
   let assessments;
   try {

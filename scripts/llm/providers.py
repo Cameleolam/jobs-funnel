@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
 import time
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Protocol
 
@@ -141,13 +144,49 @@ class CodexCliProvider:
             ]
         )
 
+    def _diagnostic_run_dir(self, cwd: Path | None) -> Path:
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+        run_dir = Path(cwd or Path.cwd()) / "temp" / "codex_runs" / f"{timestamp}_{uuid.uuid4().hex[:8]}"
+        run_dir.mkdir(parents=True, exist_ok=False)
+        return run_dir
+
+    def _write_diagnostics(
+        self,
+        run_dir: Path,
+        request: ProviderRequest,
+        *,
+        status: str,
+        stdout: str,
+        stderr: str,
+        returncode: int | None,
+        elapsed_seconds: float,
+    ) -> None:
+        (run_dir / "events.jsonl").write_text(stdout, encoding="utf-8")
+        metadata = {
+            "status": status,
+            "provider": self.provider_key,
+            "model": self.model,
+            "reasoning_effort": self.reasoning_effort,
+            "returncode": returncode,
+            "elapsed_seconds": elapsed_seconds,
+            "stderr": stderr,
+            "input_summary": request.diagnostic_summary or {},
+        }
+        (run_dir / "metadata.json").write_text(
+            json.dumps(metadata, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
     def generate(self, request: ProviderRequest) -> ProviderResponse:
+        run_dir = self._diagnostic_run_dir(request.cwd)
+        final_path = run_dir / "final.txt"
         cmd = [
             *self._command_prefix(),
             "exec",
             "--ephemeral",
             "--ignore-user-config",
             "--ignore-rules",
+            "--json",
             "-m",
             self.model,
             "-c",
@@ -156,9 +195,20 @@ class CodexCliProvider:
             "read-only",
             "--cd",
             _cwd_text(request.cwd),
+            "--output-last-message",
+            str(final_path),
             "-",
         ]
         started = time.monotonic()
+        self._write_diagnostics(
+            run_dir,
+            request,
+            status="running",
+            stdout="",
+            stderr="",
+            returncode=None,
+            elapsed_seconds=0.0,
+        )
         try:
             result = subprocess.run(
                 cmd,
@@ -171,14 +221,59 @@ class CodexCliProvider:
                 cwd=request.cwd,
             )
         except subprocess.TimeoutExpired as exc:
+            elapsed = _elapsed_seconds(started)
+            stdout = (exc.stdout or "") if isinstance(exc.stdout, str) else ""
+            stderr = (exc.stderr or "") if isinstance(exc.stderr, str) else ""
+            self._write_diagnostics(
+                run_dir,
+                request,
+                status="timed_out",
+                stdout=stdout,
+                stderr=stderr,
+                returncode=None,
+                elapsed_seconds=elapsed,
+            )
             raise _provider_timeout(self.provider_key, exc) from exc
         except OSError as exc:
+            self._write_diagnostics(
+                run_dir,
+                request,
+                status="launch_error",
+                stdout="",
+                stderr=str(exc),
+                returncode=None,
+                elapsed_seconds=_elapsed_seconds(started),
+            )
             raise _provider_launch_error(self.provider_key, cmd, exc) from exc
+
+        elapsed = _elapsed_seconds(started)
+        final_text = final_path.read_text(encoding="utf-8").strip() if final_path.is_file() else ""
+        status = "completed"
+        if result.returncode != 0:
+            status = "command_failed"
+        elif not final_text:
+            status = "empty_final_message"
+        self._write_diagnostics(
+            run_dir,
+            request,
+            status=status,
+            stdout=result.stdout,
+            stderr=result.stderr,
+            returncode=result.returncode,
+            elapsed_seconds=elapsed,
+        )
 
         if result.returncode != 0:
             raise ProviderError(
                 self.provider_key,
-                f"{self.provider_key} exited with code {result.returncode}",
+                f"{self.provider_key} exited with code {result.returncode}; diagnostics: {run_dir}",
+                stderr=result.stderr,
+                stdout=result.stdout,
+            )
+        if not final_text:
+            raise ProviderError(
+                self.provider_key,
+                f"{self.provider_key} completed without a final message; diagnostics: {run_dir}",
                 stderr=result.stderr,
                 stdout=result.stdout,
             )
@@ -186,11 +281,11 @@ class CodexCliProvider:
         return ProviderResponse(
             provider_key=self.provider_key,
             model=self.model,
-            text=extract_result_text(result.stdout),
+            text=extract_result_text(final_text),
             stdout=result.stdout,
             stderr=result.stderr,
             returncode=result.returncode,
-            elapsed_seconds=_elapsed_seconds(started),
+            elapsed_seconds=elapsed,
         )
 
 

@@ -341,7 +341,8 @@
     },
     {
       "parameters": {
-        "command": "=python \"{{ $env.JOBS_FUNNEL_PROJECT_DIR }}/scripts/run_filter.py\" \"{{ $env.JOBS_FUNNEL_PROJECT_DIR }}\" --file \"{{ $json._tmpPath }}\""
+        "command": "=python \"{{ $env.JOBS_FUNNEL_PROJECT_DIR }}/scripts/run_filter.py\" \"{{ $env.JOBS_FUNNEL_PROJECT_DIR }}\" --file \"{{ $json._tmpPath }}\"",
+        "executeOnce": false
       },
       "id": "filter-claude",
       "name": "Filter: Claude",

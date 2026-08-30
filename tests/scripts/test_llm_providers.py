@@ -56,13 +56,15 @@ def test_claude_provider_uses_claude_p_without_anthropic_api(monkeypatch):
     assert response.text == "[{\"fit_score\": 8}]"
 
 
-def test_codex_provider_uses_read_only_exec_and_embeds_system_prompt(monkeypatch):
+def test_codex_provider_uses_read_only_exec_and_embeds_system_prompt(monkeypatch, tmp_path):
     seen = {}
 
     def fake_run(cmd, **kwargs):
         seen["cmd"] = cmd
         seen["input"] = kwargs["input"]
-        return _completed(stdout='[{"fit_score": 7}]')
+        output_path = Path(cmd[cmd.index("--output-last-message") + 1])
+        output_path.write_text('[{"fit_score": 7}]', encoding="utf-8")
+        return _completed(stdout='{"type":"thread.started","thread_id":"test"}\n')
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     monkeypatch.setattr("shutil.which", lambda command: None)
@@ -73,14 +75,24 @@ def test_codex_provider_uses_read_only_exec_and_embeds_system_prompt(monkeypatch
         command="codex",
     )
 
-    response = provider.generate(ProviderRequest("SYSTEM", "USER", cwd=Path("D:/repo")))
+    response = provider.generate(
+        ProviderRequest(
+            "SYSTEM",
+            "USER",
+            cwd=tmp_path,
+            diagnostic_summary={"job_count": 1, "jobs": [{"title": "Test job"}]},
+        )
+    )
 
-    assert seen["cmd"] == [
+    assert seen["cmd"][:5] == [
         "codex",
         "exec",
         "--ephemeral",
         "--ignore-user-config",
         "--ignore-rules",
+    ]
+    assert seen["cmd"][5:13] == [
+        "--json",
         "-m",
         "gpt-5.5",
         "-c",
@@ -88,13 +100,47 @@ def test_codex_provider_uses_read_only_exec_and_embeds_system_prompt(monkeypatch
         "-s",
         "read-only",
         "--cd",
-        "D:\\repo",
+    ]
+    assert seen["cmd"][13] == str(tmp_path)
+    assert seen["cmd"][14] == "--output-last-message"
+    assert Path(seen["cmd"][15]).name == "final.txt"
+    assert seen["cmd"][16:] == [
         "-",
     ]
     assert "Do not browse, read files, or use tools." in seen["input"]
     assert "<SCORING_SYSTEM_PROMPT>\nSYSTEM\n</SCORING_SYSTEM_PROMPT>" in seen["input"]
     assert "<USER_TASK>\nUSER\n</USER_TASK>" in seen["input"]
     assert response.text == '[{"fit_score": 7}]'
+    assert '"type":"thread.started"' in response.stdout
+
+    run_dirs = list((tmp_path / "temp" / "codex_runs").iterdir())
+    assert len(run_dirs) == 1
+    assert (run_dirs[0] / "events.jsonl").read_text(encoding="utf-8") == response.stdout
+    metadata = json.loads((run_dirs[0] / "metadata.json").read_text(encoding="utf-8"))
+    assert metadata["returncode"] == 0
+    assert metadata["input_summary"] == {"job_count": 1, "jobs": [{"title": "Test job"}]}
+    assert "SYSTEM" not in json.dumps(metadata)
+    assert "USER" not in json.dumps(metadata)
+
+
+def test_codex_provider_rejects_success_without_final_message(monkeypatch, tmp_path):
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kwargs: _completed(stdout='{"type":"turn.completed"}\n'))
+    monkeypatch.setattr("shutil.which", lambda command: None)
+    provider = CodexCliProvider(
+        provider_key="codex_gpt55_high",
+        model="gpt-5.5",
+        reasoning_effort="high",
+        command="codex",
+    )
+
+    with pytest.raises(ProviderError) as exc:
+        provider.generate(ProviderRequest("SYSTEM", "USER", cwd=tmp_path))
+
+    assert "without a final message" in str(exc.value)
+    assert '"type":"turn.completed"' in exc.value.stdout
+    run_dir = next((tmp_path / "temp" / "codex_runs").iterdir())
+    metadata = json.loads((run_dir / "metadata.json").read_text(encoding="utf-8"))
+    assert metadata["status"] == "empty_final_message"
 
 
 def test_codex_provider_wraps_cmd_files_on_windows(monkeypatch):

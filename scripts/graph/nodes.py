@@ -7,7 +7,7 @@ from scripts.graph.state import FilterState, has_calibration
 from scripts.llm.parsing import loads_jsonish
 from scripts.llm.providers import review_band
 from scripts.llm.types import ProviderRequest
-from scripts.scoring import build_review_prompt, build_user_prompt
+from scripts.scoring import build_diagnostic_summary, build_review_prompt, build_user_prompt
 
 
 def retrieve_decisions_node(state: FilterState) -> FilterState:
@@ -109,6 +109,7 @@ def score_node(state: FilterState) -> FilterState:
             system_prompt=_system_prompt_with_state_context(state),
             user_prompt=build_user_prompt(state["job"], is_batch=False),
             cwd=state["root"],
+            diagnostic_summary=build_diagnostic_summary(state["job"]),
         )
     )
     assessment = _apply_base_metadata(_parse_assessment(response.text), provider)
@@ -145,6 +146,7 @@ def self_critique_node(state: FilterState) -> FilterState:
                 system_prompt=_system_prompt_with_state_context(state),
                 user_prompt=build_review_prompt(state["job"], base),
                 cwd=state["root"],
+                diagnostic_summary=build_diagnostic_summary(state["job"]),
             )
         )
         parsed = _parse_assessment(response.text)

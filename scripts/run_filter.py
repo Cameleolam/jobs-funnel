@@ -61,6 +61,14 @@ def _fallback_payload(job_json, blocker, reasoning, error_code):
     return _fallback_assessment(blocker, reasoning, error_code)
 
 
+def _emit_output(output, result_file_path=None):
+    if result_file_path:
+        with open(result_file_path, "w", encoding="utf-8") as result_file:
+            result_file.write(output)
+    sys.stdout.write(output)
+    sys.stdout.flush()
+
+
 def main():
     if len(sys.argv) < 3:
         print(json.dumps({"error": "Usage: run_filter.py <project_dir> <base64_data> | --file <path>"}))
@@ -79,9 +87,14 @@ def main():
             print(json.dumps({"error": "--file requires a file path argument"}))
             sys.exit(1)
         file_path = sys.argv[3]
+        result_file_path = file_path + ".result.json"
         if not os.path.exists(file_path):
             print(json.dumps({"error": f"File not found: {file_path}"}))
             sys.exit(1)
+        try:
+            os.unlink(result_file_path)
+        except OSError:
+            pass
         try:
             job_json = open(file_path, encoding="utf-8").read()
         except OSError:
@@ -97,24 +110,33 @@ def main():
                 env=env,
             )
             if result.stdout:
-                print(result.stdout, end="")
-            elif result.returncode != 0:
-                # filter.py failed without output - emit fallback SKIP
-                err_msg = (result.stderr or "Unknown error")[:200]
-                print(json.dumps(_fallback_payload(
+                output = result.stdout
+            else:
+                err_msg = (result.stderr or "No stderr output")[:200]
+                if result.returncode == 0:
+                    blocker = "Filter error: filter.py returned no output"
+                    reasoning = f"filter.py returned no output with exit code 0: {err_msg}"
+                    error_code = "EMPTY_OUTPUT"
+                else:
+                    blocker = f"Filter error: {err_msg}"
+                    reasoning = f"filter.py failed with exit code {result.returncode}: {err_msg}"
+                    error_code = "API_ERROR"
+                output = json.dumps(_fallback_payload(
                     job_json,
-                    f"Filter error: {err_msg}",
-                    f"filter.py failed: {err_msg}",
-                    "API_ERROR",
-                )))
+                    blocker,
+                    reasoning,
+                    error_code,
+                ))
+            _emit_output(output, result_file_path)
         except subprocess.TimeoutExpired:
             timeout = _wrapper_timeout_seconds()
-            print(json.dumps(_fallback_payload(
+            output = json.dumps(_fallback_payload(
                 job_json,
                 "Filter timed out",
                 f"filter.py timed out after {timeout} seconds",
                 "TIMEOUT",
-            )))
+            ))
+            _emit_output(output, result_file_path)
         finally:
             # Clean up the batch temp file
             try:
@@ -150,13 +172,21 @@ def main():
         )
         if result.stdout:
             print(result.stdout, end="")
-        elif result.returncode != 0:
-            err_msg = (result.stderr or "Unknown error")[:200]
+        else:
+            err_msg = (result.stderr or "No stderr output")[:200]
+            if result.returncode == 0:
+                blocker = "Filter error: filter.py returned no output"
+                reasoning = f"filter.py returned no output with exit code 0: {err_msg}"
+                error_code = "EMPTY_OUTPUT"
+            else:
+                blocker = f"Filter error: {err_msg}"
+                reasoning = f"filter.py failed with exit code {result.returncode}: {err_msg}"
+                error_code = "API_ERROR"
             print(json.dumps(_fallback_payload(
                 job_json,
-                f"Filter error: {err_msg}",
-                f"filter.py failed: {err_msg}",
-                "API_ERROR",
+                blocker,
+                reasoning,
+                error_code,
             )))
     except subprocess.TimeoutExpired:
         timeout = _wrapper_timeout_seconds()

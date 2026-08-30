@@ -143,14 +143,21 @@ Promise.resolve(fn($input, $env, $, fakeRequire, fakeDate)).then(
     return json.loads(result.stdout)
 
 
-def run_parse_update_process(code: str, assessment: dict, *, table: str = "jobs"):
+def run_parse_update_process(
+    code: str,
+    assessment: dict,
+    *,
+    table: str = "jobs",
+    stdout: str | None = None,
+    result_file_text: str | None = None,
+):
     harness = """
 const fs = require('fs');
 const input = JSON.parse(fs.readFileSync(0, 'utf8'));
 const fn = new Function('$input', '$env', '$', 'require', input.code);
 const $input = {
   all() {
-    return [{ json: { stdout: JSON.stringify([input.assessment]) } }];
+    return [{ json: { stdout: input.stdout === null ? JSON.stringify([input.assessment]) : input.stdout } }];
   }
 };
 const $env = {
@@ -162,7 +169,10 @@ function $(name) {
   if (name === 'Batch Items') {
     return {
       all() {
-        return [{ json: { _batchOriginals: [{ id: 42 }] } }];
+        return [{ json: {
+          _tmpPath: 'D:/projects/jobs_funnel/temp/test-batch.json',
+          _batchOriginals: [{ id: 42 }]
+        } }];
       }
     };
   }
@@ -170,7 +180,16 @@ function $(name) {
 }
 const fakeRequire = (name) => {
   if (name === 'fs') {
-    return { readdirSync() { throw new Error('no cvs'); } };
+    return {
+      readdirSync() { throw new Error('no cvs'); },
+      readFileSync(path) {
+        if (path.endsWith('.result.json') && input.resultFileText !== null) {
+          return input.resultFileText;
+        }
+        throw new Error('missing result file');
+      },
+      unlinkSync() {},
+    };
   }
   throw new Error(`unexpected require ${name}`);
 };
@@ -184,7 +203,13 @@ Promise.resolve(fn($input, $env, $, fakeRequire)).then(
 """
     result = subprocess.run(
         ["node", "-e", harness],
-        input=json.dumps({"code": code, "assessment": assessment, "table": table}),
+        input=json.dumps({
+            "code": code,
+            "assessment": assessment,
+            "table": table,
+            "stdout": stdout,
+            "resultFileText": result_file_text,
+        }),
         cwd=REPO,
         capture_output=True,
         text=True,
@@ -196,6 +221,44 @@ def run_parse_update(code: str, assessment: dict, *, table: str = "jobs"):
     result = run_parse_update_process(code, assessment, table=table)
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)
+
+
+def test_parse_update_reads_sidecar_when_execute_command_stdout_is_empty():
+    wf = run_build("profile1")
+    code = parse_update_code(wf)
+    assessment = {
+        "fit_score": 7,
+        "decision": "PASS",
+        "cv_variant": "uiux_visual",
+        "hard_blockers": [],
+        "soft_gaps": [],
+        "strong_matches": ["Figma"],
+        "reasoning": "good fit",
+    }
+
+    result = run_parse_update_process(
+        code,
+        assessment,
+        stdout="",
+        result_file_text=json.dumps([assessment]),
+    )
+
+    assert result.returncode == 0, result.stderr
+    query = json.loads(result.stdout)[0]["json"]["_updateQuery"]
+    assert "status = 'analyzed'" in query
+    assert "fit_score = 7" in query
+
+
+def test_parse_update_marks_empty_transport_when_stdout_and_sidecar_are_missing():
+    wf = run_build("profile1")
+    code = parse_update_code(wf)
+
+    result = run_parse_update_process(code, {}, stdout="", result_file_text=None)
+
+    assert result.returncode == 0, result.stderr
+    query = json.loads(result.stdout)[0]["json"]["_updateQuery"]
+    assert "error_code = 'EMPTY_OUTPUT'" in query
+    assert "NO_RESULT" not in query
 
 
 def run_batch_items(code: str, rows):
@@ -488,6 +551,13 @@ def test_streaming_embed_nodes_replace_inline_embed_chain():
         "Embed: Collect " + "Metrics",
     }
     assert node_names.isdisjoint(removed_inline_nodes)
+
+
+def test_filter_command_runs_once_per_batch_item():
+    wf = run_build("profile1")
+    filter_node = next(n for n in wf["nodes"] if n["name"] == "Filter: Claude")
+
+    assert filter_node["parameters"]["executeOnce"] is False
 
 
 def test_streaming_embed_interleaves_before_each_pending_fetch():

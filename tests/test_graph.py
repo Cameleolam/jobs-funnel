@@ -120,6 +120,10 @@ def test_score_node_uses_base_provider_and_records_metadata():
     assert out["assessment"]["scoring_provider"] == "codex_gpt55_high"
     assert out["assessment"]["scoring_model"] == "codex_gpt55_high-model"
     assert "Backend Engineer" in base.requests[0].user_prompt
+    assert base.requests[0].diagnostic_summary == {
+        "job_count": 1,
+        "jobs": [{"title": "Backend Engineer"}],
+    }
 
 
 def test_score_node_routes_list_assessment_to_human_review():
@@ -167,6 +171,10 @@ def test_self_critique_uses_review_provider_once_and_preserves_base_metadata():
     assert reviewed["assessment"]["base_fit_score"] == 5
     assert reviewed["assessment"]["base_decision"] == "MAYBE"
     assert len(review.requests) == 1
+    assert review.requests[0].diagnostic_summary == {
+        "job_count": 1,
+        "jobs": [{"title": "Backend Engineer"}],
+    }
 
 
 def test_flag_human_sets_pending_review_assessment():

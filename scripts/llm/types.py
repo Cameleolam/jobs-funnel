@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -10,6 +11,7 @@ class ProviderRequest:
     user_prompt: str
     timeout_seconds: int = 300
     cwd: Path | None = None
+    diagnostic_summary: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)

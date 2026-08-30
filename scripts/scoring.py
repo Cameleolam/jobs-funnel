@@ -62,6 +62,23 @@ def build_user_prompt(prompt_input: Any, is_batch: bool) -> str:
     return f"Evaluate this job posting:\n\n{json.dumps(normalized, ensure_ascii=False)}"
 
 
+def build_diagnostic_summary(parsed_input: Any) -> dict[str, Any]:
+    jobs = parsed_input if isinstance(parsed_input, list) else [parsed_input]
+    summaries = []
+    for item in jobs:
+        if not isinstance(item, dict):
+            continue
+        job = item.get("job") if isinstance(item.get("job"), dict) else item
+        summaries.append(
+            {
+                key: job[key]
+                for key in ("title", "company", "source")
+                if job.get(key) not in (None, "")
+            }
+        )
+    return {"job_count": len(jobs), "jobs": summaries}
+
+
 def provider_keys_from_env() -> tuple[str, str | None]:
     base_key = os.environ.get("SCORING_PROVIDER", "codex_gpt55_high").strip() or "codex_gpt55_high"
     review_key = os.environ.get("SCORING_REVIEW_PROVIDER", "").strip() or None
@@ -152,6 +169,7 @@ def _review_one(
             system_prompt=system_prompt,
             user_prompt=build_review_prompt(job, base_assessment),
             cwd=root,
+            diagnostic_summary=build_diagnostic_summary(job),
         )
     )
     parsed = loads_jsonish(response.text)
@@ -268,6 +286,7 @@ def score_input(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             cwd=root,
+            diagnostic_summary=build_diagnostic_summary(prompt_input),
         )
     )
 

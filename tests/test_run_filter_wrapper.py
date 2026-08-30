@@ -44,6 +44,8 @@ def test_run_filter_file_timeout_returns_fallback_for_each_batch_item(monkeypatc
 
     payload = json.loads(capsys.readouterr().out)
     _assert_timeout_fallbacks(payload, 3)
+    sidecar = tmp_path / "batch.json.result.json"
+    _assert_timeout_fallbacks(json.loads(sidecar.read_text(encoding="utf-8")), 3)
 
 
 def test_run_filter_legacy_base64_timeout_returns_fallback_for_each_batch_item(monkeypatch, capsys, tmp_path):
@@ -81,4 +83,37 @@ def test_run_filter_uses_configurable_wrapper_timeout(monkeypatch, capsys, tmp_p
     run_filter.main()
 
     assert seen["timeout"] == 1234
-    assert json.loads(capsys.readouterr().out)["fit_score"] == 8
+    stdout_payload = json.loads(capsys.readouterr().out)
+    sidecar_payload = json.loads(
+        (tmp_path / "job.json.result.json").read_text(encoding="utf-8")
+    )
+    assert stdout_payload["fit_score"] == 8
+    assert sidecar_payload == stdout_payload
+
+
+def test_run_filter_file_success_without_stdout_returns_fallback_for_each_batch_item(
+    monkeypatch, capsys, tmp_path
+):
+    batch = _batch_payload(2)
+    input_path = tmp_path / "batch.json"
+    input_path.write_text(json.dumps(batch), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["run_filter.py", str(tmp_path), "--file", str(input_path)])
+    monkeypatch.setattr(run_filter.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(
+        run_filter.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args[0], 0, stdout="", stderr="codex emitted no final message"
+        ),
+    )
+
+    run_filter.main()
+
+    payload = json.loads(capsys.readouterr().out)
+    assert len(payload) == 2
+    assert all(item["error_code"] == "EMPTY_OUTPUT" for item in payload)
+    assert all("exit code 0" in item["reasoning"] for item in payload)
+    assert json.loads(
+        (tmp_path / "batch.json.result.json").read_text(encoding="utf-8")
+    ) == payload
+    assert not input_path.exists()
