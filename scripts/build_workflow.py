@@ -2,7 +2,7 @@
 """Build workflow.json by inlining JS files + crawler registry into the template.
 
 Usage:
-    JOBS_FUNNEL_PROFILE=profile1 python scripts/build_workflow.py
+    JOBS_FUNNEL_PROFILE=profile1 python scripts/build_workflow.py [--output PATH]
 
 Reads:
     - workflow_template.json (placeholders: {{file:...}}, {{crawler_nodes}},
@@ -10,9 +10,10 @@ Reads:
     - profiles/$JOBS_FUNNEL_PROFILE/search.json (for the crawlers[] list)
     - scripts/n8n/crawlers.json (registry)
 
-Writes: workflow.json
+Writes: requested output path (default: workflow.json)
 """
 
+import argparse
 import json
 import os
 import re
@@ -114,7 +115,7 @@ def emit_crawler_connections(crawlers):
     return ",\n    ".join(pieces)
 
 
-def build():
+def build(output: Path = OUTPUT):
     if not TEMPLATE.exists():
         print(f"ERROR: {TEMPLATE} not found", file=sys.stderr)
         return 1
@@ -151,15 +152,22 @@ def build():
     except json.JSONDecodeError as e:
         print(f"ERROR: Output is not valid JSON: {e}", file=sys.stderr)
         # Write a debug copy so the user can inspect
-        debug_path = PROJECT_DIR / "workflow.json.debug"
+        debug_path = output.with_name(f"{output.name}.debug")
         debug_path.write_text(result, encoding="utf-8")
         print(f"Debug output at {debug_path}", file=sys.stderr)
         return 1
 
-    OUTPUT.write_text(result, encoding="utf-8")
-    print(f"\nBuilt {OUTPUT.name} successfully ({len(crawlers)} crawlers emitted)")
+    output.write_text(result, encoding="utf-8")
+    print(f"\nBuilt {output} successfully ({len(crawlers)} crawlers emitted)")
     return 0
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", type=Path, default=OUTPUT)
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    sys.exit(build())
+    args = parse_args()
+    sys.exit(build(args.output))

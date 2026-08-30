@@ -3,6 +3,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -13,12 +14,24 @@ REPO = Path(__file__).resolve().parent.parent.parent
 def run_build(profile: str):
     env = os.environ.copy()
     env["JOBS_FUNNEL_PROFILE"] = profile
-    result = subprocess.run(
-        [sys.executable, "scripts/build_workflow.py"],
-        cwd=REPO, env=env, capture_output=True, text=True
-    )
-    assert result.returncode == 0, f"build failed: stdout={result.stdout}\nstderr={result.stderr}"
-    return json.loads((REPO / "workflow.json").read_text(encoding="utf-8"))
+    with tempfile.TemporaryDirectory() as temp_dir:
+        output = Path(temp_dir) / "workflow.json"
+        result = subprocess.run(
+            [
+                sys.executable,
+                "scripts/build_workflow.py",
+                "--output",
+                str(output),
+            ],
+            cwd=REPO,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, (
+            f"build failed: stdout={result.stdout}\nstderr={result.stderr}"
+        )
+        return json.loads(output.read_text(encoding="utf-8"))
 
 
 def dedup_parse_code(wf):
@@ -489,10 +502,19 @@ def test_unknown_crawler_id_fails_build():
 
         env = _os.environ.copy()
         env["JOBS_FUNNEL_PROFILE"] = tmp_dest.name
-        result = subprocess.run(
-            [sys.executable, "scripts/build_workflow.py"],
-            cwd=REPO, env=env, capture_output=True, text=True
-        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "scripts/build_workflow.py",
+                    "--output",
+                    str(Path(temp_dir) / "workflow.json"),
+                ],
+                cwd=REPO,
+                env=env,
+                capture_output=True,
+                text=True,
+            )
         assert result.returncode != 0
         combined = result.stdout + result.stderr
         assert "does_not_exist" in combined
