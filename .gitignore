@@ -12,6 +12,7 @@ profiles/*/
 
 # Generated output
 output/
+node_modules/
 
 # Batch temp files
 temp/

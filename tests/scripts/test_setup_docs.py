@@ -1,3 +1,4 @@
+import json
 import re
 from pathlib import Path
 
@@ -5,6 +6,7 @@ from pathlib import Path
 ENV = Path(".env.template").read_text(encoding="utf-8")
 README = Path("README.md").read_text(encoding="utf-8")
 START = Path("start.bat").read_text(encoding="utf-8")
+PACKAGE = json.loads(Path("package.json").read_text(encoding="utf-8"))
 PROFILES_README = Path("profiles/README.md").read_text(encoding="utf-8")
 SETUP_PROFILE = Path("scripts/setup_profile.py").read_text(encoding="utf-8")
 SETUP_DB = Path("scripts/setup_db.sql").read_text(encoding="utf-8")
@@ -63,10 +65,24 @@ def test_readme_config_model_is_not_primary_scoring_config():
     assert "SCORING_*" in README
 
 
-def test_readme_manual_n8n_start_uses_dotenv():
-    assert "npx dotenv -e .env -- n8n start" in README
-    assert "npm install -g n8n dotenv-cli" in README
+def test_readme_uses_pinned_local_n8n_runtime():
+    assert "npm ci" in README
+    assert "npm run n8n:start" in README
+    assert "npm install -g n8n@2.36.2 dotenv-cli@11.0.0" in README
+    assert "npm install -g n8n dotenv-cli" not in README
+    assert "npx dotenv -e .env -- n8n start" not in README
     assert "```bash\nn8n start\n```" not in README
+
+
+def test_package_pins_n8n_runtime_versions():
+    assert PACKAGE["private"] is True
+    assert PACKAGE["engines"]["node"] == ">=24.0.0"
+    assert PACKAGE["dependencies"]["n8n"] == "2.36.2"
+    assert PACKAGE["dependencies"]["dotenv-cli"] == "11.0.0"
+    assert PACKAGE["scripts"]["n8n:start"] == (
+        "dotenv -v NODE_FUNCTION_ALLOW_BUILTIN=fs,path,os -e .env -- n8n start"
+    )
+    assert PACKAGE["allowScripts"] == {"sqlite3@5.1.7": True}
 
 
 def test_profile_setup_docs_use_migration_runner():
@@ -146,12 +162,15 @@ def test_readme_points_to_doctor_troubleshooting_command():
 
 def test_start_bat_points_to_doctor_and_ui():
     docker_command = "docker compose up -d"
-    doctor_command = "python scripts\\doctor.py --prestart"
-    ui_command = "python -m uvicorn ui.server:app --port 8080 --reload"
+    doctor_command = ".venv\\Scripts\\python.exe scripts\\doctor.py --prestart"
+    ui_command = ".venv\\Scripts\\python.exe -m uvicorn ui.server:app --host 127.0.0.1 --port 8080"
     ui_url = "http://localhost:8080"
-    n8n_command = "npx dotenv -e .env -- n8n start"
+    n8n_command = "npm.cmd run n8n:start"
 
-    assert doctor_command in START or "python scripts/doctor.py --prestart" in START
+    assert doctor_command in START
+    assert "--reload" not in START
+    assert "node_modules\\.bin\\n8n.cmd" in START
+    assert 'set "PATH=%CD%\\.venv\\Scripts;%PATH%"' in START
     assert ui_url in START
     assert "Docker startup failed." in START
     assert "Doctor checks failed." in START

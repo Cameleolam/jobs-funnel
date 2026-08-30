@@ -13,7 +13,7 @@ Jobs go in wide. Scored, filtered candidates come out narrow.
 ```
 Your laptop (Windows)
 │
-├── n8n (native via npx, runs on localhost:5678)
+├── n8n (project-local npm install, runs on localhost:5678)
 │   ├── Manual trigger / Cron (every 10 min)
 │   └── "Analyze Only" webhook (re-process pending jobs, skip crawl)
 │
@@ -51,8 +51,8 @@ your profile. See `countries/README.md` for details. After changing the crawler 
 
 ## Prerequisites
 
-1. **Python 3.9+**: `python --version`
-2. **Node.js 18+**: `node -v`
+1. **Python 3.10+**: `python --version`
+2. **Node.js 24+**: `node -v`
 3. **Docker**: `docker --version` (for PostgreSQL)
 4. **Codex CLI**: install, authenticate, and verify `codex --version` (default scorer)
 5. **Ollama**: install, start it, and pull the default embedding model:
@@ -66,7 +66,14 @@ Claude Code is optional. Install it only if you set `SCORING_PROVIDER` or
 ## Step 1: Install n8n
 
 ```bash
-npm install -g n8n dotenv-cli
+npm ci
+```
+
+The project always starts the locked local installation. If you also use n8n from
+outside this repository, keep the global tools on the same reviewed versions:
+
+```bash
+npm install -g n8n@2.36.2 dotenv-cli@11.0.0
 ```
 
 ## Step 2: Set up the Python environment
@@ -75,7 +82,7 @@ npm install -g n8n dotenv-cli
 python -m venv .venv
 .venv\Scripts\activate   # Windows
 # or: source .venv/bin/activate  # Linux/macOS
-pip install -e .
+python -m pip install -e ".[dev]"
 ```
 
 ## Step 3: Set up environment variables
@@ -138,7 +145,7 @@ start.bat
 
 Or manually:
 ```bash
-npx dotenv -e .env -- n8n start
+npm run n8n:start
 ```
 
 Open http://localhost:5678
@@ -162,8 +169,8 @@ Click "Execute Workflow" (or trigger cron). The pipeline will:
 ## Review UI
 
 ```bash
-# With the venv activated (see Step 2):
-python -m uvicorn ui.server:app --port 8080 --reload
+# This explicit path prevents a global Python installation from being used:
+.venv\Scripts\python.exe -m uvicorn ui.server:app --host 127.0.0.1 --port 8080
 ```
 
 Open http://localhost:8080 to browse scored jobs, make decisions, and export to Excel.

@@ -1,0 +1,18 @@
+{
+  "name": "jobs-funnel-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "n8n:start": "dotenv -v NODE_FUNCTION_ALLOW_BUILTIN=fs,path,os -e .env -- n8n start"
+  },
+  "dependencies": {
+    "dotenv-cli": "11.0.0",
+    "n8n": "2.36.2"
+  },
+  "allowScripts": {
+    "sqlite3@5.1.7": true
+  }
+}
