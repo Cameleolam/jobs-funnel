@@ -1,5 +1,5 @@
-// Fetch full descriptions from employer pages for new AA jobs (post-dedup)
-// AN jobs and AA jobs without externeUrl pass through unchanged.
+// Fetch full descriptions from Arbeitsagentur job details for new AA jobs (post-dedup).
+// Non-AA jobs and AA jobs without a reference number pass through unchanged.
 const fs = require('fs');
 const projectDir = ($env.JOBS_FUNNEL_PROJECT_DIR || '.').replace(/\\/g, '/');
 const config = JSON.parse(fs.readFileSync(projectDir + '/config.json', 'utf-8'));
@@ -10,53 +10,8 @@ const FETCH_TIMEOUT = config.aa_fetch_timeout_ms || 5000;
 const DESC_MAX = config.description_max_chars || 5000;
 const CB_THRESHOLD = config.circuit_breaker_threshold ?? 0.8;
 const CB_MIN = 10;
-
-function decodeEntities(text) {
-  return text
-    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'")
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
-}
-
-function extractDescription(html) {
-  const str = String(html);
-
-  // Try JSON-LD first (structured data, cleanest source)
-  const jsonLdMatch = str.match(/<script[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
-  if (jsonLdMatch) {
-    for (const block of jsonLdMatch) {
-      try {
-        const content = block.replace(/<\/?script[^>]*>/gi, '');
-        const data = JSON.parse(content);
-        const items = Array.isArray(data) ? data : [data];
-        for (const item of items) {
-          if (item['@type'] === 'JobPosting' && item.description) {
-            let desc = item.description.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-            desc = decodeEntities(desc);
-            const extras = [item.qualifications, item.responsibilities, item.jobBenefits]
-              .filter(Boolean).map(s => String(s).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
-            if (extras.length) desc += ' ' + extras.join(' ');
-            if (desc.length > 100) return desc;
-          }
-        }
-      } catch (e) { /* invalid JSON-LD, try next block */ }
-    }
-  }
-
-  // Fallback: strip script/style blocks, then strip tags
-  let text = str
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<nav[\s\S]*?<\/nav>/gi, ' ')
-    .replace(/<header[\s\S]*?<\/header>/gi, ' ')
-    .replace(/<footer[\s\S]*?<\/footer>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  text = decodeEntities(text);
-  return text.length > 100 ? text : null;
-}
+const DETAIL_BASE = 'https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobdetails';
+const HEADERS = { 'X-API-Key': 'jobboerse-jobsuche', 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' };
 
 function checkDescriptionQuality(desc) {
   if (!desc || desc.length < 50) return 'empty';
@@ -98,8 +53,8 @@ let circuitBroken = false;
 for (const item of items) {
   const j = item.json;
   if (j.source !== 'arbeitsagentur') continue;
-  const extUrl = j._rawApiData?.externeUrl;
-  if (!extUrl) continue;
+  const reference = j.external_id || j._rawApiData?.referenznummer;
+  if (!reference) continue;
   if (fetchCount >= MAX_FETCHES) break;
   if (fetchCount >= CB_MIN && failCount / fetchCount >= CB_THRESHOLD) {
     circuitBroken = true;
@@ -110,12 +65,20 @@ for (const item of items) {
   let success = false;
   for (let attempt = 0; attempt <= 1 && !success; attempt++) {
     try {
-      const html = await this.helpers.httpRequest({ method: 'GET', url: extUrl, encoding: 'utf-8', timeout: FETCH_TIMEOUT });
-      const desc = extractDescription(html);
+      const encodedReference = Buffer.from(reference, 'utf8').toString('base64');
+      const raw = await this.helpers.httpRequest({
+        method: 'GET',
+        url: `${DETAIL_BASE}/${encodedReference}`,
+        headers: HEADERS,
+        timeout: FETCH_TIMEOUT,
+      });
+      const detail = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      const desc = String(detail.stellenangebotsBeschreibung || '').trim();
       if (desc) {
-        j.description = desc;
+        j.description = desc.substring(0, DESC_MAX);
         j.description_quality = checkDescriptionQuality(j.description);
       }
+      j._rawApiData = { ...(j._rawApiData || {}), _jobDetails: detail };
       success = true;
     } catch (e) {
       if (attempt === 1) failCount++;

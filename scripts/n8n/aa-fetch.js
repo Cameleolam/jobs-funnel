@@ -1,4 +1,4 @@
-// Arbeitsagentur: run multiple server-side filtered searches + fetch full descriptions
+// Arbeitsagentur: run multiple server-side filtered searches.
 const fs = require('fs');
 const projectDir = ($env.JOBS_FUNNEL_PROJECT_DIR || '.').replace(/\\/g, '/');
 const config = JSON.parse(fs.readFileSync(projectDir + '/config.json', 'utf-8'));
@@ -31,7 +31,7 @@ function isLikelyEnglish(description) {
   return EN_HINTS.stopwords.filter(w => sample.includes(w)).length >= EN_HINTS.threshold;
 }
 
-const BASE = 'https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobs';
+const BASE = 'https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v6/jobs';
 const HEADERS = { 'X-API-Key': 'jobboerse-jobsuche', 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' };
 const MAX_RETRIES = config.api_max_retries || 2;
 const RETRY_DELAY = config.api_retry_delay_ms || 1000;
@@ -86,10 +86,10 @@ for (const loc of locations) {
         errors.push({ location: loc.location, search: searches[i], page, error: e.message || String(e) });
         continue;
       }
-      const results = body.stellenangebote || [];
+      const results = body.ergebnisliste || [];
       if (results.length === 0) break;
       for (const s of results) {
-        const id = s.refnr || s.titel;
+        const id = s.referenznummer || s.stellenangebotsTitel;
         if (!seenIds.has(id)) { seenIds.add(id); jobs.push(s); }
       }
       const maxPage = body.maxErgebnisse ? Math.ceil(body.maxErgebnisse / 100) : 1;
@@ -121,18 +121,19 @@ const _crawlMeta = {
 };
 
 const mapped = jobs.map(j => {
-  const company = typeof j.arbeitgeber === 'object' ? (j.arbeitgeber?.name || '') : (j.arbeitgeber || '');
-  const location = j.arbeitsort?.ort || '';
-  const region = j.arbeitsort?.region || '';
-  const extUrl = j.externeUrl || '';
-  const refUrl = j.refnr ? `https://www.arbeitsagentur.de/jobsuche/suche?id=${j.refnr}` : '';
-  const url = extUrl || refUrl;
-  const fallbackDesc = `${j.titel || ''} bei ${company} in ${location}${region ? ' (' + region + ')' : ''}. Beruf: ${j.beruf || ''}. Eintrittsdatum: ${j.eintrittsdatum || 'k.A.'}`;
+  const company = j.firma || '';
+  const address = j.stellenlokationen?.[0]?.adresse || {};
+  const location = address.ort || '';
+  const region = address.region || '';
+  const reference = j.referenznummer || '';
+  const url = reference ? `https://www.arbeitsagentur.de/jobsuche/suche?id=${encodeURIComponent(reference)}` : '';
+  const startDate = j.eintrittszeitraum?.von || null;
+  const fallbackDesc = `${j.stellenangebotsTitel || ''} bei ${company} in ${location}${region ? ' (' + region + ')' : ''}. Beruf: ${j.hauptberuf || ''}. Eintrittsdatum: ${startDate || 'k.A.'}`;
   return { json: {
     source: 'arbeitsagentur',
-    external_id: j.refnr || '',
+    external_id: reference,
     url: url,
-    title: j.titel || '',
+    title: j.stellenangebotsTitel || '',
     company: company,
     location: location,
     description: fallbackDesc,
@@ -143,8 +144,8 @@ const mapped = jobs.map(j => {
     staffing_agency: detectStaffingAgency(company),
     geo_mismatch: detectGeoMismatch(location, false),
     _rawApiData: j,
-    start_date: j.eintrittsdatum || null,
-    posted_at: null
+    start_date: startDate,
+    posted_at: j.datumErsteVeroeffentlichung || null
   }};
 });
 if (mapped.length > 0) mapped[0].json._crawlMeta = _crawlMeta;
